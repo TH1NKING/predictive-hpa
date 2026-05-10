@@ -17,41 +17,114 @@ limitations under the License.
 package v1alpha1
 
 import (
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// PredictionAlgorithm defines the supported time-series prediction algorithms.
+// +kubebuilder:validation:Enum=EWMA
+type PredictionAlgorithm string
 
-// PredictiveHPASpec defines the desired state of PredictiveHPA
+const (
+	// PredictionAlgorithmEWMA uses Exponential Weighted Moving Average to predict
+	// future metric values from historical observations.
+	PredictionAlgorithmEWMA PredictionAlgorithm = "EWMA"
+)
+
+// PredictionConfig configures the time-series prediction behavior.
+type PredictionConfig struct {
+	// algorithm selects the prediction algorithm. Currently only "EWMA" is supported.
+	// +kubebuilder:default=EWMA
+	// +required
+	Algorithm PredictionAlgorithm `json:"algorithm"`
+
+	// alphaPercent is the EWMA smoothing factor scaled by 100.
+	// A higher value gives more weight to recent observations.
+	// For example, 30 means alpha = 0.3.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=99
+	// +required
+	AlphaPercent int32 `json:"alphaPercent"`
+
+	// window is the lookback duration of historical samples used to compute the EWMA.
+	// Samples older than this window are dropped.
+	// Examples: "5m", "10m".
+	// +required
+	Window metav1.Duration `json:"window"`
+
+	// horizon is how far into the future the controller predicts metric values
+	// to drive the scaling decision.
+	// Examples: "30s", "1m".
+	// +required
+	Horizon metav1.Duration `json:"horizon"`
+}
+
+// PredictiveHPASpec defines the desired state of PredictiveHPA.
 type PredictiveHPASpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
+	// scaleTargetRef points to the target resource to scale (e.g. a Deployment).
+	// The reference is resolved within the same namespace as the PredictiveHPA.
+	// +required
+	ScaleTargetRef autoscalingv2.CrossVersionObjectReference `json:"scaleTargetRef"`
 
-	// foo is an example field of PredictiveHPA. Edit predictivehpa_types.go to remove/update
+	// minReplicas is the lower bound for the number of replicas.
+	// Defaults to 1 when unset.
+	// +kubebuilder:validation:Minimum=0
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	MinReplicas *int32 `json:"minReplicas,omitempty"`
+
+	// maxReplicas is the upper bound for the number of replicas.
+	// Must be >= minReplicas.
+	// +kubebuilder:validation:Minimum=1
+	// +required
+	MaxReplicas int32 `json:"maxReplicas"`
+
+	// targetCPUUtilizationPercentage is the desired average CPU utilization
+	// across all pods of the scale target, expressed as a percentage of the
+	// per-pod CPU request.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +required
+	TargetCPUUtilizationPercentage int32 `json:"targetCPUUtilizationPercentage"`
+
+	// prediction configures the time-series prediction used to drive proactive scaling.
+	// +required
+	Prediction PredictionConfig `json:"prediction"`
+
+	// scaleDownStabilizationWindowSeconds is how long the controller waits before
+	// applying a scale-down decision, to prevent oscillation. Defaults to 60s,
+	// which is more aggressive than the native HPA default (300s) since the
+	// EWMA already smooths out short-term spikes.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=60
+	// +optional
+	ScaleDownStabilizationWindowSeconds *int32 `json:"scaleDownStabilizationWindowSeconds,omitempty"`
 }
 
 // PredictiveHPAStatus defines the observed state of PredictiveHPA.
 type PredictiveHPAStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// currentReplicas is the actual number of replicas observed on the scale target.
+	// +optional
+	CurrentReplicas int32 `json:"currentReplicas"`
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
+	// desiredReplicas is the replica count last computed by the controller.
+	// +optional
+	DesiredReplicas int32 `json:"desiredReplicas"`
+
+	// currentCPUUtilizationPercentage is the most recently observed average
+	// CPU utilization across pods of the scale target.
+	// +optional
+	CurrentCPUUtilizationPercentage *int32 `json:"currentCPUUtilizationPercentage,omitempty"`
+
+	// predictedCPUUtilizationPercentage is the EWMA-predicted CPU utilization
+	// at horizon, used to drive the scale-up decision.
+	// +optional
+	PredictedCPUUtilizationPercentage *int32 `json:"predictedCPUUtilizationPercentage,omitempty"`
+
+	// lastScaleTime is the last time the controller adjusted the replica count.
+	// +optional
+	LastScaleTime *metav1.Time `json:"lastScaleTime,omitempty"`
 
 	// conditions represent the current state of the PredictiveHPA resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
@@ -60,8 +133,16 @@ type PredictiveHPAStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=phpa
+// +kubebuilder:printcolumn:name="Reference",type=string,JSONPath=`.spec.scaleTargetRef.name`
+// +kubebuilder:printcolumn:name="MinPods",type=integer,JSONPath=`.spec.minReplicas`
+// +kubebuilder:printcolumn:name="MaxPods",type=integer,JSONPath=`.spec.maxReplicas`
+// +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=`.status.currentReplicas`
+// +kubebuilder:printcolumn:name="Current%",type=integer,JSONPath=`.status.currentCPUUtilizationPercentage`
+// +kubebuilder:printcolumn:name="Predicted%",type=integer,JSONPath=`.status.predictedCPUUtilizationPercentage`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// PredictiveHPA is the Schema for the predictivehpas API
+// PredictiveHPA is the Schema for the predictivehpas API.
 type PredictiveHPA struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -80,7 +161,7 @@ type PredictiveHPA struct {
 
 // +kubebuilder:object:root=true
 
-// PredictiveHPAList contains a list of PredictiveHPA
+// PredictiveHPAList contains a list of PredictiveHPA.
 type PredictiveHPAList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
