@@ -18,19 +18,42 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"math"
+	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
+	"github.com/th1nking/predictive-hpa/internal/metricsprovider"
+	"github.com/th1nking/predictive-hpa/internal/predictor"
 )
 
-// PredictiveHPAReconciler reconciles a PredictiveHPA object
+const (
+	// requeueDefault is the interval between reconciliations under normal
+	// conditions. The native HPA controller uses 15s; we use 30s because
+	// the EWMA history window (typically 5m) is much larger than the
+	// polling interval — more frequent reconciliation yields no signal.
+	requeueDefault = 30 * time.Second
+
+	// requeueOnConfigError is used when the user has configured something
+	// unsupported (e.g. scaleTargetRef.Kind != Deployment). Slow polling
+	// because the user has to intervene anyway.
+	requeueOnConfigError = 60 * time.Second
+)
+
+// PredictiveHPAReconciler reconciles a PredictiveHPA object.
 type PredictiveHPAReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme          *runtime.Scheme
+	MetricsProvider metricsprovider.Provider
 }
 
 // +kubebuilder:rbac:groups=autoscaling.brian.io,resources=predictivehpas,verbs=get;list;watch
@@ -41,21 +64,95 @@ type PredictiveHPAReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the PredictiveHPA object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/reconcile
+// Reconcile is the observe-only loop for v1alpha1: it fetches CPU
+// utilization, runs EWMA prediction, and writes the result back to status
+// without taking any scaling action. Scaling logic is added in step 11.
 func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	log := logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	// 1. Fetch PredictiveHPA.
+	var phpa autoscalingv1alpha1.PredictiveHPA
+	if err := r.Get(ctx, req.NamespacedName, &phpa); err != nil {
+		if apierrors.IsNotFound(err) {
+			// Resource deleted; nothing to do.
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("get PredictiveHPA: %w", err)
+	}
 
-	return ctrl.Result{}, nil
+	// 2. Validate scaleTargetRef. v1alpha1 supports Deployment only.
+	if phpa.Spec.ScaleTargetRef.Kind != "Deployment" {
+		log.Info("unsupported scaleTargetRef kind (v1alpha1 supports Deployment only)",
+			"kind", phpa.Spec.ScaleTargetRef.Kind)
+		return ctrl.Result{RequeueAfter: requeueOnConfigError}, nil
+	}
+
+	// 3. Fetch the target Deployment.
+	var deploy appsv1.Deployment
+	deployKey := types.NamespacedName{
+		Namespace: phpa.Namespace,
+		Name:      phpa.Spec.ScaleTargetRef.Name,
+	}
+	if err := r.Get(ctx, deployKey, &deploy); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("target Deployment not found", "deployment", deployKey)
+			return ctrl.Result{RequeueAfter: requeueDefault}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("get Deployment: %w", err)
+	}
+
+	// 4. Fetch CPU utilization series.
+	window := phpa.Spec.Prediction.Window.Duration
+	samples, err := r.MetricsProvider.AverageCPUUtilizationPercentage(
+		ctx, phpa.Namespace, deploy.Name, window,
+	)
+	if err != nil {
+		if errors.Is(err, metricsprovider.ErrNoData) {
+			log.Info("metrics not yet available, will retry",
+				"deployment", deploy.Name)
+			return ctrl.Result{RequeueAfter: requeueDefault}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("fetch metrics: %w", err)
+	}
+
+	// 5. Run EWMA prediction.
+	alpha := float64(phpa.Spec.Prediction.AlphaPercent) / 100.0
+	horizon := phpa.Spec.Prediction.Horizon.Duration
+	predicted, err := predictor.Predict(samples, predictor.EWMAConfig{
+		Alpha:   alpha,
+		Horizon: horizon,
+	})
+	if err != nil {
+		if errors.Is(err, predictor.ErrInsufficientData) {
+			log.Info("insufficient samples for prediction, will retry",
+				"samples", len(samples))
+			return ctrl.Result{RequeueAfter: requeueDefault}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("predict: %w", err)
+	}
+
+	current := samples[len(samples)-1].Value
+
+	// 6. Update status (observe-only: DesiredReplicas mirrors CurrentReplicas).
+	currentInt := int32(math.Round(current))
+	predictedInt := int32(math.Round(predicted))
+	phpa.Status.CurrentReplicas = deploy.Status.Replicas
+	phpa.Status.DesiredReplicas = deploy.Status.Replicas
+	phpa.Status.CurrentCPUUtilizationPercentage = &currentInt
+	phpa.Status.PredictedCPUUtilizationPercentage = &predictedInt
+
+	if err := r.Status().Update(ctx, &phpa); err != nil {
+		return ctrl.Result{}, fmt.Errorf("update status: %w", err)
+	}
+
+	log.Info("reconciled",
+		"currentCPU%", fmt.Sprintf("%.2f", current),
+		"predictedCPU%", fmt.Sprintf("%.2f", predicted),
+		"replicas", deploy.Status.Replicas,
+		"samples", len(samples),
+	)
+
+	return ctrl.Result{RequeueAfter: requeueDefault}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

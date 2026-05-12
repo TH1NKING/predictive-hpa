@@ -37,6 +37,7 @@ import (
 
 	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
 	"github.com/th1nking/predictive-hpa/internal/controller"
+	"github.com/th1nking/predictive-hpa/internal/metricsprovider"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -61,6 +62,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var prometheusURL string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -79,6 +81,8 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&prometheusURL, "prometheus-url", "http://localhost:9090",
+		"URL of the Prometheus server used as the metrics source.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -178,9 +182,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsProvider, err := metricsprovider.NewPrometheus(prometheusURL)
+	if err != nil {
+		setupLog.Error(err, "Failed to create metrics provider")
+		os.Exit(1)
+	}
+
 	if err := (&controller.PredictiveHPAReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		MetricsProvider: metricsProvider,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "PredictiveHPA")
 		os.Exit(1)
