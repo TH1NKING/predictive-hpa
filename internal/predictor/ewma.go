@@ -76,12 +76,12 @@ func Smooth(samples []Sample, alpha float64) ([]Sample, error) {
 //
 // Algorithm:
 //
-//	1. S = Smooth(samples, Alpha)
-//	2. step = (S[N].Timestamp - S[0].Timestamp) / (N)            // average interval
-//	3. k = max(1, Horizon/step), clamped to N
-//	4. slopePerSample = (S[N] - S[N-k]) / k
-//	5. stepsAhead = Horizon / step
-//	6. predicted = S[N] + slopePerSample * stepsAhead
+//  1. S = Smooth(samples, Alpha)
+//  2. step = (S[N].Timestamp - S[0].Timestamp) / (N)            // average interval
+//  3. k = max(1, Horizon/step), clamped to N
+//  4. slopePerSample = (S[N] - S[N-k]) / k
+//  5. stepsAhead = Horizon / step
+//  6. predicted = S[N] + slopePerSample * stepsAhead
 //
 // Known limitation: Simple EWMA introduces a (1-Alpha)/Alpha lag bias on
 // trending signals. The trade-off between lag and noise sensitivity is
