@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -54,6 +55,13 @@ type PredictiveHPAReconciler struct {
 	client.Client
 	Scheme          *runtime.Scheme
 	MetricsProvider metricsprovider.Provider
+
+	// history tracks recent desiredReplicas per PHPA for the scale-down
+	// stabilization window. Lazy-initialized in SetupWithManager. Access
+	// to both the map and the contained scaleHistory entries is guarded
+	// by mu.
+	mu      sync.Mutex
+	history map[types.NamespacedName]*scaleHistory
 }
 
 // +kubebuilder:rbac:groups=autoscaling.brian.io,resources=predictivehpas,verbs=get;list;watch
@@ -157,6 +165,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PredictiveHPAReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.history = make(map[types.NamespacedName]*scaleHistory)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&autoscalingv1alpha1.PredictiveHPA{}).
 		Named("predictivehpa").
