@@ -1,0 +1,72 @@
+{
+  "experiment_id": "20260527_011955_step_native_hpa_r2",
+  "pattern": "step",
+  "controller": "native_hpa",
+  "repeat": 2,
+  "start_time_utc": "2026-05-26T17:19:55Z",
+  "end_time_utc": "2026-05-26T17:30:07Z",
+  "duration_s": 612,
+  "git_commit": "6b286c7",
+  "k6": {
+    "total_requests": 3641,
+    "failed_count": 3461,
+    "failed_rate_pct": 95.06,
+    "dropped_iterations": 858,
+    "duration_p50_ms": 10000.27,
+    "duration_p95_ms": 10001.13,
+    "duration_p99_ms": 10004.09,
+    "duration_success_p50_ms": 2849.01,
+    "duration_success_p95_ms": 8795.43,
+    "duration_success_p99_ms": 9857.82
+  },
+  "scaling": {
+    "events": [
+      {
+        "timestamp_utc": "2026-05-26T17:21:40Z",
+        "rel_s_from_k6_start": 75,
+        "from": 1,
+        "to": 4
+      },
+      {
+        "timestamp_utc": "2026-05-26T17:21:55Z",
+        "rel_s_from_k6_start": 90,
+        "from": 4,
+        "to": 5
+      }
+    ],
+    "first_scaleup_rel_s": 75,
+    "convergence_rel_s": 90,
+    "steady_state_replicas": 5,
+    "first_scaledown_rel_s_after_k6_stop": null,
+    "full_scaledown_rel_s_after_k6_stop": null,
+    "scaledown_completed": false,
+    "data_source": "prom.json replicas",
+    "sampling_precision_s": 15
+  },
+  "phpa": null,
+  "resource": {
+    "pod_seconds_during_experiment": 2595.0,
+    "avg_replicas": 4.33,
+    "waste_window_s": 371
+  },
+  "events_yaml_rescales": [
+    {
+      "timestamp_utc": "2026-05-26T16:33:12Z",
+      "new_size": 1,
+      "message": "New size: 1; reason: All metrics below target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T17:21:25Z",
+      "new_size": 4,
+      "message": "New size: 4; reason: cpu resource utilization (percentage of request) above target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T17:21:40Z",
+      "new_size": 5,
+      "message": "New size: 5; reason: cpu resource utilization (percentage of request) above target"
+    }
+  ],
+  "warnings": [
+    "no scale-down events detected; experiment ended at steady_state=5 replicas"
+  ]
+}

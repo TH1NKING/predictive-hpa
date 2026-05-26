@@ -1,0 +1,88 @@
+{
+  "experiment_id": "20260526_234510_step_phpa_r1",
+  "pattern": "step",
+  "controller": "phpa",
+  "repeat": 1,
+  "start_time_utc": "2026-05-26T15:45:10Z",
+  "end_time_utc": "2026-05-26T15:53:27Z",
+  "duration_s": 497,
+  "git_commit": "508ca66",
+  "k6": {
+    "total_requests": 3690,
+    "failed_count": 3403,
+    "failed_rate_pct": 92.22,
+    "dropped_iterations": 809,
+    "duration_p50_ms": 10000.33,
+    "duration_p95_ms": 10023.86,
+    "duration_p99_ms": 10549.72,
+    "duration_success_p50_ms": 2476.54,
+    "duration_success_p95_ms": 7847.0,
+    "duration_success_p99_ms": 9114.67
+  },
+  "scaling": {
+    "events": [
+      {
+        "timestamp_utc": "2026-05-26T15:47:10Z",
+        "rel_s_from_k6_start": 90,
+        "from": 1,
+        "to": 2
+      },
+      {
+        "timestamp_utc": "2026-05-26T15:47:40Z",
+        "rel_s_from_k6_start": 120,
+        "from": 2,
+        "to": 10
+      },
+      {
+        "timestamp_utc": "2026-05-26T15:49:10Z",
+        "rel_s_from_k6_start": 210,
+        "from": 10,
+        "to": 5
+      },
+      {
+        "timestamp_utc": "2026-05-26T15:51:10Z",
+        "rel_s_from_k6_start": 330,
+        "from": 5,
+        "to": 6
+      },
+      {
+        "timestamp_utc": "2026-05-26T15:51:40Z",
+        "rel_s_from_k6_start": 360,
+        "from": 6,
+        "to": 4
+      },
+      {
+        "timestamp_utc": "2026-05-26T15:52:10Z",
+        "rel_s_from_k6_start": 390,
+        "from": 4,
+        "to": 1
+      }
+    ],
+    "first_scaleup_rel_s": 90,
+    "convergence_rel_s": 120,
+    "steady_state_replicas": 10,
+    "first_scaledown_rel_s_after_k6_stop": -1,
+    "full_scaledown_rel_s_after_k6_stop": 179,
+    "scaledown_completed": true,
+    "data_source": "prom.json replicas",
+    "sampling_precision_s": 15
+  },
+  "phpa": {
+    "total_reconciles": 32,
+    "unique_decisions": 32,
+    "scaled_true_count": 13,
+    "stabilized_true_count": 8,
+    "skip_reasons": {
+      "DesiredEqualsCurrent": 17,
+      "": 13,
+      "WithinToleranceBand": 2
+    }
+  },
+  "resource": {
+    "pod_seconds_during_experiment": 2055.0,
+    "avg_replicas": 4.15,
+    "waste_window_s": 179
+  },
+  "events_yaml_rescales": [],
+  "warnings": []
+}
