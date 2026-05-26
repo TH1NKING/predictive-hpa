@@ -16,15 +16,25 @@ export const BASE_URL = 'http://localhost:8080';
 // from skewing latency percentiles.
 export const REQUEST_TIMEOUT = '10s';
 
-// Target RPS for all three patterns. PROVISIONAL — Phase 3.2 calibration
-// will determine the actual value that drives PHPA to maxReplicas=10
-// with target=50% CPU utilization.
+// Target RPS for all three patterns. CALIBRATED in Phase 3.2 against
+// the actual application behavior of registry.k8s.io/hpa-example.
 //
-// Calibration approach:
-//   1. Probe with constant low RPS (10/30/100 @ 60s each, no scaling)
-//   2. Derive linear RPS-to-CPU coefficient from steady-state CPU
-//   3. Back-calculate from target: 10 pods * 200m * 50% = 1000m
-export const TARGET_RPS = 150;
+// Calibration findings (experiments/calibration/calibration_20260526_*.md):
+//   - RPS=5 (1 RPS/Pod across 5 Pods): CPU=14.5%, latency p95=38ms (clean)
+//   - RPS=15 (3 RPS/Pod): saturated, dropped=101, p95 hit 10s timeout
+//   - The hpa-example image is intentionally CPU-bound (1M sqrt iterations
+//     per request) + Apache prefork MPM limits concurrent workers,
+//     yielding ~2-3 RPS/Pod realistic capacity (not the theoretical
+//     ~10 RPS/Pod estimated pre-calibration).
+//
+// TARGET_RPS=25 is chosen as a workload that:
+//   1. Triggers scaling from 1 replica (25 RPS on 1 Pod is clearly overload)
+//   2. Stabilizes within maxReplicas=10 capacity (25 RPS across 10 Pods =
+//      2.5 RPS/Pod, in the linear non-saturated regime)
+//   3. Leaves SLA-grade latency headroom post-scale-up for clean PHPA vs
+//      native HPA comparison (vs ~34 RPS which would push the system to
+//      the saturation knee)
+export const TARGET_RPS = 25;
 
 // Quiet period at the start of each test. Required for:
 //   1. metrics-server scrape interval (default 15s) refreshing baseline

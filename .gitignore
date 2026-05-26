@@ -28,3 +28,13 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+
+# Phase 3 benchmark raw data (regenerable, large, binary noise)
+# Keep: metadata.yaml, *.md (analysis / summary)
+# Drop: k6.json, prom.json, events.yaml, controller.log, probe_*.{json,txt}
+experiments/*/k6.json
+experiments/*/prom.json
+experiments/*/events.yaml
+experiments/*/controller.log
+experiments/calibration/probe_*.json
+experiments/calibration/probe_*.txt
