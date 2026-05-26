@@ -1,0 +1,150 @@
+{
+  "experiment_id": "20260527_042447_spike_phpa_r1",
+  "pattern": "spike",
+  "controller": "phpa",
+  "repeat": 1,
+  "start_time_utc": "2026-05-26T20:24:47Z",
+  "end_time_utc": "2026-05-26T20:35:31Z",
+  "duration_s": 644,
+  "git_commit": "9f508f8",
+  "k6": {
+    "total_requests": 2033,
+    "failed_count": 1218,
+    "failed_rate_pct": 59.91,
+    "dropped_iterations": 217,
+    "duration_p50_ms": 10000.01,
+    "duration_p95_ms": 10000.99,
+    "duration_p99_ms": 10002.49,
+    "duration_success_p50_ms": 3441.7,
+    "duration_success_p95_ms": 9110.94,
+    "duration_success_p99_ms": 9731.54
+  },
+  "scaling": {
+    "events": [
+      {
+        "timestamp_utc": "2026-05-26T20:26:32Z",
+        "rel_s_from_k6_start": 75,
+        "from": 1,
+        "to": 2
+      },
+      {
+        "timestamp_utc": "2026-05-26T20:27:02Z",
+        "rel_s_from_k6_start": 105,
+        "from": 2,
+        "to": 7
+      },
+      {
+        "timestamp_utc": "2026-05-26T20:28:02Z",
+        "rel_s_from_k6_start": 165,
+        "from": 7,
+        "to": 5
+      },
+      {
+        "timestamp_utc": "2026-05-26T20:28:32Z",
+        "rel_s_from_k6_start": 195,
+        "from": 5,
+        "to": 4
+      },
+      {
+        "timestamp_utc": "2026-05-26T20:29:32Z",
+        "rel_s_from_k6_start": 255,
+        "from": 4,
+        "to": 2
+      },
+      {
+        "timestamp_utc": "2026-05-26T20:30:02Z",
+        "rel_s_from_k6_start": 285,
+        "from": 2,
+        "to": 3
+      },
+      {
+        "timestamp_utc": "2026-05-26T20:30:32Z",
+        "rel_s_from_k6_start": 315,
+        "from": 3,
+        "to": 4
+      },
+      {
+        "timestamp_utc": "2026-05-26T20:31:32Z",
+        "rel_s_from_k6_start": 375,
+        "from": 4,
+        "to": 1
+      }
+    ],
+    "first_scaleup_rel_s": 75,
+    "convergence_rel_s": 105,
+    "steady_state_replicas": 7,
+    "first_scaledown_rel_s_after_k6_stop": -46,
+    "full_scaledown_rel_s_after_k6_stop": 164,
+    "scaledown_completed": true,
+    "data_source": "prom.json replicas",
+    "sampling_precision_s": 15
+  },
+  "phpa": {
+    "total_reconciles": 36,
+    "unique_decisions": 36,
+    "scaled_true_count": 16,
+    "stabilized_true_count": 8,
+    "skip_reasons": {
+      "DesiredEqualsCurrent": 20,
+      "": 16
+    }
+  },
+  "resource": {
+    "pod_seconds_during_experiment": 1590.0,
+    "avg_replicas": 2.52,
+    "waste_window_s": 164
+  },
+  "events_yaml_rescales": [
+    {
+      "timestamp_utc": "2026-05-26T19:39:33Z",
+      "new_size": 4,
+      "message": "New size: 4; reason: All metrics below target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T19:39:48Z",
+      "new_size": 1,
+      "message": "New size: 1; reason: All metrics below target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T19:52:56Z",
+      "new_size": 3,
+      "message": "New size: 3; reason: cpu resource utilization (percentage of request) above target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T19:53:11Z",
+      "new_size": 5,
+      "message": "New size: 5; reason: cpu resource utilization (percentage of request) above target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T20:02:11Z",
+      "new_size": 3,
+      "message": "New size: 3; reason: All metrics below target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T20:15:04Z",
+      "new_size": 2,
+      "message": "New size: 2; reason: cpu resource utilization (percentage of request) above target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T20:15:19Z",
+      "new_size": 4,
+      "message": "New size: 4; reason: cpu resource utilization (percentage of request) above target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T20:15:34Z",
+      "new_size": 5,
+      "message": "New size: 5; reason: cpu resource utilization (percentage of request) above target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T20:24:19Z",
+      "new_size": 2,
+      "message": "New size: 2; reason: All metrics below target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T20:24:34Z",
+      "new_size": 1,
+      "message": "New size: 1; reason: All metrics below target"
+    }
+  ],
+  "warnings": []
+}

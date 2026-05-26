@@ -1,0 +1,19 @@
+experiment_id: 20260527_043532_spike_native_hpa_r1
+pattern: spike
+controller: native_hpa
+repeat: 1
+start_time_utc: "2026-05-26T20:35:32Z"
+start_time_unix: 1779827732
+end_time_utc: "2026-05-26T20:46:14Z"
+end_time_unix: 1779828374
+git:
+  commit: 9f508f8
+  branch: main
+  dirty: true
+env:
+  k6_version: "k6 v1.3.0 (commit/5870e99ae8, go1.25.1, linux/amd64)"
+  cluster: kind-hpa-dev
+  k8s_version: "1.35.0"
+result:
+  status: success
+  failure_reason: ""

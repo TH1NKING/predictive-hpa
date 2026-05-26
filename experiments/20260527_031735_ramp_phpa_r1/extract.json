@@ -1,0 +1,111 @@
+{
+  "experiment_id": "20260527_031735_ramp_phpa_r1",
+  "pattern": "ramp",
+  "controller": "phpa",
+  "repeat": 1,
+  "start_time_utc": "2026-05-26T19:17:35Z",
+  "end_time_utc": "2026-05-26T19:28:46Z",
+  "duration_s": 671,
+  "git_commit": "9f508f8",
+  "k6": {
+    "total_requests": 4024,
+    "failed_count": 2906,
+    "failed_rate_pct": 72.22,
+    "dropped_iterations": 475,
+    "duration_p50_ms": 10000.13,
+    "duration_p95_ms": 10001.0,
+    "duration_p99_ms": 10002.97,
+    "duration_success_p50_ms": 3514.01,
+    "duration_success_p95_ms": 8795.16,
+    "duration_success_p99_ms": 9714.43
+  },
+  "scaling": {
+    "events": [
+      {
+        "timestamp_utc": "2026-05-26T19:17:50Z",
+        "rel_s_from_k6_start": -15,
+        "from": 5,
+        "to": 1
+      },
+      {
+        "timestamp_utc": "2026-05-26T19:19:50Z",
+        "rel_s_from_k6_start": 105,
+        "from": 1,
+        "to": 3
+      },
+      {
+        "timestamp_utc": "2026-05-26T19:20:20Z",
+        "rel_s_from_k6_start": 135,
+        "from": 3,
+        "to": 9
+      },
+      {
+        "timestamp_utc": "2026-05-26T19:21:20Z",
+        "rel_s_from_k6_start": 195,
+        "from": 9,
+        "to": 8
+      },
+      {
+        "timestamp_utc": "2026-05-26T19:21:50Z",
+        "rel_s_from_k6_start": 225,
+        "from": 8,
+        "to": 5
+      },
+      {
+        "timestamp_utc": "2026-05-26T19:24:20Z",
+        "rel_s_from_k6_start": 375,
+        "from": 5,
+        "to": 6
+      },
+      {
+        "timestamp_utc": "2026-05-26T19:24:50Z",
+        "rel_s_from_k6_start": 405,
+        "from": 6,
+        "to": 2
+      },
+      {
+        "timestamp_utc": "2026-05-26T19:25:20Z",
+        "rel_s_from_k6_start": 435,
+        "from": 2,
+        "to": 1
+      }
+    ],
+    "first_scaleup_rel_s": 105,
+    "convergence_rel_s": 135,
+    "steady_state_replicas": 9,
+    "first_scaledown_rel_s_after_k6_stop": -226,
+    "full_scaledown_rel_s_after_k6_stop": 224,
+    "scaledown_completed": true,
+    "data_source": "prom.json replicas",
+    "sampling_precision_s": 15
+  },
+  "phpa": {
+    "total_reconciles": 41,
+    "unique_decisions": 41,
+    "scaled_true_count": 14,
+    "stabilized_true_count": 10,
+    "skip_reasons": {
+      "DesiredEqualsCurrent": 25,
+      "": 14,
+      "WithinToleranceBand": 2
+    }
+  },
+  "resource": {
+    "pod_seconds_during_experiment": 2220.0,
+    "avg_replicas": 3.36,
+    "waste_window_s": 224
+  },
+  "events_yaml_rescales": [
+    {
+      "timestamp_utc": "2026-05-26T19:08:52Z",
+      "new_size": 4,
+      "message": "New size: 4; reason: cpu resource utilization (percentage of request) above target"
+    },
+    {
+      "timestamp_utc": "2026-05-26T19:09:07Z",
+      "new_size": 5,
+      "message": "New size: 5; reason: cpu resource utilization (percentage of request) above target"
+    }
+  ],
+  "warnings": []
+}

@@ -1,0 +1,19 @@
+experiment_id: 20260527_050742_spike_phpa_r3
+pattern: spike
+controller: phpa
+repeat: 3
+start_time_utc: "2026-05-26T21:07:42Z"
+start_time_unix: 1779829662
+end_time_utc: "2026-05-26T21:18:26Z"
+end_time_unix: 1779830306
+git:
+  commit: 9f508f8
+  branch: main
+  dirty: true
+env:
+  k6_version: "k6 v1.3.0 (commit/5870e99ae8, go1.25.1, linux/amd64)"
+  cluster: kind-hpa-dev
+  k8s_version: "1.35.0"
+result:
+  status: success
+  failure_reason: ""

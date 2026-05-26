@@ -1,0 +1,19 @@
+experiment_id: 20260527_040221_ramp_phpa_r3
+pattern: ramp
+controller: phpa
+repeat: 3
+start_time_utc: "2026-05-26T20:02:21Z"
+start_time_unix: 1779825741
+end_time_utc: "2026-05-26T20:13:32Z"
+end_time_unix: 1779826412
+git:
+  commit: 9f508f8
+  branch: main
+  dirty: true
+env:
+  k6_version: "k6 v1.3.0 (commit/5870e99ae8, go1.25.1, linux/amd64)"
+  cluster: kind-hpa-dev
+  k8s_version: "1.35.0"
+result:
+  status: success
+  failure_reason: ""
