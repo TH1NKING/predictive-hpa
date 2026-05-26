@@ -53,7 +53,7 @@ fi
 PHPA_SAMPLE="config/samples/autoscaling_v1alpha1_predictivehpa.yaml"
 NATIVE_HPA_YAML="$HOME/hpa-project/baseline-demo/hpa.yaml"
 CONTROLLER_LOG="/tmp/controller-current.log"
-CONTROLLER_STARTUP_TIMEOUT=20
+CONTROLLER_STARTUP_TIMEOUT=60
 METRIC_ACCUMULATION_SECONDS=30
 # Tail observation after k6 exits. Captures scale-down behavior.
 # Moved out of k6 stages because ramping-arrival-rate executor exits early
@@ -137,16 +137,36 @@ echo "  Deployment ready"
 echo ""
 echo "[5/11] switch controller ($CONTROLLER)"
 
-# Kill any existing controller process
-if pgrep -f "go-build.*predictive-hpa" >/dev/null 2>&1; then
-  pkill -f "go-build.*predictive-hpa" || true
-  sleep 2
-fi
-# Also stop "go run" parent if present
-if pgrep -f "go run.*cmd/main.go" >/dev/null 2>&1; then
-  pkill -f "go run.*cmd/main.go" || true
-  sleep 2
-fi
+# Kill any existing controller. We send SIGTERM to *every* pattern that
+# could possibly be a controller process from a prior run, then wait for
+# the metrics/health port (8081) to be released before starting a new one.
+# Three signals are necessary because make run forks multiple processes:
+#   - "make run" parent (bash wrapper from the Makefile target)
+#   - "go run cmd/main.go" (the go toolchain's compile-and-exec wrapper)
+#   - "go-build.../main" (the actual compiled binary, often parented to go run)
+echo "  killing any existing controller processes..."
+pkill -f "make run" 2>/dev/null || true
+pkill -f "go run.*cmd/main.go" 2>/dev/null || true
+# Two patterns for the compiled binary because Go's build cache lives in
+# either /tmp/go-build* (one-shot go run) or ~/.cache/go-build/* (cached
+# build); the binary itself is just named "main". We use a strict path
+# pattern (/go-build/...) to avoid killing unrelated "main" processes.
+pkill -f "/go-build/.*/main" 2>/dev/null || true
+# Wait for port 8081 (controller health probe) to be free; that is the
+# definitive signal that no controller is bound. Hardcoded 15s ceiling.
+for i in $(seq 1 15); do
+  if ! ss -ltn 2>/dev/null | grep -q ":8081 "; then
+    break
+  fi
+  if [ $i -eq 15 ]; then
+    # Last resort: SIGKILL anything still on :8081
+    pkill -9 -f "/go-build/.*/main" 2>/dev/null || true
+    pkill -9 -f "go run.*cmd/main.go" 2>/dev/null || true
+    pkill -9 -f "make run" 2>/dev/null || true
+    sleep 2
+  fi
+  sleep 1
+done
 
 if [ "$CONTROLLER" = "phpa" ]; then
   # Ensure no native HPA conflicts
@@ -154,21 +174,32 @@ if [ "$CONTROLLER" = "phpa" ]; then
   # Ensure PHPA sample exists
   kubectl apply -f "$PHPA_SAMPLE" >/dev/null
 
-  # Start controller in background
+  # Truncate controller log so grep below cannot match stale "Starting workers"
+  : > "$CONTROLLER_LOG"
+
+  # Start controller in background. We disown so the orchestrator can exit
+  # without taking the controller with it (it is intentionally a long-lived
+  # process that the orchestrator owns the lifecycle of).
   echo "  starting controller..."
   nohup make run > "$CONTROLLER_LOG" 2>&1 &
   disown
-  # Wait for controller-runtime "Starting workers" log line
+  # Wait for the controller-runtime "Starting workers" log line. The 60s
+  # ceiling accommodates the Makefile preamble (controller-gen + fmt + vet
+  # + go build), which can take 15-25s on a cold cache.
   STARTED=false
   for i in $(seq 1 $CONTROLLER_STARTUP_TIMEOUT); do
     if grep -q "Starting workers" "$CONTROLLER_LOG" 2>/dev/null; then
       STARTED=true
       break
     fi
+    # Also fail fast if make run died (exit-status detectable in log)
+    if grep -qE "make: \*\*\*|address already in use|exit status 1" "$CONTROLLER_LOG" 2>/dev/null; then
+      fail_experiment "controller failed to start (check $CONTROLLER_LOG; common causes: port 8081 still bound, build error)"
+    fi
     sleep 1
   done
   if [ "$STARTED" = "false" ]; then
-    fail_experiment "controller did not start within ${CONTROLLER_STARTUP_TIMEOUT}s (check $CONTROLLER_LOG)"
+    fail_experiment "controller did not reach 'Starting workers' within ${CONTROLLER_STARTUP_TIMEOUT}s (check $CONTROLLER_LOG)"
   fi
   echo "  controller started"
 
