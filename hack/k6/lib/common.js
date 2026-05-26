@@ -41,11 +41,13 @@ export const TARGET_RPS = 25;
 //   2. Prometheus to accumulate baseline datapoints before load begins
 export const PRE_LOAD_QUIET_SECONDS = 30;
 
-// Tail observation period after load drops to zero. Sized to capture:
-//   - Native HPA's full scale-down (~5-6min observed in Phase 0)
-//   - PHPA's scale-down (~150s observed in Phase 2 commit 51bf289)
-// 240s gives the native HPA case ~30s margin past its typical 5min mark.
-export const POST_LOAD_TAIL_SECONDS = 240;
+// NOTE: Tail observation period (formerly POST_LOAD_TAIL_SECONDS) is no
+// longer expressed inside k6 stages — see hack/run_benchmark.sh's
+// POST_LOAD_TAIL_SECONDS constant. The k6 ramping-arrival-rate executor
+// exits a target=0 stage early once all in-flight iterations finish (a
+// CPU-saving optimization in k6), which truncates any tail stage that
+// follows a saturated hold. We moved the observation period to the bash
+// orchestrator to ensure scale-down data is always captured.
 
 // Standard HTTP request function shared by all load patterns.
 // Attaches the load-phase tag so k6 output can be sliced by phase

@@ -9,17 +9,17 @@
 // Native HPA on the same signal will lag by ~30s (metrics scrape
 // interval + reconciliation cycle).
 //
-// Timeline (total ~8.5 min):
+// Timeline (k6-side, ~4.5 min):
 //   0-30s    quiet (baseline)
 //   30-90s   ramp up from 0 to TARGET_RPS (60s linear)
 //   90-210s  hold at TARGET_RPS (120s)
 //   210-270s ramp down from TARGET_RPS to 0 (60s linear)
-//   270-510s tail observation (240s)
+//
+// Tail observation (scale-down period) is handled by run_benchmark.sh.
 
 import {
   TARGET_RPS,
   PRE_LOAD_QUIET_SECONDS,
-  POST_LOAD_TAIL_SECONDS,
   get,
 } from './lib/common.js';
 
@@ -40,7 +40,6 @@ export const options = {
         { duration: `${RAMP_UP_SECONDS}s`, target: TARGET_RPS },
         { duration: `${HOLD_SECONDS}s`, target: TARGET_RPS },
         { duration: `${RAMP_DOWN_SECONDS}s`, target: 0 },
-        { duration: `${POST_LOAD_TAIL_SECONDS}s`, target: 0 },
       ],
     },
   },

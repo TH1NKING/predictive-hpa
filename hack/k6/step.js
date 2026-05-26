@@ -7,17 +7,18 @@
 //   - Scale-down window effect (load off -> first scale-down)
 //   - Total scale-down duration (load off -> replicas back to min)
 //
-// Timeline (total ~7.5 min):
+// Timeline (k6-side, ~3.5 min):
 //   0-30s    quiet (baseline)
 //   30-31s   step-up   (1s ramp, approximates instant)
 //   31-210s  hold at TARGET_RPS  (179s)
 //   210-211s step-down (1s ramp, approximates instant)
-//   211-450s tail observation (239s)
+//
+// Tail observation (scale-down period) is handled by run_benchmark.sh
+// after k6 exits — see POST_LOAD_TAIL_SECONDS in that script.
 
 import {
   TARGET_RPS,
   PRE_LOAD_QUIET_SECONDS,
-  POST_LOAD_TAIL_SECONDS,
   get,
 } from './lib/common.js';
 
@@ -36,7 +37,6 @@ export const options = {
         { duration: '1s', target: TARGET_RPS },
         { duration: `${HOLD_SECONDS - 1}s`, target: TARGET_RPS },
         { duration: '1s', target: 0 },
-        { duration: `${POST_LOAD_TAIL_SECONDS - 1}s`, target: 0 },
       ],
     },
   },

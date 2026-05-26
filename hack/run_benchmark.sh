@@ -55,6 +55,10 @@ NATIVE_HPA_YAML="$HOME/hpa-project/baseline-demo/hpa.yaml"
 CONTROLLER_LOG="/tmp/controller-current.log"
 CONTROLLER_STARTUP_TIMEOUT=20
 METRIC_ACCUMULATION_SECONDS=30
+# Tail observation after k6 exits. Captures scale-down behavior.
+# Moved out of k6 stages because ramping-arrival-rate executor exits early
+# when target=0 and all in-flight requests are done — see step.js comment.
+POST_LOAD_TAIL_SECONDS=240
 PROM_URL="http://localhost:9090"
 
 # === Step 1: prerequisites ===
@@ -185,9 +189,17 @@ echo ""
 echo "[7/11] run k6 pattern: $PATTERN"
 K6_SCRIPT="hack/k6/${PATTERN}.js"
 K6_JSON="$EXP_DIR/k6.json"
-if ! k6 run --out json="$K6_JSON" "$K6_SCRIPT"; then
+if ! k6 run --out json="$K6_JSON" --log-output=file="$EXP_DIR/k6-warnings.log" "$K6_SCRIPT"; then
   fail_experiment "k6 run failed (see $EXP_DIR/k6.json)"
 fi
+
+# Tail observation: k6's ramping-arrival-rate executor exits early when
+# target=0 and all in-flight requests have completed, so we cannot rely
+# on a trailing k6 stage to observe scale-down. The orchestrator pauses
+# here to ensure both PHPA and native HPA scale-down sequences are
+# captured in the Prometheus and controller log data collected next.
+echo "  k6 done; tail observation pause (${POST_LOAD_TAIL_SECONDS}s) for scale-down"
+sleep "$POST_LOAD_TAIL_SECONDS"
 
 # === Step 8: record end time ===
 END_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)

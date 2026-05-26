@@ -11,19 +11,18 @@
 // With the 60s window (Phase 2 commit 51bf289), oscillation should be
 // eliminated; expected Pod flips: ~3 (one scale-up per spike).
 //
-// Timeline (total ~8 min):
+// Timeline (k6-side, ~4 min):
 //   0-30s     quiet (baseline)
 //   30-61s    spike 1 (1s up + 29s hold + 1s down)
 //   61-120s   gap 1 (59s @ 0)
 //   120-151s  spike 2
 //   151-210s  gap 2
 //   210-241s  spike 3
-//   241-481s  tail observation (240s, replaces final gap)
+//   (no trailing tail stage — handled by run_benchmark.sh)
 
 import {
   TARGET_RPS,
   PRE_LOAD_QUIET_SECONDS,
-  POST_LOAD_TAIL_SECONDS,
   get,
 } from './lib/common.js';
 
@@ -41,12 +40,11 @@ function buildStages() {
     stages.push({ duration: `${SPIKE_DURATION_SECONDS - 1}s`, target: TARGET_RPS });
     // Step-down (1s ≈ instant)
     stages.push({ duration: '1s', target: 0 });
-    // Gap before next spike — omitted after the last (tail covers it)
+    // Gap before next spike — omitted after the last (tail handled by orchestrator)
     if (i < SPIKE_COUNT - 1) {
       stages.push({ duration: `${SPIKE_GAP_SECONDS - 1}s`, target: 0 });
     }
   }
-  stages.push({ duration: `${POST_LOAD_TAIL_SECONDS}s`, target: 0 });
   return stages;
 }
 
