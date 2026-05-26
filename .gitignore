@@ -46,3 +46,8 @@ experiments/*/k6-warnings.log
 # reproducible benchmark dataset.
 experiments/_INCOMPLETE_*/metadata.yaml
 experiments/_INCOMPLETE_*/k6-warnings.log
+
+# Python analyze venv (Phase 3 aggregate script dependencies)
+hack/analyze/.venv/
+hack/analyze/__pycache__/
+hack/analyze/*.pyc
