@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
 package controller
 
 import (
@@ -25,7 +24,9 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -72,9 +73,14 @@ type PredictiveHPAReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
-// Reconcile is the observe-only loop for v1alpha1: it fetches CPU
-// utilization, runs EWMA prediction, and writes the result back to status
-// without taking any scaling action. Scaling logic is added in step 11.
+// Reconcile fetches CPU utilization for the target Deployment, runs EWMA
+// prediction to project utilization horizon seconds ahead, applies the
+// scaling formula (with negative-prediction clamp, min/max clamp, and a
+// tolerance band), and writes the result to the Deployment scale subresource.
+//
+// The scale-down stabilization window is not yet applied at this commit —
+// scale-down therefore happens immediately. The window is wired in the next
+// commit.
 func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -82,7 +88,6 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	var phpa autoscalingv1alpha1.PredictiveHPA
 	if err := r.Get(ctx, req.NamespacedName, &phpa); err != nil {
 		if apierrors.IsNotFound(err) {
-			// Resource deleted; nothing to do.
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get PredictiveHPA: %w", err)
@@ -139,24 +144,99 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, fmt.Errorf("predict: %w", err)
 	}
 
-	current := samples[len(samples)-1].Value
+	currentCPU := samples[len(samples)-1].Value
 
-	// 6. Update status (observe-only: DesiredReplicas mirrors CurrentReplicas).
-	currentInt := int32(math.Round(current))
+	// 6. Clamp negative prediction. The first-difference forecast can output
+	// negative values on sharply descending signals (e.g., when load testing
+	// ends); the algorithm is mathematically correct, but the business layer
+	// caps it before deriving replicas. Log at V(1) to preserve the raw value
+	// for debugging without spamming default logs.
+	if predicted < 0 {
+		log.V(1).Info("Prediction clamped to zero", "raw", predicted)
+		predicted = 0
+	}
+
+	// 7. Compute desired replicas (formula + min/max clamp).
+	currentReplicas := deploy.Status.Replicas
+
+	minReplicas := int32(1)
+	if phpa.Spec.MinReplicas != nil {
+		minReplicas = *phpa.Spec.MinReplicas
+		if minReplicas < 1 {
+			// v1alpha1 does not support scale-to-zero; the pure function
+			// will fall back to 1. Logged at V(1) to avoid spamming on
+			// every 30s reconcile.
+			log.V(1).Info("minReplicas=0 not supported in v1alpha1; treating as 1")
+		}
+	}
+
+	desiredReplicas := computeDesiredReplicas(
+		currentReplicas,
+		predicted,
+		phpa.Spec.TargetCPUUtilizationPercentage,
+		minReplicas,
+		phpa.Spec.MaxReplicas,
+	)
+
+	// 8. Decide whether to actually scale.
+	//
+	// Two early-exit paths:
+	//   (a) desired == current: idempotency optimization (avoid etcd write).
+	//   (b) within tolerance band: predicted is close enough to target that
+	//       the adjustment is not worth Pod churn.
+	//
+	// The scale-down stabilization window is not yet applied here — scale-
+	// down therefore happens immediately when the formula calls for it.
+	// Stabilization is added in the next commit.
+	scaled := false
+	skipReason := ""
+	switch {
+	case desiredReplicas == currentReplicas:
+		skipReason = "DesiredEqualsCurrent"
+	case withinTolerance(predicted, phpa.Spec.TargetCPUUtilizationPercentage):
+		skipReason = "WithinToleranceBand"
+	default:
+		// Update via Deployment/scale subresource (matches the native HPA
+		// controller and the principle of least privilege: RBAC grants
+		// deployments/scale=get;update;patch but deployments=get;list;watch
+		// only — this controller cannot accidentally edit Deployment fields
+		// other than spec.replicas).
+		scale := &autoscalingv1.Scale{}
+		if err := r.SubResource("scale").Get(ctx, &deploy, scale); err != nil {
+			return ctrl.Result{}, fmt.Errorf("get Deployment scale: %w", err)
+		}
+		scale.Spec.Replicas = desiredReplicas
+		if err := r.SubResource("scale").Update(
+			ctx, &deploy, client.WithSubResourceBody(scale),
+		); err != nil {
+			return ctrl.Result{}, fmt.Errorf("update Deployment scale: %w", err)
+		}
+		scaled = true
+	}
+
+	// 9. Update status.
+	currentInt := int32(math.Round(currentCPU))
 	predictedInt := int32(math.Round(predicted))
-	phpa.Status.CurrentReplicas = deploy.Status.Replicas
-	phpa.Status.DesiredReplicas = deploy.Status.Replicas
+	phpa.Status.CurrentReplicas = currentReplicas
+	phpa.Status.DesiredReplicas = desiredReplicas
 	phpa.Status.CurrentCPUUtilizationPercentage = &currentInt
 	phpa.Status.PredictedCPUUtilizationPercentage = &predictedInt
+	if scaled {
+		now := metav1.Now()
+		phpa.Status.LastScaleTime = &now
+	}
 
 	if err := r.Status().Update(ctx, &phpa); err != nil {
 		return ctrl.Result{}, fmt.Errorf("update status: %w", err)
 	}
 
 	log.Info("reconciled",
-		"currentCPU%", fmt.Sprintf("%.2f", current),
+		"currentCPU%", fmt.Sprintf("%.2f", currentCPU),
 		"predictedCPU%", fmt.Sprintf("%.2f", predicted),
-		"replicas", deploy.Status.Replicas,
+		"currentReplicas", currentReplicas,
+		"desiredReplicas", desiredReplicas,
+		"scaled", scaled,
+		"skipReason", skipReason,
 		"samples", len(samples),
 	)
 
