@@ -26,6 +26,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -49,6 +50,10 @@ const (
 	// unsupported (e.g. scaleTargetRef.Kind != Deployment). Slow polling
 	// because the user has to intervene anyway.
 	requeueOnConfigError = 60 * time.Second
+
+	// conditionScaleDownStabilized indicates whether the scale-down
+	// stabilization window is currently capping the computed desired.
+	conditionScaleDownStabilized = "ScaleDownStabilized"
 )
 
 // PredictiveHPAReconciler reconciles a PredictiveHPA object.
@@ -58,9 +63,11 @@ type PredictiveHPAReconciler struct {
 	MetricsProvider metricsprovider.Provider
 
 	// history tracks recent desiredReplicas per PHPA for the scale-down
-	// stabilization window. Lazy-initialized in SetupWithManager. Access
-	// to both the map and the contained scaleHistory entries is guarded
-	// by mu.
+	// stabilization window. Lazy-initialized in SetupWithManager; entries
+	// are deleted in Reconcile when the corresponding PHPA is no longer
+	// found (controller-runtime invokes Reconcile on delete events).
+	// Access to both the map and the contained scaleHistory entries is
+	// guarded by mu.
 	mu      sync.Mutex
 	history map[types.NamespacedName]*scaleHistory
 }
@@ -74,26 +81,33 @@ type PredictiveHPAReconciler struct {
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // Reconcile fetches CPU utilization for the target Deployment, runs EWMA
-// prediction to project utilization horizon seconds ahead, applies the
-// scaling formula (with negative-prediction clamp, min/max clamp, and a
-// tolerance band), and writes the result to the Deployment scale subresource.
+// prediction, computes the desired replicas (formula + clamp + tolerance),
+// applies the scale-down stabilization window (max over recent desireds),
+// and writes the result to the Deployment scale subresource.
 //
-// The scale-down stabilization window is not yet applied at this commit —
-// scale-down therefore happens immediately. The window is wired in the next
-// commit.
+// The stabilization window prevents rapid downscaling on transient CPU
+// drops: when scaling down, finalDesired is capped to the max desired
+// observed within the past spec.scaleDownStabilizationWindowSeconds.
+// History is kept in-memory and lost on controller restart; restart-safe
+// persistence is on the v1beta1 roadmap.
 func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	// 1. Fetch PredictiveHPA.
+	// 1. Fetch PredictiveHPA. On NotFound, drop the in-memory history for
+	//    this key to prevent map leaks (controller-runtime invokes Reconcile
+	//    on delete events).
 	var phpa autoscalingv1alpha1.PredictiveHPA
 	if err := r.Get(ctx, req.NamespacedName, &phpa); err != nil {
 		if apierrors.IsNotFound(err) {
+			r.mu.Lock()
+			delete(r.history, req.NamespacedName)
+			r.mu.Unlock()
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get PredictiveHPA: %w", err)
 	}
 
-	// 2. Validate scaleTargetRef. v1alpha1 supports Deployment only.
+	// 2. Validate scaleTargetRef.
 	if phpa.Spec.ScaleTargetRef.Kind != "Deployment" {
 		log.Info("unsupported scaleTargetRef kind (v1alpha1 supports Deployment only)",
 			"kind", phpa.Spec.ScaleTargetRef.Kind)
@@ -146,11 +160,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	currentCPU := samples[len(samples)-1].Value
 
-	// 6. Clamp negative prediction. The first-difference forecast can output
-	// negative values on sharply descending signals (e.g., when load testing
-	// ends); the algorithm is mathematically correct, but the business layer
-	// caps it before deriving replicas. Log at V(1) to preserve the raw value
-	// for debugging without spamming default logs.
+	// 6. Clamp negative prediction.
 	if predicted < 0 {
 		log.V(1).Info("Prediction clamped to zero", "raw", predicted)
 		predicted = 0
@@ -163,9 +173,6 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if phpa.Spec.MinReplicas != nil {
 		minReplicas = *phpa.Spec.MinReplicas
 		if minReplicas < 1 {
-			// v1alpha1 does not support scale-to-zero; the pure function
-			// will fall back to 1. Logged at V(1) to avoid spamming on
-			// every 30s reconcile.
 			log.V(1).Info("minReplicas=0 not supported in v1alpha1; treating as 1")
 		}
 	}
@@ -178,34 +185,65 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		phpa.Spec.MaxReplicas,
 	)
 
-	// 8. Decide whether to actually scale.
+	// 8. Apply scale-down stabilization window.
 	//
-	// Two early-exit paths:
-	//   (a) desired == current: idempotency optimization (avoid etcd write).
-	//   (b) within tolerance band: predicted is close enough to target that
-	//       the adjustment is not worth Pod churn.
+	// Record every computed desired (regardless of direction) so the
+	// max-over-window calculation is complete. When scaling down, cap
+	// finalDesired to the max desired observed within the past window
+	// — preventing rapid downscaling on transient CPU drops.
 	//
-	// The scale-down stabilization window is not yet applied here — scale-
-	// down therefore happens immediately when the formula calls for it.
-	// Stabilization is added in the next commit.
+	// cold-start: if after record + prune the history holds only the
+	// just-recorded entry, either this is the first reconcile of the PHPA
+	// or the controller restarted. In both cases scale-down has no
+	// historical safety net for this round.
+	now := time.Now()
+	stabilizationWindowSec := int32(60)
+	if phpa.Spec.ScaleDownStabilizationWindowSeconds != nil {
+		stabilizationWindowSec = *phpa.Spec.ScaleDownStabilizationWindowSeconds
+	}
+	stabilizationWindow := time.Duration(stabilizationWindowSec) * time.Second
+
+	r.mu.Lock()
+	hist, ok := r.history[req.NamespacedName]
+	if !ok {
+		hist = &scaleHistory{}
+		r.history[req.NamespacedName] = hist
+	}
+	hist.record(now, desiredReplicas)
+
+	finalDesired := desiredReplicas
+	stabilized := false
+	coldStart := false
+	if desiredReplicas < currentReplicas {
+		finalDesired = hist.maxInWindow(now, stabilizationWindow)
+		if finalDesired > desiredReplicas {
+			stabilized = true
+		}
+		if hist.len() == 1 {
+			coldStart = true
+		}
+	}
+	r.mu.Unlock()
+
+	if coldStart {
+		log.Info("Stabilization window cold-start: no prior history, applying scale-down without window protection",
+			"desired", desiredReplicas, "current", currentReplicas)
+	}
+
+	// 9. Decide whether to actually scale.
 	scaled := false
 	skipReason := ""
 	switch {
-	case desiredReplicas == currentReplicas:
+	case finalDesired == currentReplicas:
 		skipReason = "DesiredEqualsCurrent"
 	case withinTolerance(predicted, phpa.Spec.TargetCPUUtilizationPercentage):
 		skipReason = "WithinToleranceBand"
 	default:
-		// Update via Deployment/scale subresource (matches the native HPA
-		// controller and the principle of least privilege: RBAC grants
-		// deployments/scale=get;update;patch but deployments=get;list;watch
-		// only — this controller cannot accidentally edit Deployment fields
-		// other than spec.replicas).
 		scale := &autoscalingv1.Scale{}
 		if err := r.SubResource("scale").Get(ctx, &deploy, scale); err != nil {
 			return ctrl.Result{}, fmt.Errorf("get Deployment scale: %w", err)
 		}
-		scale.Spec.Replicas = desiredReplicas
+		scale.Spec.Replicas = finalDesired
 		if err := r.SubResource("scale").Update(
 			ctx, &deploy, client.WithSubResourceBody(scale),
 		); err != nil {
@@ -214,17 +252,38 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		scaled = true
 	}
 
-	// 9. Update status.
+	// 10. Update status.
 	currentInt := int32(math.Round(currentCPU))
 	predictedInt := int32(math.Round(predicted))
 	phpa.Status.CurrentReplicas = currentReplicas
-	phpa.Status.DesiredReplicas = desiredReplicas
+	phpa.Status.DesiredReplicas = finalDesired
 	phpa.Status.CurrentCPUUtilizationPercentage = &currentInt
 	phpa.Status.PredictedCPUUtilizationPercentage = &predictedInt
 	if scaled {
-		now := metav1.Now()
-		phpa.Status.LastScaleTime = &now
+		nowMeta := metav1.Now()
+		phpa.Status.LastScaleTime = &nowMeta
 	}
+
+	var stabCondition metav1.Condition
+	if stabilized {
+		stabCondition = metav1.Condition{
+			Type:   conditionScaleDownStabilized,
+			Status: metav1.ConditionTrue,
+			Reason: "WithinStabilizationWindow",
+			Message: fmt.Sprintf("computed %d, stabilized to %d (window=%ds)",
+				desiredReplicas, finalDesired, stabilizationWindowSec),
+			ObservedGeneration: phpa.Generation,
+		}
+	} else {
+		stabCondition = metav1.Condition{
+			Type:               conditionScaleDownStabilized,
+			Status:             metav1.ConditionFalse,
+			Reason:             "NoStabilizationNeeded",
+			Message:            "Scaling up, unchanged, or no historical max to apply",
+			ObservedGeneration: phpa.Generation,
+		}
+	}
+	meta.SetStatusCondition(&phpa.Status.Conditions, stabCondition)
 
 	if err := r.Status().Update(ctx, &phpa); err != nil {
 		return ctrl.Result{}, fmt.Errorf("update status: %w", err)
@@ -235,6 +294,8 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		"predictedCPU%", fmt.Sprintf("%.2f", predicted),
 		"currentReplicas", currentReplicas,
 		"desiredReplicas", desiredReplicas,
+		"finalDesired", finalDesired,
+		"stabilized", stabilized,
 		"scaled", scaled,
 		"skipReason", skipReason,
 		"samples", len(samples),
