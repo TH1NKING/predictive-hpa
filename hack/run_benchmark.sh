@@ -58,7 +58,11 @@ METRIC_ACCUMULATION_SECONDS=30
 # Tail observation after k6 exits. Captures scale-down behavior.
 # Moved out of k6 stages because ramping-arrival-rate executor exits early
 # when target=0 and all in-flight requests are done — see step.js comment.
-POST_LOAD_TAIL_SECONDS=240
+# Sized to 360s = 300s (native HPA default --horizontal-pod-autoscaler-
+# downscale-stabilization) + 60s buffer for the final reconcile + Pod
+# termination. The earlier 240s value missed native HPA's full scale-down
+# curve in step native_hpa 1 dry-run (only first scale decision captured).
+POST_LOAD_TAIL_SECONDS=360
 PROM_URL="http://localhost:9090"
 
 # === Step 1: prerequisites ===
