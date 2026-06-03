@@ -26,14 +26,15 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -41,11 +42,14 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	ctx       context.Context
-	cancel    context.CancelFunc
-	testEnv   *envtest.Environment
-	cfg       *rest.Config
-	k8sClient client.Client
+	ctx         context.Context
+	cancel      context.CancelFunc
+	testEnv     *envtest.Environment
+	cfg         *rest.Config
+	k8sClient   client.Client
+	mgrCtx      context.Context
+	mgrCancel   context.CancelFunc
+	fakeMetrics *fakeMetricsProvider
 )
 
 func TestControllers(t *testing.T) {
@@ -84,10 +88,36 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
+	// --- Manager + Reconciler registration ---
+	//
+	// Build a controller-runtime Manager backed by the envtest API server,
+	// register PredictiveHPAReconciler with a fake MetricsProvider, and
+	// start the manager in a background goroutine. The manager owns its own
+	// cancellable context (mgrCtx) so its lifecycle is independent from
+	// per-spec contexts.
+	mgrCtx, mgrCancel = context.WithCancel(context.TODO())
+
+	mgr, err := ctrl.NewManager(cfg, manager.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+
+	fakeMetrics = newFakeMetricsProvider()
+
+	err = (&PredictiveHPAReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		MetricsProvider: fakeMetrics,
+	}).SetupWithManager(mgr)
+	Expect(err).NotTo(HaveOccurred())
+
+	go func() {
+		defer GinkgoRecover()
+		Expect(mgr.Start(mgrCtx)).To(Succeed())
+	}()
 })
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
+	mgrCancel()
 	cancel()
 	Eventually(func() error {
 		return testEnv.Stop()
