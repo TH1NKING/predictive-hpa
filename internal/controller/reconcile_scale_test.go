@@ -153,4 +153,53 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 			)
 		}, 60*time.Second, 500*time.Millisecond).Should(Succeed())
 	})
+
+	It("scales down when CPU drops below target", func() {
+		const (
+			deployName = "demo-app"
+			phpaName   = "demo-phpa"
+		)
+
+		// 1. Create Deployment starting at 5 replicas. envtest stores it
+		//    but creates no Pods; status is patched manually below.
+		deploy := makeDeployment(testNamespace, deployName, 5)
+		Expect(k8sClient.Create(ctx, deploy)).To(Succeed())
+
+		// 2. Patch Deployment.status.replicas = 5 so the Reconciler reads
+		//    currentReplicas=5. Without this patch status stays at 0 and
+		//    there is nothing to scale down from.
+		deploy.Status.Replicas = 5
+		Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
+
+		// 3. Feed sustained 0% CPU. EWMA over a flat-zero series predicts
+		//    ~0; formula yields ceil(5*0/50)=0, clamped to minReplicas=1.
+		fakeMetrics.SetConstantCPU(testNamespace, deployName, 0.0, 5, 30*time.Second)
+
+		// 4. Create PHPA. Critical: set scaleDownStabilizationWindowSeconds=0
+		//    so the stabilization window does not gate the first scale-down
+		//    decision. This isolates the scale-down decision logic from the
+		//    window's anti-flap behavior, which is covered by a separate spec.
+		minR := int32(1)
+		stabilizationZero := int32(0)
+		phpa := makePHPA(testNamespace, phpaName, deployName, &minR, 10, 50)
+		phpa.Spec.ScaleDownStabilizationWindowSeconds = &stabilizationZero
+		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+
+		// 5. Poll Deployment.spec.replicas until the controller writes <= 2.
+		//    Lower-bound is 1 (minReplicas); upper-bound 2 tolerates a small
+		//    EWMA lag before the prediction fully settles to zero.
+		Eventually(func(g Gomega) {
+			updated := &appsv1.Deployment{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: testNamespace,
+				Name:      deployName,
+			}, updated)).To(Succeed())
+			g.Expect(updated.Spec.Replicas).NotTo(BeNil())
+			g.Expect(*updated.Spec.Replicas).To(BeNumerically("<=", 2),
+				"expected controller to scale down to <= 2 replicas under sustained 0%% CPU (formula clamped to minReplicas=1); got %d",
+				*updated.Spec.Replicas,
+			)
+		}, 60*time.Second, 500*time.Millisecond).Should(Succeed())
+	})
 })
+
