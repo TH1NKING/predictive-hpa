@@ -35,6 +35,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	testingclock "k8s.io/utils/clock/testing"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -50,6 +51,7 @@ var (
 	mgrCtx      context.Context
 	mgrCancel   context.CancelFunc
 	fakeMetrics *fakeMetricsProvider
+	fakeClock *testingclock.FakeClock
 )
 
 func TestControllers(t *testing.T) {
@@ -101,11 +103,13 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	fakeMetrics = newFakeMetricsProvider()
+	fakeClock = testingclock.NewFakeClock(time.Now())
 
 	err = (&PredictiveHPAReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		MetricsProvider: fakeMetrics,
+		Clock: fakeClock,
 	}).SetupWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -132,6 +136,11 @@ var _ = AfterSuite(func() {
 // This function streamlines the process by finding the required binaries, similar to
 // setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
 // properly set up, run 'make setup-envtest' beforehand.
+
+func syncFakeClock() {
+	fakeClock.SetTime(time.Now())
+}
+
 func getFirstFoundEnvTestBinaryDir() string {
 	basePath := filepath.Join("..", "..", "bin", "k8s")
 	entries, err := os.ReadDir(basePath)
