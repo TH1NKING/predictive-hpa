@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/utils/clock"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -61,6 +62,14 @@ type PredictiveHPAReconciler struct {
 	client.Client
 	Scheme          *runtime.Scheme
 	MetricsProvider metricsprovider.Provider
+
+	// Clock is an injectable time source. Production code leaves it nil
+	// and SetupWithManager defaults it to clock.RealClock{}; envtest specs
+	// inject a clock. FakeClock to drive the scale-down stabilization window
+	// deterministically without real waits. The PassiveClock interface is 
+	// sufficient because the controller only needs Now(); ticker-based APIs
+	// are not used.
+	Clock clock.PassiveClock
 
 	// history tracks recent desiredReplicas per PHPA for the scale-down
 	// stabilization window. Lazy-initialized in SetupWithManager; entries
@@ -196,7 +205,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// just-recorded entry, either this is the first reconcile of the PHPA
 	// or the controller restarted. In both cases scale-down has no
 	// historical safety net for this round.
-	now := time.Now()
+	now := r.Clock.Now()
 	stabilizationWindowSec := int32(60)
 	if phpa.Spec.ScaleDownStabilizationWindowSeconds != nil {
 		stabilizationWindowSec = *phpa.Spec.ScaleDownStabilizationWindowSeconds
@@ -307,6 +316,9 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 // SetupWithManager sets up the controller with the Manager.
 func (r *PredictiveHPAReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.history = make(map[types.NamespacedName]*scaleHistory)
+	if r.Clock == nil {
+		r.Clock = clock.RealClock{}
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&autoscalingv1alpha1.PredictiveHPA{}).
 		Named("predictivehpa").
