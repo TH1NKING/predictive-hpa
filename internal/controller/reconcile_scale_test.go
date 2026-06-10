@@ -1,8 +1,9 @@
 package controller
 
 import (
-	"time"
 	"fmt"
+	"time"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -32,9 +33,9 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 	// isolated. Namespace name is timestamped to avoid envtest's lack of
 	// namespace garbage collection across specs.
 	BeforeEach(func() {
-			syncFakeClock()
-			testNamespace = fmt.Sprintf("phpa-reconcile-%d", time.Now().UnixNano())
-			ns := &corev1.Namespace{
+		syncFakeClock()
+		testNamespace = fmt.Sprintf("phpa-reconcile-%d", time.Now().UnixNano())
+		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{Name: testNamespace},
 		}
 		err := k8sClient.Create(ctx, ns)
@@ -322,4 +323,3 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 	})
 
 })
-

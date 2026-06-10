@@ -29,13 +29,13 @@ import (
 	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	testingclock "k8s.io/utils/clock/testing"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	testingclock "k8s.io/utils/clock/testing"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -51,7 +51,7 @@ var (
 	mgrCtx      context.Context
 	mgrCancel   context.CancelFunc
 	fakeMetrics *fakeMetricsProvider
-	fakeClock *testingclock.FakeClock
+	fakeClock   *testingclock.FakeClock
 )
 
 func TestControllers(t *testing.T) {
@@ -109,7 +109,7 @@ var _ = BeforeSuite(func() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		MetricsProvider: fakeMetrics,
-		Clock: fakeClock,
+		Clock:           fakeClock,
 	}).SetupWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 

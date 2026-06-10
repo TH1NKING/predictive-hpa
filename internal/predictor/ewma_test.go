@@ -8,6 +8,8 @@ import (
 )
 
 // makeSeries is a test helper that builds a uniform-interval series.
+//
+//nolint:unparam // step is fixed at 15s in current tests; kept in signature for series-construction clarity
 func makeSeries(t0 time.Time, step time.Duration, values []float64) []Sample {
 	out := make([]Sample, len(values))
 	for i, v := range values {

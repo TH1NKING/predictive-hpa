@@ -103,13 +103,7 @@ func Predict(samples []Sample, cfg EWMAConfig) (float64, error) {
 	}
 	step := totalSpan / time.Duration(n-1)
 
-	k := int(cfg.Horizon / step)
-	if k < 1 {
-		k = 1
-	}
-	if k > n-1 {
-		k = n - 1
-	}
+	k := min(max(int(cfg.Horizon/step), 1), n-1)
 
 	last := smoothed[n-1].Value
 	prev := smoothed[n-1-k].Value

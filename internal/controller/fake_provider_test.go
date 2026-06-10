@@ -73,7 +73,7 @@ func (f *fakeMetricsProvider) SetConstantCPU(
 ) {
 	now := time.Now()
 	series := make([]predictor.Sample, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		series[i] = predictor.Sample{
 			Timestamp: now.Add(-time.Duration(n-1-i) * step),
 			Value:     cpuPercent,

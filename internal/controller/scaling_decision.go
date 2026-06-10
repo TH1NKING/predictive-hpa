@@ -59,13 +59,7 @@ func computeDesiredReplicas(
 		minReplicas = 1
 	}
 
-	desired := desiredRaw
-	if desired < minReplicas {
-		desired = minReplicas
-	}
-	if desired > maxReplicas {
-		desired = maxReplicas
-	}
+	desired := min(max(desiredRaw, minReplicas), maxReplicas)
 	return desired
 }
 

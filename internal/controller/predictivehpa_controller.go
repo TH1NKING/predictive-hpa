@@ -23,7 +23,6 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/utils/clock"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -66,7 +66,7 @@ type PredictiveHPAReconciler struct {
 	// Clock is an injectable time source. Production code leaves it nil
 	// and SetupWithManager defaults it to clock.RealClock{}; envtest specs
 	// inject a clock. FakeClock to drive the scale-down stabilization window
-	// deterministically without real waits. The PassiveClock interface is 
+	// deterministically without real waits. The PassiveClock interface is
 	// sufficient because the controller only needs Now(); ticker-based APIs
 	// are not used.
 	Clock clock.PassiveClock
