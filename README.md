@@ -2,6 +2,8 @@
 
 > 基于 EWMA 时序预测的 Kubernetes 自定义 HPA 控制器——在 CPU 负载到达之前扩容，在负载离开之后更快缩容。
 
+[![Tests](https://github.com/TH1NKING/predictive-hpa/actions/workflows/test.yml/badge.svg)](https://github.com/TH1NKING/predictive-hpa/actions/workflows/test.yml)
+[![Lint](https://github.com/TH1NKING/predictive-hpa/actions/workflows/lint.yml/badge.svg)](https://github.com/TH1NKING/predictive-hpa/actions/workflows/lint.yml)
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.35-326CE5?logo=kubernetes)
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue)
