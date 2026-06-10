@@ -76,11 +76,21 @@ kubectl apply -f config/samples/autoscaling_v1alpha1_predictivehpa.yaml
 kubectl get phpa -w
 ```
 
-<!-- TODO: 以下为演示用示例输出，待控制器真实运行后替换为实测截图 -->
+
+实测输出（kind 集群，php-apache 负载，target=50%）：
+
 ```
-NAME                   REFERENCE    MINPODS  MAXPODS  REPLICAS  CURRENT%  PREDICTED%  AGE
-predictivehpa-sample   php-apache   1        10       4         48        53          5m
+NAME                   REFERENCE    MINPODS   MAXPODS   REPLICAS   CURRENT%   PREDICTED%   AGE
+predictivehpa-sample   php-apache   1         10        1          0          0            59m
+predictivehpa-sample   php-apache   1         10        1          186        139          60m
+predictivehpa-sample   php-apache   1         10        3          244        250          61m
+predictivehpa-sample   php-apache   1         10        10         73         74           61m
+predictivehpa-sample   php-apache   1         10        9          44         41           62m
+predictivehpa-sample   php-apache   1         10        8          50         50           65m
 ```
+
+60m 行预测落后于观测（EWMA 抑制单点突变，即第 2 节的"平滑税"）；61m 趋势确立后预测反超并驱动扩容；其后过度扩容（10）被逐步回收至稳态 8 副本、利用率收敛到目标 50%。
+
 
 `PREDICTED%` 列是核心卖点：当预测值领先当前值时，控制器已经在扩容路上。
 
