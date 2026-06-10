@@ -1,0 +1,39 @@
+PredictiveHPA 控制器已安装到 namespace {{ .Release.Namespace }}。
+
+1. 确认控制器运行：
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "predictive-hpa.name" . }}
+
+{{- if .Values.installCRD }}
+2. 确认 CRD 已注册：
+   kubectl get crd predictivehpas.autoscaling.brian.io
+{{- else }}
+2. CRD 由本 chart 之外管理（installCRD=false）。请确认 CRD 已安装：
+   kubectl get crd predictivehpas.autoscaling.brian.io
+{{- end }}
+
+3. 创建一个 PredictiveHPA（先确保目标 Deployment 已存在）：
+
+   apiVersion: autoscaling.brian.io/v1alpha1
+   kind: PredictiveHPA
+   metadata:
+     name: predictivehpa-sample
+   spec:
+     scaleTargetRef:
+       apiVersion: apps/v1
+       kind: Deployment
+       name: <你的-deployment>
+     minReplicas: 1
+     maxReplicas: 10
+     targetCPUUtilizationPercentage: 50
+     prediction:
+       algorithm: EWMA
+       alphaPercent: 30
+       window: 5m
+       horizon: 30s
+     scaleDownStabilizationWindowSeconds: 60
+
+4. 观察预测值领先于当前值（PREDICTED% 列是核心卖点）：
+   kubectl get phpa -w
+
+当前 Prometheus 端点：{{ .Values.prometheus.url }}
+如需修改：helm upgrade {{ .Release.Name }} ... --set prometheus.url=<新地址>

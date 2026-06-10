@@ -1,0 +1,77 @@
+# PredictiveHPA Helm chart 默认值
+#
+# 设计说明：本 values 只暴露「部署控制器」相关的参数。
+# EWMA 调参（alphaPercent / window / horizon 等）属于 PredictiveHPA *实例*
+# 的 spec 字段，不是 chart 部署参数——它们写在你创建的 PredictiveHPA 资源里，
+# 而非这里。把实例 spec 塞进 values 是概念混淆（一个 chart 可服务多个不同
+# 调参的 PHPA 实例）。
+
+# -- 控制器镜像
+image:
+  repository: ghcr.io/th1nking/predictive-hpa
+  # tag 为空时使用 Chart.yaml 的 appVersion
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# -- 控制器副本数
+# 固定 1：稳定窗口历史是 in-memory 的，不支持多副本 HA（见项目 Limitation）。
+# 多副本会导致各副本各自维护一份不一致的缩容历史。HA 是 v1beta1 的 roadmap。
+replicaCount: 1
+
+# -- 控制器资源限制
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# -- Prometheus 查询端点
+# 控制器从这里拉历史 CPU 时序作为 EWMA 输入。
+# in-cluster 直连 Service DNS；开发期可用 port-forward 后的地址。
+prometheus:
+  url: "http://prometheus-server.monitoring.svc:80"
+
+# -- CRD 安装开关
+# true  → 由本 chart 管理 CRD（走完整 install/upgrade/uninstall 生命周期）
+# false → 假定 CRD 已由外部（如 kubectl apply / make install）安装
+#
+# 注：这里采用 templates/crd.yaml 而非 Helm 约定的 crds/ 目录。
+# crds/ 目录虽是官方推荐，但有一个著名痛点：Helm 只在 install 时装 CRD，
+# upgrade 完全不管 CRD，导致 CRD schema 演进无法通过 helm upgrade 推送。
+# 放 templates/ + 开关，换取完整生命周期与条件渲染能力。
+# 代价：uninstall 会删 CRD（连带删除所有 PHPA 实例），生产环境需谨慎。
+installCRD: true
+
+# -- RBAC 资源创建开关
+rbac:
+  create: true
+
+# -- ServiceAccount
+serviceAccount:
+  create: true
+  # 为空时用 fullname 模板生成
+  name: ""
+  annotations: {}
+
+# -- metrics service（暴露控制器自身的 /metrics）
+metricsService:
+  enabled: false
+  port: 8080
+
+# -- Pod 调度
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- Pod / 容器安全上下文
+podSecurityContext:
+  runAsNonRoot: true
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL

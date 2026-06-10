@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "predictive-hpa.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "predictive-hpa.labels" . | nindent 4 }}
+spec:
+  # 固定单副本：in-memory 稳定窗口历史不支持多副本 HA（见 values.yaml 注释）
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "predictive-hpa.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "predictive-hpa.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "predictive-hpa.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: manager
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            # 控制器从这里拉历史 CPU 时序作为 EWMA 输入
+            - --prometheus-url={{ .Values.prometheus.url }}
+            {{- if .Values.metricsService.enabled }}
+            - --metrics-bind-address=:{{ .Values.metricsService.port }}
+            {{- end }}
+          {{- if .Values.metricsService.enabled }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.metricsService.port }}
+              protocol: TCP
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

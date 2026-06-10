@@ -1,0 +1,28 @@
+apiVersion: v2
+name: predictive-hpa
+description: 基于 EWMA 时序预测的 Kubernetes 自定义 HPA 控制器
+type: application
+
+# chart 自身版本（每次 chart 模板变更递增）
+version: 0.1.0
+
+# 底层控制器镜像版本（与 git tag / 镜像 tag 对齐）
+appVersion: "0.1.0"
+
+# 控制器用了 apps/v1 scale 子资源 + apiextensions v1 CRD，1.16+ 即可
+# 开发与测试均在 1.35，这里给一个保守下界
+kubeVersion: ">=1.16.0-0"
+
+keywords:
+  - autoscaling
+  - hpa
+  - predictive
+  - ewma
+  - kubernetes-operator
+
+home: https://github.com/th1nking/predictive-hpa
+sources:
+  - https://github.com/th1nking/predictive-hpa
+
+maintainers:
+  - name: th1nking

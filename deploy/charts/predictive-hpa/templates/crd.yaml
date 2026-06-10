@@ -1,0 +1,15 @@
+{{- if .Values.installCRD }}
+{{- /*
+  CRD schema 不在本模板里手写——它是 controller-gen 的生成产物。
+  由 hack/sync-chart-crd.sh 从 config/crd/bases/ 同步到 files/crd-predictivehpas.yaml，
+  这里用 .Files.Get 原样读入，外加 installCRD 条件渲染。
+
+  若下面的 .Files.Get 返回空，说明 chart 内 CRD 副本缺失：
+  请在仓库根跑 `make manifests && ./hack/sync-chart-crd.sh` 后重新打包 chart。
+*/ -}}
+{{- $crd := .Files.Get "files/crd-predictivehpas.yaml" -}}
+{{- if not $crd }}
+{{- fail "files/crd-predictivehpas.yaml 缺失：请先运行 make manifests && ./hack/sync-chart-crd.sh" }}
+{{- end }}
+{{ $crd }}
+{{- end }}

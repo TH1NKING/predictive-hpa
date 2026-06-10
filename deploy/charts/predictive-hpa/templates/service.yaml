@@ -1,0 +1,18 @@
+{{- if .Values.metricsService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "predictive-hpa.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "predictive-hpa.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "predictive-hpa.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metricsService.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

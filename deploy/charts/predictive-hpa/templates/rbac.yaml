@@ -1,0 +1,50 @@
+{{- if .Values.rbac.create }}
+{{- /*
+  RBAC rules 在此手写，未走 CRD 那样的同步脚本——rules 短且稳定，drift 风险低。
+  注意：生产代码里 rules 的 source of truth 是 internal/controller 顶部的
+  +kubebuilder:rbac markers（make manifests 生成 config/rbac/role.yaml）。
+  若未来新增 marker（如加 memory 指标要读 pods），需手动同步下面的 rules。
+*/ -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "predictive-hpa.fullname" . }}-manager
+  labels:
+    {{- include "predictive-hpa.labels" . | nindent 4 }}
+rules:
+  # 主资源：只需读 spec（控制器不改用户写的 spec）
+  - apiGroups: ["autoscaling.brian.io"]
+    resources: ["predictivehpas"]
+    verbs: ["get", "list", "watch"]
+  # status 子资源：控制器回写 currentReplicas / predictedCPU% / conditions
+  - apiGroups: ["autoscaling.brian.io"]
+    resources: ["predictivehpas/status"]
+    verbs: ["get", "update", "patch"]
+  # 目标 Deployment：读取当前副本数
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  # scale 子资源：通过 scale 子资源调整副本数（而非直接改 Deployment spec）
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "update", "patch"]
+  # events：记录扩缩容事件（可观测性）
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "predictive-hpa.fullname" . }}-manager
+  labels:
+    {{- include "predictive-hpa.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "predictive-hpa.fullname" . }}-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "predictive-hpa.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
