@@ -159,12 +159,18 @@ pkill -f "go run.*cmd/main.go" 2>/dev/null || true
 # slash after go-build), so identify the process by the port it binds
 # instead. SIGTERM first, escalate to SIGKILL if it does not release.
 for i in $(seq 1 15); do
-  pids=$(ss -ltnp 2>/dev/null | awk '/:8081 /' | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
+  # Extract the :8081 holder's pid with awk (not grep): grep exits 1 when
+  # there is no match, which under `set -o pipefail` + `set -e` would abort
+  # the whole script the moment no controller is running (the common case).
+  # awk exits 0 on no match, so an empty result is not an error.
+  pids=$(ss -ltnp 2>/dev/null | awk -F'pid=' '/:8081 /{split($2,a,","); print a[1]}' | sort -u)
   if [ -z "$pids" ]; then
     break
   fi
   sig=TERM
-  [ "$i" -ge 10 ] && sig=KILL
+  if [ "$i" -ge 10 ]; then
+    sig=KILL
+  fi
   echo "$pids" | xargs -r kill -"$sig" 2>/dev/null || true
   sleep 1
 done
