@@ -169,10 +169,15 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	currentCPU := samples[len(samples)-1].Value
 
-	// 6. Clamp negative prediction.
-	if predicted < 0 {
-		log.V(1).Info("Prediction clamped to zero", "raw", predicted)
-		predicted = 0
+	// 6. Bound the prediction (business-layer policy; the predictor stays
+	//    semantically honest). capPrediction clamps negatives to 0 and caps
+	//    the upward lead to currentCPU * maxLeadFactor, preventing the EWMA
+	//    forecast from driving ~2x over-provisioning on load onset.
+	rawPredicted := predicted
+	predicted = capPrediction(predicted, currentCPU)
+	if predicted != rawPredicted {
+		log.V(1).Info("Prediction bounded",
+			"raw", rawPredicted, "bounded", predicted, "currentCPU", currentCPU)
 	}
 
 	// 7. Compute desired replicas (formula + min/max clamp).
