@@ -77,3 +77,32 @@ func withinTolerance(predictedCPU float64, targetCPU int32) bool {
 	ratio := predictedCPU / float64(targetCPU)
 	return math.Abs(ratio-1.0) < tolerance
 }
+
+// maxLeadFactor bounds how far predicted CPU may exceed the current observed
+// CPU. The EWMA first-difference forecast can predict up to ~2x the current
+// value when a signal jumps from idle, which is the dominant driver of
+// PredictiveHPA's over-provisioning (peak replicas ~2x native HPA on step
+// load: ceil(1 * 2*current / target) vs ceil(1 * current / target)). Capping
+// predicted to currentCPU * maxLeadFactor bounds the lead — and thus the
+// over-scale — while still permitting proactive headroom.
+//
+// Kept in the controller layer (not the predictor) for the same reason the
+// negative-prediction clamp is: the algorithm package stays semantically
+// honest, and operational limits live in the business layer. Hardcoded like
+// tolerance to keep the v1alpha1 CRD surface minimal.
+const maxLeadFactor = 1.3
+
+// capPrediction bounds a raw predicted CPU utilization to
+// [0, currentCPU * maxLeadFactor]. Negative predictions clamp to 0; a
+// non-positive currentCPU yields a 0 ceiling (no current load, nothing to
+// proactively scale for).
+func capPrediction(predicted, currentCPU float64) float64 {
+	if predicted < 0 {
+		return 0
+	}
+	ceiling := currentCPU * maxLeadFactor
+	if predicted > ceiling {
+		return ceiling
+	}
+	return predicted
+}

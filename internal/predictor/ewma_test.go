@@ -94,19 +94,46 @@ func TestPredict_LinearRampPredictsForward(t *testing.T) {
 	// step = 15s, k = horizon/step = 2
 	// slopePerSample = (S_5 - S_3) / 2 = (4.03125 - 2.125) / 2 = 0.953125
 	// stepsAhead = 30s / 15s = 2
-	// predicted = 4.03125 + 0.953125 * 2 = 5.9375
+	// Damped-trend projection (phi = 0.85):
+	//   dampedSteps = 0.85*(1 - 0.85^2)/(1 - 0.85) = 0.85*0.2775/0.15 = 1.5725
+	//   predicted = 4.03125 + 0.953125 * 1.5725 = 5.5300390625
+	// (Undamped this would be 4.03125 + 0.953125*2 = 5.9375; damping curbs the
+	//  forward projection so a ramp does not overshoot past a plateau.)
 	samples := makeSeries(time.Now(), 15*time.Second, []float64{0, 1, 2, 3, 4, 5})
 	got, err := Predict(samples, EWMAConfig{Alpha: 0.5, Horizon: 30 * time.Second})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := 5.9375
+	want := 5.5300390625
 	if math.Abs(got-want) > 1e-9 {
 		t.Errorf("expected %v, got %v", want, got)
 	}
-	// Sanity: prediction must be above the last observed value (signal trending up).
+	// Prediction still leads the last observed value (signal trending up)...
 	if got <= 5 {
 		t.Errorf("expected prediction > 5 (last observed), got %v", got)
+	}
+	// ...but stays below the undamped linear projection (damping curbs overshoot).
+	if got >= 5.9375 {
+		t.Errorf("expected damped prediction < undamped 5.9375, got %v", got)
+	}
+}
+
+func TestPredict_DampingCurbsOnsetOvershoot(t *testing.T) {
+	// A signal that jumps from idle to a high plateau is where the undamped
+	// forecast overshoots most. Inputs 0,0,100,100,100 (alpha=0.5) smooth to
+	// [0, 0, 50, 75, 87.5]; k=2, so slopePerSample=(87.5-50)/2=18.75. The
+	// undamped projection would be 87.5 + 18.75*2 = 125; damping must reduce
+	// it while still leading the last smoothed value.
+	samples := makeSeries(time.Now(), 15*time.Second, []float64{0, 0, 100, 100, 100})
+	got, err := Predict(samples, EWMAConfig{Alpha: 0.5, Horizon: 30 * time.Second})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got <= 87.5 {
+		t.Errorf("expected prediction to lead last smoothed 87.5, got %v", got)
+	}
+	if got >= 125 {
+		t.Errorf("expected damped prediction < undamped 125, got %v", got)
 	}
 }
 

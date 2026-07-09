@@ -149,26 +149,29 @@ echo "[5/11] switch controller ($CONTROLLER)"
 #   - "go run cmd/main.go" (the go toolchain's compile-and-exec wrapper)
 #   - "go-build.../main" (the actual compiled binary, often parented to go run)
 echo "  killing any existing controller processes..."
+# Best-effort by name for the make/go wrappers.
 pkill -f "make run" 2>/dev/null || true
 pkill -f "go run.*cmd/main.go" 2>/dev/null || true
-# Two patterns for the compiled binary because Go's build cache lives in
-# either /tmp/go-build* (one-shot go run) or ~/.cache/go-build/* (cached
-# build); the binary itself is just named "main". We use a strict path
-# pattern (/go-build/...) to avoid killing unrelated "main" processes.
-pkill -f "/go-build/.*/main" 2>/dev/null || true
-# Wait for port 8081 (controller health probe) to be free; that is the
-# definitive signal that no controller is bound. Hardcoded 15s ceiling.
+# Definitive teardown: kill whatever holds the controller health port 8081.
+# `go run` execs the compiled binary from an unpredictable temp path (e.g.
+# /tmp/go-buildNNN/b001/exe/main) whose argv does not match a stable name
+# pattern (the old "/go-build/.*/main" pattern misses "go-buildNNN" — no
+# slash after go-build), so identify the process by the port it binds
+# instead. SIGTERM first, escalate to SIGKILL if it does not release.
 for i in $(seq 1 15); do
-  if ! ss -ltn 2>/dev/null | grep -q ":8081 "; then
+  # Extract the :8081 holder's pid with awk (not grep): grep exits 1 when
+  # there is no match, which under `set -o pipefail` + `set -e` would abort
+  # the whole script the moment no controller is running (the common case).
+  # awk exits 0 on no match, so an empty result is not an error.
+  pids=$(ss -ltnp 2>/dev/null | awk -F'pid=' '/:8081 /{split($2,a,","); print a[1]}' | sort -u)
+  if [ -z "$pids" ]; then
     break
   fi
-  if [ $i -eq 15 ]; then
-    # Last resort: SIGKILL anything still on :8081
-    pkill -9 -f "/go-build/.*/main" 2>/dev/null || true
-    pkill -9 -f "go run.*cmd/main.go" 2>/dev/null || true
-    pkill -9 -f "make run" 2>/dev/null || true
-    sleep 2
+  sig=TERM
+  if [ "$i" -ge 10 ]; then
+    sig=KILL
   fi
+  echo "$pids" | xargs -r kill -"$sig" 2>/dev/null || true
   sleep 1
 done
 

@@ -51,3 +51,14 @@ experiments/_INCOMPLETE_*/k6-warnings.log
 hack/analyze/.venv/
 hack/analyze/__pycache__/
 hack/analyze/*.pyc
+
+# v0.1.0 baseline archive — mirror the live experiments/ raw-data exclusions
+experiments-v0.1.0-baseline/*/k6.json
+experiments-v0.1.0-baseline/*/prom.json
+experiments-v0.1.0-baseline/*/events.yaml
+experiments-v0.1.0-baseline/*/controller.log
+experiments-v0.1.0-baseline/*/k6-warnings.log
+experiments-v0.1.0-baseline/calibration/probe_*.json
+experiments-v0.1.0-baseline/calibration/probe_*.txt
+experiments-v0.1.0-baseline/_INCOMPLETE_*/metadata.yaml
+experiments-v0.1.0-baseline/_INCOMPLETE_*/k6-warnings.log

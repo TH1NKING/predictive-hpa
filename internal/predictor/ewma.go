@@ -5,6 +5,7 @@ package predictor
 
 import (
 	"errors"
+	"math"
 	"time"
 )
 
@@ -40,6 +41,18 @@ var (
 	// non-positive (e.g. all samples share identical timestamps).
 	ErrInvalidInterval = errors.New("predictor: non-positive sample interval")
 )
+
+// trendDampingFactor (phi in Holt's damped-trend method) attenuates the
+// first-difference trend when projecting over the horizon. With 0 < phi < 1
+// the projected trend contribution is the geometric sum Σ phi^i rather than a
+// linear slope*steps, so a slope observed during a ramp-up does not project
+// unbounded past a plateau. This directly curbs the EWMA forecast's tendency
+// to overshoot to ~2x the current value on load onset — the dominant source
+// of PredictiveHPA's steady-state over-provisioning. phi -> 1 recovers the
+// undamped linear projection; smaller phi damps harder. 0.85 is a moderate
+// default: it noticeably reduces overshoot while preserving lead on genuinely
+// sustained trends.
+const trendDampingFactor = 0.85
 
 // Smooth applies an Exponentially Weighted Moving Average to the input
 // series and returns a smoothed series of the same length.
@@ -77,11 +90,18 @@ func Smooth(samples []Sample, alpha float64) ([]Sample, error) {
 // Algorithm:
 //
 //  1. S = Smooth(samples, Alpha)
-//  2. step = (S[N].Timestamp - S[0].Timestamp) / (N)            // average interval
-//  3. k = max(1, Horizon/step), clamped to N
+//  2. step = (S[N].Timestamp - S[0].Timestamp) / (N-1)          // average interval
+//  3. k = max(1, Horizon/step), clamped to N-1
 //  4. slopePerSample = (S[N] - S[N-k]) / k
 //  5. stepsAhead = Horizon / step
-//  6. predicted = S[N] + slopePerSample * stepsAhead
+//  6. dampedSteps = phi*(1 - phi^stepsAhead)/(1 - phi)          // Holt damping
+//  7. predicted = S[N] + slopePerSample * dampedSteps
+//
+// Step 6 applies damped-trend extrapolation (phi = trendDampingFactor): a
+// plain linear projection (slopePerSample * stepsAhead) keeps extending a
+// ramp-up slope after the signal plateaus, overshooting to ~2x the current
+// value on load onset. The damped geometric sum converges; phi -> 1 recovers
+// the undamped projection.
 //
 // Known limitation: Simple EWMA introduces a (1-Alpha)/Alpha lag bias on
 // trending signals. The trade-off between lag and noise sensitivity is
@@ -110,5 +130,11 @@ func Predict(samples []Sample, cfg EWMAConfig) (float64, error) {
 	slopePerSample := (last - prev) / float64(k)
 	stepsAhead := float64(cfg.Horizon) / float64(step)
 
-	return last + slopePerSample*stepsAhead, nil
+	// Damped-trend projection: geometric sum Σ_{i=1..stepsAhead} phi^i
+	// = phi*(1 - phi^stepsAhead)/(1 - phi). Converges as stepsAhead grows,
+	// unlike the linear slopePerSample*stepsAhead which overshoots past a
+	// plateau. See trendDampingFactor.
+	dampedSteps := trendDampingFactor * (1 - math.Pow(trendDampingFactor, stepsAhead)) / (1 - trendDampingFactor)
+
+	return last + slopePerSample*dampedSteps, nil
 }

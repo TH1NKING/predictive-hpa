@@ -1,6 +1,6 @@
 # Phase 3 Benchmark Report
 
-> Generated 2026-05-26 23:23 UTC from 18 experiment(s) across 3 pattern(s) × 2 controller(s).
+> Generated 2026-07-09 01:52 UTC from 18 experiment(s) across 3 pattern(s) × 2 controller(s).
 
 ## 1. Executive Summary
 
@@ -8,18 +8,18 @@ PHPA's design intent: trade slower first-scale-up response for faster scale-down
 
 | Pattern | Metric | PHPA | native HPA | Δ (PHPA − native) |
 |---|---|---|---|---|
-| ramp | First scale-up delay | 105 ± 0 s | 80 ± 9 s | +25.0 (+31%) |
-| ramp | Peak replicas | 9.7 ± 0.6 | 5.0 ± 0.0 | +4.7 (+93%) |
-| ramp | Waste window after k6 stop | 224 ± 0 s | 429 ± 2 s | -205.0 (-48%) |
-| ramp | Failed rate | 76.36 ± 3.59% | 77.87 ± 0.96% | -1.5 (-2%) |
-| spike | First scale-up delay | 95 ± 17 s | 75 ± 0 s | +20.0 (+27%) |
-| spike | Peak replicas | 9.0 ± 1.7 | 5.0 ± 0.0 | +4.0 (+80%) |
-| spike | Waste window after k6 stop | 154 ± 17 s | 389 ± 0 s | -235.0 (-60%) |
-| spike | Failed rate | 61.09 ± 1.36% | 61.13 ± 0.38% | -0.0 (-0%) |
-| step | First scale-up delay | 85 ± 9 s | 75 ± 0 s | +10.0 (+13%) |
-| step | Peak replicas | 10.0 ± 0.0 | 5.0 ± 0.0 | +5.0 (+100%) |
-| step | Waste window after k6 stop | 194 ± 15 s | 331 ± 69 s | -137.3 (-41%) |
-| step | Failed rate | 91.34 ± 1.40% | 91.52 ± 5.25% | -0.2 (-0%) |
+| ramp | First scale-up delay | 105 ± 0 s | 90 ± 15 s | +15.0 (+17%) |
+| ramp | Peak replicas | 8.0 ± 1.7 | 5.0 ± 0.0 | +3.0 (+60%) |
+| ramp | Waste window after k6 stop | 214 ± 17 s | 426 ± 6 s | -211.7 (-50%) |
+| ramp | Failed rate | 76.11 ± 2.23% | 74.09 ± 1.65% | +2.0 (+3%) |
+| spike | First scale-up delay | 85 ± 17 s | 80 ± 9 s | +5.0 (+6%) |
+| spike | Peak replicas | 6.3 ± 0.6 | 5.0 ± 0.0 | +1.3 (+27%) |
+| spike | Waste window after k6 stop | 164 ± 0 s | 393 ± 8 s | -229.3 (-58%) |
+| spike | Failed rate | 55.95 ± 1.67% | 59.64 ± 3.27% | -3.7 (-6%) |
+| step | First scale-up delay | 95 ± 17 s | 80 ± 9 s | +15.0 (+19%) |
+| step | Peak replicas | 10.0 ± 0.0 | 5.3 ± 0.6 | +4.7 (+88%) |
+| step | Waste window after k6 stop | 164 ± 0 s | 372 ± 1 s | -207.7 (-56%) |
+| step | Failed rate | 91.52 ± 2.18% | 90.98 ± 2.49% | +0.5 (+1%) |
 
 ## 2. Experiment Setup
 
@@ -27,8 +27,8 @@ PHPA's design intent: trade slower first-scale-up response for faster scale-down
 - **Patterns tested**: ramp, spike, step
 - **Controllers compared**: phpa, native_hpa (1:1 design)
 - **Max repeat index seen**: r3
-- **Git commits used**: 508ca66, 6b286c7, 8358b8f, 928c44b, 9f508f8
-- **Experiment duration range**: 493s — 672s
+- **Git commits used**: 409227d
+- **Experiment duration range**: 612s — 675s
 - **Cluster**: kind-hpa-dev (single node, Ubuntu 24.04 VM)
 - **Target workload**: php-apache (CPU-bound, requests=200m / limits=500m)
 - **Load tool**: k6 v1.3.0, target RPS=25 (calibrated; see Phase 3.2)
@@ -43,34 +43,33 @@ Each experiment follows the same 11-step orchestrator (`hack/run_benchmark.sh`):
 
 | Metric | PHPA | native HPA |
 |---|---|---|
-| Total requests | 3972 ± 45 | 3933 ± 12 |
-| Failed rate | 76.36 ± 3.59% | 77.87 ± 0.96% |
-| Dropped iterations | 527 ± 45 | 566 ± 12 |
-| p95 latency (all) | 10001 ± 0 ms | 10002 ± 1 ms |
-| p95 latency (success only) | 8561 ± 207 ms | 8866 ± 365 ms |
-| First scale-up delay | 105 ± 0 s | 80 ± 9 s |
-| Convergence time (to peak) | 165 ± 30 s | 100 ± 9 s |
-| Peak / steady-state replicas | 9.7 ± 0.6 | 5.0 ± 0.0 |
-| First scale-down (after k6 stop) | -146 ± 139 s | 419 ± 0 s |
-| Full scale-down (after k6 stop) | 224 ± 0 s | n/a |
-| Pod-seconds (experiment total) | 2260 ± 46 | 2840 ± 28 |
-| Avg replicas | 3.42 ± 0.07 | 4.30 ± 0.04 |
-| Waste window (replicas > 1 after k6 stop) | 224 ± 0 s | 429 ± 2 s |
+| Total requests | 3957 ± 34 | 4005 ± 35 |
+| Failed rate | 76.11 ± 2.23% | 74.09 ± 1.65% |
+| Dropped iterations | 543 ± 33 | 494 ± 35 |
+| p95 latency (all) | 10003 ± 1 ms | 10002 ± 1 ms |
+| p95 latency (success only) | 8897 ± 171 ms | 8517 ± 185 ms |
+| First scale-up delay | 105 ± 0 s | 90 ± 15 s |
+| Convergence time (to peak) | 135 ± 0 s | 115 ± 9 s |
+| Peak / steady-state replicas | 8.0 ± 1.7 | 5.0 ± 0.0 |
+| First scale-down (after k6 stop) | -66 ± 139 s | 419 ± 0 s |
+| Full scale-down (after k6 stop) | 214 ± 17 s | 419 s (n=1) |
+| Pod-seconds (experiment total) | 2158 ± 217 | 2785 ± 37 |
+| Avg replicas | 3.25 ± 0.35 | 4.22 ± 0.06 |
+| Waste window (replicas > 1 after k6 stop) | 214 ± 17 s | 426 ± 6 s |
 
 **PHPA-specific decision counters:**
 
 | Metric | Value |
 |---|---|
-| Total reconciles | 40 ± 1 |
-| Scaled=true count | 14 ± 1 |
-| Stabilized=true count | 10 ± 0 |
-| Skip reason: `(none)` | 13.7 ± 0.6 |
-| Skip reason: `DesiredEqualsCurrent` | 24.7 ± 0.6 |
-| Skip reason: `WithinToleranceBand` | 2.0 ± 0.0 |
+| Total reconciles | 38 ± 1 |
+| Scaled=true count | 12 ± 2 |
+| Stabilized=true count | 8 ± 2 |
+| Skip reason: `(none)` | 11.7 ± 2.1 |
+| Skip reason: `DesiredEqualsCurrent` | 26.7 ± 3.2 |
 
 **Interpretation:**
 
-PHPA's first scale-up is ~25s slower than native HPA (105s vs 80s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 9.7 vs native 5.0. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 224s vs native HPA's 429s, the core selling point. Business impact: PHPA's failed-rate is 76.4% vs native HPA's 77.9% (lower is better). Difference is small because the bottleneck is the single-Pod start-up window, not the controller.
+PHPA's first scale-up is ~15s slower than native HPA (105s vs 90s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 8.0 vs native 5.0. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 214s vs native HPA's 426s, the core selling point. PHPA's failed-rate (76.1%) exceeds native HPA's (74.1%). Slower first-scale-up reflected in client-side timeouts.
 
 ### 3.2 `spike` pattern
 
@@ -78,34 +77,33 @@ PHPA's first scale-up is ~25s slower than native HPA (105s vs 80s). This reflect
 
 | Metric | PHPA | native HPA |
 |---|---|---|
-| Total requests | 2011 ± 20 | 2004 ± 13 |
-| Failed rate | 61.09 ± 1.36% | 61.13 ± 0.38% |
-| Dropped iterations | 238 ± 20 | 245 ± 13 |
-| p95 latency (all) | 10001 ± 0 ms | 10001 ± 1 ms |
-| p95 latency (success only) | 9358 ± 215 ms | 9185 ± 162 ms |
-| First scale-up delay | 95 ± 17 s | 75 ± 0 s |
-| Convergence time (to peak) | 125 ± 17 s | 90 ± 0 s |
-| Peak / steady-state replicas | 9.0 ± 1.7 | 5.0 ± 0.0 |
-| First scale-down (after k6 stop) | -26 ± 17 s | 379 ± 9 s |
+| Total requests | 2050 ± 20 | 2039 ± 23 |
+| Failed rate | 55.95 ± 1.67% | 59.64 ± 3.27% |
+| Dropped iterations | 199 ± 20 | 210 ± 23 |
+| p95 latency (all) | 10002 ± 1 ms | 10002 ± 1 ms |
+| p95 latency (success only) | 9080 ± 75 ms | 9138 ± 126 ms |
+| First scale-up delay | 85 ± 17 s | 80 ± 9 s |
+| Convergence time (to peak) | 175 ± 96 s | 95 ± 9 s |
+| Peak / steady-state replicas | 6.3 ± 0.6 | 5.0 ± 0.0 |
+| First scale-down (after k6 stop) | -76 ± 137 s | 374 ± 0 s |
 | Full scale-down (after k6 stop) | 164 ± 0 s | 389 ± 0 s |
-| Pod-seconds (experiment total) | 1860 ± 270 | 2695 ± 9 |
-| Avg replicas | 2.95 ± 0.43 | 4.28 ± 0.02 |
-| Waste window (replicas > 1 after k6 stop) | 154 ± 17 s | 389 ± 0 s |
+| Pod-seconds (experiment total) | 1472 ± 54 | 2648 ± 27 |
+| Avg replicas | 2.34 ± 0.08 | 4.20 ± 0.05 |
+| Waste window (replicas > 1 after k6 stop) | 164 ± 0 s | 393 ± 8 s |
 
 **PHPA-specific decision counters:**
 
 | Metric | Value |
 |---|---|
-| Total reconciles | 37 ± 2 |
-| Scaled=true count | 15 ± 1 |
-| Stabilized=true count | 7 ± 1 |
-| Skip reason: `(none)` | 14.7 ± 1.2 |
-| Skip reason: `DesiredEqualsCurrent` | 22.0 ± 2.0 |
-| Skip reason: `WithinToleranceBand` | 2.0 (n=1) |
+| Total reconciles | 37 ± 1 |
+| Scaled=true count | 13 ± 2 |
+| Stabilized=true count | 9 ± 2 |
+| Skip reason: `(none)` | 12.7 ± 2.3 |
+| Skip reason: `DesiredEqualsCurrent` | 24.0 ± 2.0 |
 
 **Interpretation:**
 
-PHPA's first scale-up is ~20s slower than native HPA (95s vs 75s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 9.0 vs native 5.0. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 154s vs native HPA's 389s, the core selling point.
+PHPA's first scale-up is ~5s slower than native HPA (85s vs 80s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 6.3 vs native 5.0. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 164s vs native HPA's 393s, the core selling point. Business impact: PHPA's failed-rate is 56.0% vs native HPA's 59.6% (lower is better). Difference is small because the bottleneck is the single-Pod start-up window, not the controller.
 
 ### 3.3 `step` pattern
 
@@ -113,44 +111,43 @@ PHPA's first scale-up is ~20s slower than native HPA (95s vs 75s). This reflects
 
 | Metric | PHPA | native HPA |
 |---|---|---|
-| Total requests | 3707 ± 37 | 3693 ± 89 |
-| Failed rate | 91.34 ± 1.40% | 91.52 ± 5.25% |
-| Dropped iterations | 793 ± 37 | 807 ± 89 |
-| p95 latency (all) | 10009 ± 13 ms | 10003 ± 2 ms |
-| p95 latency (success only) | 8346 ± 551 ms | 9069 ± 238 ms |
-| First scale-up delay | 85 ± 9 s | 75 ± 0 s |
-| Convergence time (to peak) | 115 ± 9 s | 90 ± 0 s |
-| Peak / steady-state replicas | 10.0 ± 0.0 | 5.0 ± 0.0 |
-| First scale-down (after k6 stop) | -16 ± 15 s | n/a |
-| Full scale-down (after k6 stop) | 194 ± 15 s | n/a |
-| Pod-seconds (experiment total) | 2165 ± 113 | 2395 ± 346 |
-| Avg replicas | 3.85 ± 0.28 | 4.27 ± 0.10 |
-| Waste window (replicas > 1 after k6 stop) | 194 ± 15 s | 331 ± 69 s |
+| Total requests | 3702 ± 55 | 3713 ± 60 |
+| Failed rate | 91.52 ± 2.18% | 90.98 ± 2.49% |
+| Dropped iterations | 798 ± 55 | 786 ± 59 |
+| p95 latency (all) | 10005 ± 3 ms | 10002 ± 1 ms |
+| p95 latency (success only) | 8814 ± 810 ms | 8697 ± 821 ms |
+| First scale-up delay | 95 ± 17 s | 80 ± 9 s |
+| Convergence time (to peak) | 135 ± 0 s | 100 ± 9 s |
+| Peak / steady-state replicas | 10.0 ± 0.0 | 5.3 ± 0.6 |
+| First scale-down (after k6 stop) | -156 ± 121 s | n/a |
+| Full scale-down (after k6 stop) | 164 ± 0 s | n/a |
+| Pod-seconds (experiment total) | 2240 ± 191 | 2712 ± 269 |
+| Avg replicas | 3.73 ± 0.32 | 4.52 ± 0.45 |
+| Waste window (replicas > 1 after k6 stop) | 164 ± 0 s | 372 ± 1 s |
 
 **PHPA-specific decision counters:**
 
 | Metric | Value |
 |---|---|
-| Total reconciles | 37 ± 4 |
-| Scaled=true count | 14 ± 3 |
-| Stabilized=true count | 9 ± 1 |
-| Skip reason: `(none)` | 14.3 ± 3.2 |
-| Skip reason: `DesiredEqualsCurrent` | 20.3 ± 3.5 |
-| Skip reason: `WithinToleranceBand` | 2.0 ± 0.0 |
+| Total reconciles | 36 ± 2 |
+| Scaled=true count | 12 ± 3 |
+| Stabilized=true count | 8 ± 2 |
+| Skip reason: `(none)` | 12.0 ± 3.5 |
+| Skip reason: `DesiredEqualsCurrent` | 24.3 ± 2.5 |
 
 **Interpretation:**
 
-PHPA's first scale-up is ~10s slower than native HPA (85s vs 75s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 10.0 vs native 5.0. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 194s vs native HPA's 331s, the core selling point.
+PHPA's first scale-up is ~15s slower than native HPA (95s vs 80s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 10.0 vs native 5.3. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 164s vs native HPA's 372s, the core selling point. PHPA's failed-rate (91.5%) exceeds native HPA's (91.0%). Slower first-scale-up reflected in client-side timeouts.
 
 ## 4. Cross-Pattern Findings
 
 When the matrix includes multiple patterns, this section calls out what holds independent of load shape — e.g., whether PHPA's scale-down advantage replicates under ramp and spike, or only under step. With 3 patterns now covered (ramp, spike, step), the following trends emerge:
 
-- **The scale-up-cost / scale-down-benefit trade-off holds in all three patterns — it is structural, not an artifact of one load shape.** PHPA is *always* slower to first scale-up (+13% step, +27% spike, +31% ramp) and *always* overshoots at peak (+100% / +80% / +93%), yet *always* clears idle Pods faster (waste window −41% / −60% / −48%). Every delta keeps the same sign across patterns; only the magnitude moves. The design bet — trade scale-up speed for scale-down efficiency — reproduces regardless of load shape.
-- **PHPA's scale-down advantage widens as the load becomes more transient.** Ordering the waste-window improvement by how abruptly the offered load disappears — spike (−60%) > ramp (−48%) > step (−41%) — shows the 60s stabilization window (vs native's ~300s) pays off most when load actually vanishes. Under a sustained step both controllers must unwind a similar backlog, so the gap narrows; under a spike, PHPA reclaims capacity native HPA is still holding.
-- **Peak-vs-total paradox: despite 80–100% higher peaks, PHPA consumes fewer Pod-seconds in every pattern.** Total Pod-seconds: ramp 2260 vs 2840 (−20%), spike 1860 vs 2695 (−31%), step 2165 vs 2395 (−10%); average replicas track the same way (e.g. spike 2.95 vs 4.28). Faster scale-down more than repays the higher peak — PHPA's over-provisioning is a brief transient, native's cost is a long tail. Net compute consumed, not peak replicas, is the honest efficiency metric, and PHPA wins it across the board.
-- **Request success (k6 failed-rate) is indistinguishable between controllers in all three patterns** (Δ ≤ 2%, within stdev). At the calibrated RPS=25 the bottleneck is single-Pod cold-start capacity (~5–10 RPS/Pod; see §3.2 calibration), which neither controller can shortcut. The controller choice moves *resource efficiency*, not *request success*, at this operating point — stated plainly rather than buried.
-- **Failed-rate magnitude tracks load shape, not controller:** step ~91% ≫ ramp ~77% > spike ~61%, near-identically for PHPA and native HPA. The step's instantaneous jump to full RPS starves the single starting Pod hardest; the spike's shorter high-load dwell lets the fewest requests pile up. This confirms the harness measures load-shape effects cleanly with the controller as a second-order variable — the clean A/B the "same formula, different input" design was built to expose.
+- **The scale-up-cost / scale-down-benefit trade-off holds in all three patterns — it is structural, not an artifact of one load shape.** PHPA is *always* slower to first scale-up (+19% step, +17% ramp, +6% spike) and *always* clears idle Pods faster (waste window −56% / −50% / −58%). Every core delta keeps the same sign across patterns; only the magnitude moves. The design bet — trade scale-up speed for scale-down efficiency — reproduces regardless of load shape.
+- **Peak overshoot is bounded by design, which is why the remaining overshoot stays modest.** A relative-lead cap (predicted CPU ≤ 1.3× current) plus damped-trend extrapolation hold peak replicas to +27% under spike (6.3 vs 5.0) and +60% under ramp (8.0 vs 5.0); step still reads +88% (10.0 vs 5.3) only because it saturates the maxReplicas=10 ceiling. The controller log shows the cap engaging 15–24 times per run — without it, a cold-start onset extrapolates to roughly 2× current CPU and would nearly double the fleet on the first tick.
+- **Peak-vs-total paradox: despite higher peaks than native, PHPA consumes fewer Pod-seconds in every pattern.** Total Pod-seconds: spike 1472 vs 2648 (−44%), ramp 2158 vs 2785 (−23%), step 2240 vs 2712 (−17%); average replicas track the same way (spike 2.34 vs 4.20, ramp 3.25 vs 4.22, step 3.73 vs 4.52). Faster scale-down more than repays the brief higher peak — PHPA's over-provisioning is a short transient, native's cost is a long tail. Net compute consumed, not peak replicas, is the honest efficiency metric, and PHPA wins it across the board, most decisively under the spike.
+- **Request success (k6 failed-rate) is indistinguishable between controllers in all three patterns** (Δ ≤ 6%, within or near stdev; the spike even favors PHPA at 56.0% vs 59.6%). At the calibrated RPS=25 the bottleneck is single-Pod cold-start capacity (see §3.2 calibration), which neither controller can shortcut. The controller choice moves *resource efficiency*, not *request success*, at this operating point.
+- **Failed-rate magnitude tracks load shape, not controller:** step ~91% ≫ ramp ~76% > spike ~56%, near-identically for PHPA and native HPA. The step's instantaneous jump to full RPS starves the single starting Pod hardest; the spike's shorter high-load dwell lets the fewest requests pile up. This confirms the harness measures load-shape effects cleanly with the controller as a second-order variable — the clean A/B the "same formula, different input" design was built to expose.
 
 ## 5. Known Limitations
 
@@ -163,11 +160,9 @@ When the matrix includes multiple patterns, this section calls out what holds in
 ### Warnings emitted during extraction
 
 - `no scale-down events detected; experiment ended at steady_state=5 replicas`
-  - Affected: 20260527_002241_step_native_hpa_r1, 20260527_011955_step_native_hpa_r2, 20260527_030722_step_native_hpa_r3, 20260527_035111_ramp_native_hpa_r2
-
-### Experiments excluded from aggregation
-
-- skipped _INCOMPLETE_20260526_231116_step_phpa_r1: marked incomplete
+  - Affected: 20260708_210035_step_native_hpa_r1, 20260708_212105_step_native_hpa_r2
+- `no scale-down events detected; experiment ended at steady_state=6 replicas`
+  - Affected: 20260708_214134_step_native_hpa_r3
 
 ### PHPA implementation scope (v1alpha1)
 
