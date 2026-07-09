@@ -1,0 +1,19 @@
+experiment_id: 20260708_221412_ramp_phpa_r2
+pattern: ramp
+controller: phpa
+repeat: 2
+start_time_utc: "2026-07-08T14:14:12Z"
+start_time_unix: 1783520052
+end_time_utc: "2026-07-08T14:25:27Z"
+end_time_unix: 1783520727
+git:
+  commit: 409227d
+  branch: fix/ewma-overshoot-damping
+  dirty: true
+env:
+  k6_version: "k6 v1.3.0 (commit/5870e99ae8, go1.25.1, linux/amd64)"
+  cluster: kind-hpa-dev
+  k8s_version: "1.35.0"
+result:
+  status: success
+  failure_reason: ""

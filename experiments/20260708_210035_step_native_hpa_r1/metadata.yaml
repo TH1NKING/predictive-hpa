@@ -1,0 +1,19 @@
+experiment_id: 20260708_210035_step_native_hpa_r1
+pattern: step
+controller: native_hpa
+repeat: 1
+start_time_utc: "2026-07-08T13:00:35Z"
+start_time_unix: 1783515635
+end_time_utc: "2026-07-08T13:10:48Z"
+end_time_unix: 1783516248
+git:
+  commit: 409227d
+  branch: fix/ewma-overshoot-damping
+  dirty: true
+env:
+  k6_version: "k6 v1.3.0 (commit/5870e99ae8, go1.25.1, linux/amd64)"
+  cluster: kind-hpa-dev
+  k8s_version: "1.35.0"
+result:
+  status: success
+  failure_reason: ""

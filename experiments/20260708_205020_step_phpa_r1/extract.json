@@ -1,0 +1,99 @@
+{
+  "experiment_id": "20260708_205020_step_phpa_r1",
+  "pattern": "step",
+  "controller": "phpa",
+  "repeat": 1,
+  "start_time_utc": "2026-07-08T12:50:20Z",
+  "end_time_utc": "2026-07-08T13:00:34Z",
+  "duration_s": 614,
+  "git_commit": "409227d",
+  "k6": {
+    "total_requests": 3757,
+    "failed_count": 3351,
+    "failed_rate_pct": 89.19,
+    "dropped_iterations": 742,
+    "duration_p50_ms": 10000.26,
+    "duration_p95_ms": 10006.6,
+    "duration_p99_ms": 10019.81,
+    "duration_success_p50_ms": 3273.43,
+    "duration_success_p95_ms": 7893.26,
+    "duration_success_p99_ms": 9364.62
+  },
+  "scaling": {
+    "events": [
+      {
+        "timestamp_utc": "2026-07-08T12:52:05Z",
+        "rel_s_from_k6_start": 75,
+        "from": 1,
+        "to": 2
+      },
+      {
+        "timestamp_utc": "2026-07-08T12:52:35Z",
+        "rel_s_from_k6_start": 105,
+        "from": 2,
+        "to": 9
+      },
+      {
+        "timestamp_utc": "2026-07-08T12:53:05Z",
+        "rel_s_from_k6_start": 135,
+        "from": 9,
+        "to": 10
+      },
+      {
+        "timestamp_utc": "2026-07-08T12:54:05Z",
+        "rel_s_from_k6_start": 195,
+        "from": 10,
+        "to": 8
+      },
+      {
+        "timestamp_utc": "2026-07-08T12:55:05Z",
+        "rel_s_from_k6_start": 255,
+        "from": 8,
+        "to": 7
+      },
+      {
+        "timestamp_utc": "2026-07-08T12:56:05Z",
+        "rel_s_from_k6_start": 315,
+        "from": 7,
+        "to": 6
+      },
+      {
+        "timestamp_utc": "2026-07-08T12:56:35Z",
+        "rel_s_from_k6_start": 345,
+        "from": 6,
+        "to": 5
+      },
+      {
+        "timestamp_utc": "2026-07-08T12:57:05Z",
+        "rel_s_from_k6_start": 375,
+        "from": 5,
+        "to": 1
+      }
+    ],
+    "first_scaleup_rel_s": 75,
+    "convergence_rel_s": 135,
+    "steady_state_replicas": 10,
+    "first_scaledown_rel_s_after_k6_stop": -16,
+    "full_scaledown_rel_s_after_k6_stop": 164,
+    "scaledown_completed": true,
+    "data_source": "prom.json replicas",
+    "sampling_precision_s": 15
+  },
+  "phpa": {
+    "total_reconciles": 38,
+    "unique_decisions": 38,
+    "scaled_true_count": 16,
+    "stabilized_true_count": 10,
+    "skip_reasons": {
+      "DesiredEqualsCurrent": 22,
+      "": 16
+    }
+  },
+  "resource": {
+    "pod_seconds_during_experiment": 2460.0,
+    "avg_replicas": 4.1,
+    "waste_window_s": 164
+  },
+  "events_yaml_rescales": [],
+  "warnings": []
+}
