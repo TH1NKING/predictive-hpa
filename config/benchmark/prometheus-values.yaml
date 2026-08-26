@@ -1,0 +1,31 @@
+# Chart: prometheus-community/prometheus
+
+alertmanager:
+  enabled: false
+
+prometheus-pushgateway:
+  enabled: false
+
+prometheus-node-exporter:
+  enabled: false
+
+kube-state-metrics:
+  enabled: true
+
+server:
+  retention: "2d"
+
+  persistentVolume:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s

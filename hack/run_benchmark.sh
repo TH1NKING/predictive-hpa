@@ -51,7 +51,7 @@ fi
 
 # === Configuration ===
 PHPA_SAMPLE="config/samples/autoscaling_v1alpha1_predictivehpa.yaml"
-NATIVE_HPA_YAML="$HOME/hpa-project/baseline-demo/hpa.yaml"
+NATIVE_HPA_YAML="config/benchmark/native-hpa.yaml"
 CONTROLLER_LOG="/tmp/controller-current.log"
 CONTROLLER_STARTUP_TIMEOUT=60
 METRIC_ACCUMULATION_SECONDS=30

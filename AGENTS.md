@@ -318,3 +318,16 @@ make docker-build docker-push IMG=$IMG
 - **controller-runtime**: https://github.com/kubernetes-sigs/controller-runtime
 - **controller-tools**: https://github.com/kubernetes-sigs/controller-tools
 - **Kubebuilder Repo**: https://github.com/kubernetes-sigs/kubebuilder
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues for `TH1NKING/predictive-hpa`.
+See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+This is a single-context repository. `CONTEXT.md` and `docs/adr/` do not
+currently exist; create them only when needed instead of adding empty
+placeholders. See `docs/agents/domain.md`.
