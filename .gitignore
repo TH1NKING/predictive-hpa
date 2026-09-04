@@ -32,25 +32,25 @@ go.work
 # Phase 3 benchmark raw data (regenerable, large, binary noise)
 # Keep: metadata.yaml, *.md (analysis / summary)
 # Drop: k6.json, prom.json, events.yaml, controller.log, probe_*.{json,txt}
-experiments/*/k6.json
-experiments/*/prom.json
-experiments/*/events.yaml
-experiments/*/controller.log
+experiments/**/k6.json
+experiments/**/prom.json
+experiments/**/events.yaml
+experiments/**/controller.log
 experiments/calibration/probe_*.json
 experiments/calibration/probe_*.txt
 
 # k6 warnings log (per-experiment, large with timeout-spam, regenerable)
-experiments/*/k6-warnings.log
+experiments/**/k6-warnings.log
 # Incomplete experiments preserve only NOTES.md (lessons learned); their
 # raw data and metadata are excluded since they are not part of the
 # reproducible benchmark dataset.
-experiments/_INCOMPLETE_*/metadata.yaml
-experiments/_INCOMPLETE_*/k6-warnings.log
+experiments/**/_INCOMPLETE_*/metadata.yaml
+experiments/**/_INCOMPLETE_*/k6-warnings.log
 
 # Python analyze venv (Phase 3 aggregate script dependencies)
 hack/analyze/.venv/
-hack/analyze/__pycache__/
-hack/analyze/*.pyc
+hack/**/__pycache__/
+hack/**/*.pyc
 
 # v0.1.0 baseline archive — mirror the live experiments/ raw-data exclusions
 experiments-v0.1.0-baseline/*/k6.json

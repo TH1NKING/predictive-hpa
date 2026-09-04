@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-Phase 3 cross-experiment aggregator.
+Stabilization-window ablation cross-experiment aggregator.
 
-Reads all extract.json files under experiments/ (skipping _INCOMPLETE_*) and
-produces a markdown comparison report grouping experiments by (pattern, controller),
-computing mean ± stdev across repeats, and writing a 5-section narrative report
-intended for interview-grade audiences.
+Reads all extract.json files under an explicitly supplied experiments root
+(skipping _INCOMPLETE_*) and produces a markdown comparison report grouping
+experiments by (pattern, controller). The report keeps the three controller
+variants in a fixed order and separates stabilization-window and prediction
+effects so the two changes are not conflated.
 
 Usage:
-    python aggregate.py <experiments_root_dir>           # writes experiments/AGGREGATE_REPORT.md
+    python aggregate.py <experiments_root_dir>           # writes <root>/AGGREGATE_REPORT.md
     python aggregate.py <experiments_root_dir> --stdout  # prints to stdout instead
 
 Report sections (in order):
-    1. Executive Summary    — one-table verdict + 3-sentence headline
+    1. Executive Summary    — headline metrics and both ablation effects
     2. Experiment Setup     — reproduction-required metadata
     3. Per-Pattern Comparison — step / ramp / spike breakdowns
-    4. Cross-Pattern Findings — what holds across patterns
+    4. Reading the Effects  — neutral definitions and data coverage
     5. Known Limitations    — tail truncation, sampling precision, etc.
 
 Design notes:
@@ -23,8 +24,8 @@ Design notes:
   (NOT the metadata embedded in extract.json — that file does not duplicate
   the status field; we re-read metadata.yaml to filter).
 - Skips directories matching _INCOMPLETE_* per the experiment archival convention.
-- Aggregation: arithmetic mean and population stdev (n-1 divisor for sample stdev
-  via statistics.stdev which requires n>=2; for n==1 we report mean only with a
+- Aggregation: arithmetic mean and sample stdev (n-1 divisor via
+  statistics.stdev, which requires n>=2; for n==1 we report mean only with a
   '(n=1)' suffix).
 - Honest reporting: missing metrics print as 'n/a'; warnings from extract.json
   surface in Section 5.
@@ -43,6 +44,31 @@ from typing import Any
 
 import yaml
 
+
+# Stable report order and user-facing labels for the three-way ablation.
+CONTROLLER_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("native_hpa_300", "Native-300"),
+    ("native_hpa_60", "Native-60"),
+    ("phpa", "PHPA-60"),
+)
+CONTROLLER_LABELS = dict(CONTROLLER_COLUMNS)
+
+WINDOW_BASELINE_CONTROLLER = "native_hpa_300"
+WINDOW_CANDIDATE_CONTROLLER = "native_hpa_60"
+PREDICTION_BASELINE_CONTROLLER = "native_hpa_60"
+PREDICTION_CANDIDATE_CONTROLLER = "phpa"
+
+WINDOW_EFFECT_LABEL = "Window effect (Native-60 - Native-300)"
+PREDICTION_EFFECT_LABEL = "Prediction effect (PHPA-60 - Native-60)"
+
+CENSORED_METRIC_PATHS = frozenset(
+    {
+        "scaling.first_scaledown_rel_s_after_k6_stop",
+        "scaling.full_scaledown_rel_s_after_k6_stop",
+        "resource.waste_window_s",
+    }
+)
+
 # Metrics we aggregate. Each entry: (display_name, json_path, format_spec, unit).
 # json_path uses dots for nested keys.
 METRIC_SPECS: list[tuple[str, str, str, str]] = [
@@ -55,8 +81,8 @@ METRIC_SPECS: list[tuple[str, str, str, str]] = [
     # Scaling control
     ("First scale-up delay",             "scaling.first_scaleup_rel_s",      ".0f", " s"),
     ("Convergence time (to peak)",       "scaling.convergence_rel_s",        ".0f", " s"),
-    ("Peak / steady-state replicas",     "scaling.steady_state_replicas",    ".1f", ""),
-    ("First scale-down (after k6 stop)", "scaling.first_scaledown_rel_s_after_k6_stop", ".0f", " s"),
+    ("Peak replicas",                    "scaling.steady_state_replicas",    ".1f", ""),
+    ("First scale-down relative to k6 stop", "scaling.first_scaledown_rel_s_after_k6_stop", ".0f", " s"),
     ("Full scale-down (after k6 stop)",  "scaling.full_scaledown_rel_s_after_k6_stop",  ".0f", " s"),
     # Resource efficiency
     ("Pod-seconds (experiment total)",   "resource.pod_seconds_during_experiment",      ".0f", ""),
@@ -145,10 +171,17 @@ def load_extracts(root: Path) -> tuple[list[dict], list[str]]:
 
         try:
             with meta_path.open() as f:
-                meta = yaml.safe_load(f)
+                loaded_meta = yaml.safe_load(f)
         except yaml.YAMLError as e:
             skip_messages.append(f"skipped {exp_dir.name}: metadata.yaml parse error ({e})")
             continue
+
+        if not isinstance(loaded_meta, dict):
+            skip_messages.append(
+                f"skipped {exp_dir.name}: metadata.yaml must contain a mapping"
+            )
+            continue
+        meta = loaded_meta
 
         status = (meta.get("result", {}) or {}).get("status")
         if status != "success":
@@ -163,6 +196,22 @@ def load_extracts(root: Path) -> tuple[list[dict], list[str]]:
         except json.JSONDecodeError as e:
             skip_messages.append(f"skipped {exp_dir.name}: extract.json parse error ({e})")
             continue
+
+        if not isinstance(data, dict):
+            skip_messages.append(
+                f"skipped {exp_dir.name}: extract.json must contain an object"
+            )
+            continue
+
+        # Keep aggregation useful when extract.json predates these metadata
+        # fields or was produced independently. New extracts already contain
+        # them, while setdefault preserves any explicitly extracted value.
+        data.setdefault("campaign", meta.get("campaign"))
+        data.setdefault(
+            "scale_down_stabilization_seconds",
+            meta.get("scale_down_stabilization_seconds"),
+        )
+        data.setdefault("prediction_variant", meta.get("prediction_variant"))
 
         extracts.append(data)
 
@@ -189,49 +238,98 @@ def make_metric_row(
 ) -> tuple[str, str]:
     """Compute the (mean ± stdev) string for one metric across one group."""
     name, path, fmt, unit = metric
-    values = [get_nested(e, path) for e in extracts]
-    # Coerce to float where possible.
-    coerced: list[float | None] = []
-    for v in values:
-        if v is None:
-            coerced.append(None)
-        else:
-            try:
-                coerced.append(float(v))
-            except (ValueError, TypeError):
-                coerced.append(None)
-    return name, fmt_mean_stdev(coerced, fmt, unit)
+    return name, fmt_mean_stdev(metric_values(extracts, path), fmt, unit)
 
 
-def compute_delta(phpa_vals: list[float | None], native_vals: list[float | None]) -> str:
-    """Compute a human-readable delta of two mean values.
+def metric_values(extracts: list[dict], path: str) -> list[float | None]:
+    """Return one numeric-or-None value per extract for a dotted metric path."""
+    return [_to_float(get_nested(e, path)) for e in extracts]
+
+
+def metric_group_is_censored(extracts: list[dict], path: str) -> bool:
+    """Whether a scale-down metric includes a run that ended above minReplicas."""
+    if path not in CENSORED_METRIC_PATHS:
+        return False
+    if path == "scaling.first_scaledown_rel_s_after_k6_stop":
+        return any(get_nested(e, path) is None for e in extracts)
+    if path == "scaling.full_scaledown_rel_s_after_k6_stop":
+        return any(
+            get_nested(e, path) is None
+            or get_nested(e, "scaling.scaledown_completed") is False
+            for e in extracts
+        )
+    return any(
+        get_nested(e, "scaling.scaledown_completed") is False for e in extracts
+    )
+
+
+def format_shared_metric(
+    extracts: list[dict],
+    path: str,
+    fmt: str,
+    unit: str,
+) -> str:
+    """Format one shared metric and mark groups with censored scale-down data."""
+    rendered = fmt_mean_stdev(metric_values(extracts, path), fmt, unit)
+    if metric_group_is_censored(extracts, path):
+        rendered += " †"
+    return rendered
+
+
+def compute_delta(
+    candidate_vals: list[float | None],
+    baseline_vals: list[float | None],
+) -> str:
+    """Compute candidate mean minus baseline mean.
 
     Returns 'n/a' if either side missing. Otherwise:
     - Absolute delta with sign
-    - Percentage delta (PHPA relative to native HPA baseline) when meaningful
+    - Percentage delta relative to the supplied baseline when meaningful
     """
-    p_clean = [v for v in phpa_vals if v is not None]
-    n_clean = [v for v in native_vals if v is not None]
-    if not p_clean or not n_clean:
+    candidate_clean = [v for v in candidate_vals if v is not None]
+    baseline_clean = [v for v in baseline_vals if v is not None]
+    if not candidate_clean or not baseline_clean:
         return "n/a"
-    p_mean = statistics.mean(p_clean)
-    n_mean = statistics.mean(n_clean)
-    delta = p_mean - n_mean
-    sign = "+" if delta >= 0 else ""
-    if abs(n_mean) < 1e-9:
-        return f"{sign}{delta:.1f} (baseline ~0)"
-    pct = (delta / n_mean) * 100
-    return f"{sign}{delta:.1f} ({sign}{pct:.0f}%)"
+    candidate_mean = statistics.mean(candidate_clean)
+    baseline_mean = statistics.mean(baseline_clean)
+    delta = candidate_mean - baseline_mean
+    if baseline_mean < 0:
+        return f"{delta:+.1f} (negative baseline)"
+    if abs(baseline_mean) < 1e-9:
+        return f"{delta:+.1f} (baseline ~0)"
+    pct = (delta / baseline_mean) * 100
+    return f"{delta:+.1f} ({pct:+.0f}%)"
+
+
+def controller_metric_values(
+    groups: dict[tuple[str, str], list[dict]],
+    pattern: str,
+    path: str,
+) -> dict[str, list[float | None]]:
+    """Collect values for all report controller columns in stable order."""
+    return {
+        controller: metric_values(groups.get((pattern, controller), []), path)
+        for controller, _ in CONTROLLER_COLUMNS
+    }
+
+
+def metric_effects(values: dict[str, list[float | None]]) -> tuple[str, str]:
+    """Return window and prediction effects from controller metric values."""
+    window_effect = compute_delta(
+        values[WINDOW_CANDIDATE_CONTROLLER],
+        values[WINDOW_BASELINE_CONTROLLER],
+    )
+    prediction_effect = compute_delta(
+        values[PREDICTION_CANDIDATE_CONTROLLER],
+        values[PREDICTION_BASELINE_CONTROLLER],
+    )
+    return window_effect, prediction_effect
 
 
 def render_executive_summary(
     groups: dict[tuple[str, str], list[dict]],
 ) -> str:
-    """One headline table + 3-sentence verdict.
-
-    For each pattern, contrast a small set of headline metrics between phpa and
-    native_hpa groups.
-    """
+    """Render headline metrics with both independent ablation effects."""
     headline_metrics = [
         ("First scale-up delay",             "scaling.first_scaleup_rel_s",      ".0f", "s"),
         ("Peak replicas",                    "scaling.steady_state_replicas",    ".1f", ""),
@@ -242,56 +340,108 @@ def render_executive_summary(
 
     lines = ["## 1. Executive Summary", ""]
     lines.append(
-        "PHPA's design intent: trade slower first-scale-up response for faster "
-        "scale-down and lower resource waste. The numbers below quantify both "
-        "sides of that trade."
+        "The controller columns report group means across repeats. Effect columns "
+        "are arithmetic differences between group means; their sign is not an "
+        "automatic better/worse judgment."
     )
     lines.append("")
-    lines.append("| Pattern | Metric | PHPA | native HPA | Δ (PHPA − native) |")
-    lines.append("|---|---|---|---|---|")
+    lines.append(
+        "| Pattern | Metric | Native-300 | Native-60 | PHPA-60 | "
+        f"{WINDOW_EFFECT_LABEL} | {PREDICTION_EFFECT_LABEL} |"
+    )
+    lines.append("|---|---|---|---|---|---|---|")
 
     for pattern in patterns_present:
-        phpa_g = groups.get((pattern, "phpa"), [])
-        nat_g = groups.get((pattern, "native_hpa"), [])
         for name, path, fmt, unit in headline_metrics:
-            phpa_vals = [_to_float(get_nested(e, path)) for e in phpa_g]
-            nat_vals = [_to_float(get_nested(e, path)) for e in nat_g]
+            controller_groups = {
+                controller: groups.get((pattern, controller), [])
+                for controller, _ in CONTROLLER_COLUMNS
+            }
+            values = controller_metric_values(groups, pattern, path)
             unit_str = (" " + unit) if unit and unit not in ("%",) else unit
-            phpa_str = fmt_mean_stdev(phpa_vals, fmt, unit_str)
-            nat_str = fmt_mean_stdev(nat_vals, fmt, unit_str)
-            delta_str = compute_delta(phpa_vals, nat_vals)
-            lines.append(f"| {pattern} | {name} | {phpa_str} | {nat_str} | {delta_str} |")
+            formatted = [
+                format_shared_metric(
+                    controller_groups[controller], path, fmt, unit_str
+                )
+                for controller, _ in CONTROLLER_COLUMNS
+            ]
+            window_effect, prediction_effect = metric_effects(values)
+            if metric_group_is_censored(
+                controller_groups[WINDOW_BASELINE_CONTROLLER], path
+            ) or metric_group_is_censored(
+                controller_groups[WINDOW_CANDIDATE_CONTROLLER], path
+            ):
+                window_effect += " †"
+            if metric_group_is_censored(
+                controller_groups[PREDICTION_BASELINE_CONTROLLER], path
+            ) or metric_group_is_censored(
+                controller_groups[PREDICTION_CANDIDATE_CONTROLLER], path
+            ):
+                prediction_effect += " †"
+            lines.append(
+                f"| {pattern} | {name} | {' | '.join(formatted)} | "
+                f"{window_effect} | {prediction_effect} |"
+            )
     lines.append("")
     return "\n".join(lines)
 
 
 def render_setup(extracts: list[dict]) -> str:
-    """What was tested. Mostly invariant fields across runs (k6 version, RPS, etc.)."""
+    """Summarize experiment metadata available in the loaded extracts."""
     if not extracts:
         return ""
     repeats = max((e.get("repeat") or 0) for e in extracts)
     patterns = sorted({e.get("pattern") for e in extracts if e.get("pattern")})
     git_commits = sorted({e.get("git_commit") for e in extracts if e.get("git_commit")})
     durations = [e.get("duration_s") for e in extracts if e.get("duration_s")]
+    campaigns = sorted({e.get("campaign") for e in extracts if e.get("campaign")})
+    windows = sorted(
+        {
+            e.get("scale_down_stabilization_seconds")
+            for e in extracts
+            if e.get("scale_down_stabilization_seconds") is not None
+        }
+    )
+    prediction_variants = sorted(
+        {
+            str(e.get("prediction_variant"))
+            for e in extracts
+            if e.get("prediction_variant") is not None
+        }
+    )
+    controllers_present = {e.get("controller") for e in extracts}
+    controller_labels = [
+        label
+        for controller, label in CONTROLLER_COLUMNS
+        if controller in controllers_present
+    ]
+    unknown_controllers = sorted(
+        str(controller)
+        for controller in controllers_present
+        if controller and controller not in CONTROLLER_LABELS
+    )
+    controller_labels.extend(unknown_controllers)
 
     lines = ["## 2. Experiment Setup", ""]
     lines.append(f"- **Total experiments analyzed**: {len(extracts)}")
     lines.append(f"- **Patterns tested**: {', '.join(patterns)}")
-    lines.append(f"- **Controllers compared**: phpa, native_hpa (1:1 design)")
+    lines.append(f"- **Controllers compared**: {', '.join(controller_labels)}")
+    if campaigns:
+        lines.append(f"- **Campaigns**: {', '.join(campaigns)}")
+    if windows:
+        lines.append(
+            "- **Scale-down stabilization values**: "
+            + ", ".join(f"{value}s" for value in windows)
+        )
+    if prediction_variants:
+        lines.append(
+            f"- **Prediction variants**: {', '.join(prediction_variants)}"
+        )
     lines.append(f"- **Max repeat index seen**: r{repeats}")
-    lines.append(f"- **Git commits used**: {', '.join(git_commits)}")
+    if git_commits:
+        lines.append(f"- **Git commits used**: {', '.join(git_commits)}")
     if durations:
         lines.append(f"- **Experiment duration range**: {min(durations)}s — {max(durations)}s")
-    lines.append("- **Cluster**: kind-hpa-dev (single node, Ubuntu 24.04 VM)")
-    lines.append("- **Target workload**: php-apache (CPU-bound, requests=200m / limits=500m)")
-    lines.append("- **Load tool**: k6 v1.3.0, target RPS=25 (calibrated; see Phase 3.2)")
-    lines.append("")
-    lines.append(
-        "Each experiment follows the same 11-step orchestrator (`hack/run_benchmark.sh`): "
-        "reset Deployment to 1 replica → switch controller → 30s metric accumulation → "
-        "k6 load (211s) → 360s tail observation → collect prom + events + controller log → "
-        "smoke check → mark success."
-    )
     lines.append("")
     return "\n".join(lines)
 
@@ -307,7 +457,7 @@ def _to_float(v: Any) -> float | None:
 
 
 def render_per_pattern(groups: dict[tuple[str, str], list[dict]]) -> str:
-    """Section 3: per-pattern comparison tables (PHPA vs native_hpa)."""
+    """Section 3: per-pattern three-way comparison and both effects."""
     patterns_present = sorted({p for (p, c) in groups.keys()})
     if not patterns_present:
         return "## 3. Per-Pattern Comparison\n\n*No patterns to report.*\n"
@@ -316,23 +466,49 @@ def render_per_pattern(groups: dict[tuple[str, str], list[dict]]) -> str:
 
     for pattern in patterns_present:
         phpa_g = groups.get((pattern, "phpa"), [])
-        nat_g = groups.get((pattern, "native_hpa"), [])
-        n_phpa = len(phpa_g)
-        n_nat = len(nat_g)
+        group_counts = [
+            f"{label} runs: {len(groups.get((pattern, controller), []))}"
+            for controller, label in CONTROLLER_COLUMNS
+        ]
 
         lines.append(f"### 3.{patterns_present.index(pattern) + 1} `{pattern}` pattern")
         lines.append("")
-        lines.append(f"*PHPA runs: {n_phpa} | native HPA runs: {n_nat}*")
+        lines.append(f"*{' | '.join(group_counts)}*")
         lines.append("")
 
-        # Combined metrics table (shared between controllers).
-        lines.append("| Metric | PHPA | native HPA |")
-        lines.append("|---|---|---|")
+        lines.append(
+            "| Metric | Native-300 | Native-60 | PHPA-60 | "
+            f"{WINDOW_EFFECT_LABEL} | {PREDICTION_EFFECT_LABEL} |"
+        )
+        lines.append("|---|---|---|---|---|---|")
         for spec in METRIC_SPECS:
-            name = spec[0]
-            phpa_name, phpa_str = make_metric_row(spec, phpa_g)
-            _, nat_str = make_metric_row(spec, nat_g)
-            lines.append(f"| {name} | {phpa_str} | {nat_str} |")
+            name, path, fmt, unit = spec
+            controller_groups = {
+                controller: groups.get((pattern, controller), [])
+                for controller, _ in CONTROLLER_COLUMNS
+            }
+            values = controller_metric_values(groups, pattern, path)
+            formatted = [
+                format_shared_metric(controller_groups[controller], path, fmt, unit)
+                for controller, _ in CONTROLLER_COLUMNS
+            ]
+            window_effect, prediction_effect = metric_effects(values)
+            if metric_group_is_censored(
+                controller_groups[WINDOW_BASELINE_CONTROLLER], path
+            ) or metric_group_is_censored(
+                controller_groups[WINDOW_CANDIDATE_CONTROLLER], path
+            ):
+                window_effect += " †"
+            if metric_group_is_censored(
+                controller_groups[PREDICTION_BASELINE_CONTROLLER], path
+            ) or metric_group_is_censored(
+                controller_groups[PREDICTION_CANDIDATE_CONTROLLER], path
+            ):
+                prediction_effect += " †"
+            lines.append(
+                f"| {name} | {' | '.join(formatted)} | "
+                f"{window_effect} | {prediction_effect} |"
+            )
         lines.append("")
 
         # PHPA-only metrics.
@@ -362,120 +538,43 @@ def render_per_pattern(groups: dict[tuple[str, str], list[dict]]) -> str:
                 )
             lines.append("")
 
-        # Per-pattern interpretation paragraph (templated; user edits if needed).
-        lines.append("**Interpretation:**")
-        lines.append("")
-        interp = _interpret_pattern(pattern, phpa_g, nat_g)
-        lines.append(interp)
-        lines.append("")
-
     return "\n".join(lines)
 
 
-def _interpret_pattern(
-    pattern: str,
-    phpa_g: list[dict],
-    nat_g: list[dict],
-) -> str:
-    """Generate a one-paragraph data-driven interpretation per pattern."""
-    if not phpa_g or not nat_g:
-        return (
-            "*Insufficient data: at least one controller has no successful runs for "
-            "this pattern. Interpretation deferred until matrix completes.*"
-        )
-
-    def avg(group: list[dict], path: str) -> float | None:
-        vals = [_to_float(get_nested(e, path)) for e in group]
-        clean = [v for v in vals if v is not None]
-        return statistics.mean(clean) if clean else None
-
-    phpa_first = avg(phpa_g, "scaling.first_scaleup_rel_s")
-    nat_first = avg(nat_g, "scaling.first_scaleup_rel_s")
-    phpa_peak = avg(phpa_g, "scaling.steady_state_replicas")
-    nat_peak = avg(nat_g, "scaling.steady_state_replicas")
-    phpa_waste = avg(phpa_g, "resource.waste_window_s")
-    nat_waste = avg(nat_g, "resource.waste_window_s")
-    phpa_fail = avg(phpa_g, "k6.failed_rate_pct")
-    nat_fail = avg(nat_g, "k6.failed_rate_pct")
-
-    parts: list[str] = []
-    if phpa_first is not None and nat_first is not None:
-        if phpa_first > nat_first:
-            parts.append(
-                f"PHPA's first scale-up is ~{phpa_first - nat_first:.0f}s slower "
-                f"than native HPA ({phpa_first:.0f}s vs {nat_first:.0f}s). "
-                "This reflects the EWMA + 1m Prometheus rate path's smoothing tax."
-            )
-        else:
-            parts.append(
-                f"PHPA reacts as fast as or faster than native HPA on first scale-up "
-                f"({phpa_first:.0f}s vs {nat_first:.0f}s)."
-            )
-    if phpa_peak is not None and nat_peak is not None:
-        if phpa_peak > nat_peak:
-            parts.append(
-                f"PHPA over-provisions: peak replicas {phpa_peak:.1f} vs native {nat_peak:.1f}. "
-                "EWMA's forward extrapolation overshoots when the rate-of-change is high."
-            )
-        elif phpa_peak < nat_peak:
-            parts.append(
-                f"PHPA holds fewer replicas at peak ({phpa_peak:.1f} vs {nat_peak:.1f}), "
-                "suggesting its smoothing damps short-lived spikes."
-            )
-    if phpa_waste is not None and nat_waste is not None:
-        if phpa_waste < nat_waste:
-            parts.append(
-                f"PHPA finishes scale-down faster: waste window {phpa_waste:.0f}s "
-                f"vs native HPA's {nat_waste:.0f}s, the core selling point."
-            )
-        elif phpa_waste > nat_waste:
-            parts.append(
-                f"Surprise: PHPA's waste window ({phpa_waste:.0f}s) exceeds native HPA "
-                f"({nat_waste:.0f}s) here. Possible over-provisioning + 60s "
-                "stabilization window combine to extend idle time."
-            )
-    if phpa_fail is not None and nat_fail is not None and abs(phpa_fail - nat_fail) > 0.5:
-        if phpa_fail < nat_fail:
-            parts.append(
-                f"Business impact: PHPA's failed-rate is {phpa_fail:.1f}% vs "
-                f"native HPA's {nat_fail:.1f}% (lower is better). Difference is small "
-                "because the bottleneck is the single-Pod start-up window, not the "
-                "controller."
-            )
-        else:
-            parts.append(
-                f"PHPA's failed-rate ({phpa_fail:.1f}%) exceeds native HPA's "
-                f"({nat_fail:.1f}%). Slower first-scale-up reflected in client-side "
-                "timeouts."
-            )
-
-    if not parts:
-        return "*No comparable scalar metrics available for interpretation.*"
-    return " ".join(parts)
-
-
 def render_cross_pattern(groups: dict[tuple[str, str], list[dict]]) -> str:
-    """Section 4: findings that hold across patterns."""
-    lines = ["## 4. Cross-Pattern Findings", ""]
+    """Section 4: neutral effect definitions and controller coverage."""
+    lines = ["## 4. Reading the Effects", ""]
     patterns = sorted({p for (p, c) in groups.keys()})
-    if len(patterns) < 2:
-        lines.append(
-            f"*Only {len(patterns)} pattern(s) available; cross-pattern findings "
-            "deferred until the full matrix is complete.*"
-        )
-        lines.append("")
-        return "\n".join(lines)
-
     lines.append(
-        "When the matrix includes multiple patterns, this section calls out "
-        "what holds independent of load shape — e.g., whether PHPA's scale-down "
-        "advantage replicates under ramp and spike, or only under step. With "
-        f"{len(patterns)} patterns now covered ({', '.join(patterns)}), the following "
-        "trends emerge:"
+        f"- **Window effect** is `{CONTROLLER_LABELS[WINDOW_CANDIDATE_CONTROLLER]} "
+        f"- {CONTROLLER_LABELS[WINDOW_BASELINE_CONTROLLER]}` and changes only the "
+        "scale-down stabilization window."
     )
-    lines.append("")
-    # Placeholder bullets — these get filled in qualitatively when reading the report.
-    lines.append("- *(populated by inspecting per-pattern tables above)*")
+    lines.append(
+        f"- **Prediction effect** is `{CONTROLLER_LABELS[PREDICTION_CANDIDATE_CONTROLLER]} "
+        f"- {CONTROLLER_LABELS[PREDICTION_BASELINE_CONTROLLER]}` and compares prediction "
+        "against the matched 60-second native baseline."
+    )
+    expected_controllers = {controller for controller, _ in CONTROLLER_COLUMNS}
+    complete_patterns = [
+        pattern
+        for pattern in patterns
+        if expected_controllers.issubset(
+            {
+                controller
+                for candidate_pattern, controller in groups
+                if candidate_pattern == pattern
+            }
+        )
+    ]
+    lines.append(
+        f"- **Complete three-controller coverage**: {len(complete_patterns)}/{len(patterns)} "
+        "pattern(s). Missing groups appear as `n/a`."
+    )
+    lines.append(
+        "- Effect signs are arithmetic only. Whether a positive or negative value is "
+        "preferred depends on the metric."
+    )
     lines.append("")
     return "\n".join(lines)
 
@@ -493,20 +592,31 @@ def render_limitations(extracts: list[dict], skip_messages: list[str]) -> str:
     lines.append("### Sampling & instrumentation")
     lines.append("")
     lines.append(
-        "- **Replica timeline precision is 15s** (prom step size). Per-second "
-        "scale events are visible only via events.yaml, which is unreliable for "
-        "PHPA (no SuccessfulRescale emitted) and contaminated across experiments "
-        "by 1h K8s event TTL — see commit e862d1b for rationale."
+        "- **Replica timeline precision is 15s** (Prometheus query step). "
+        "events.yaml is retained as a secondary signal because the three controllers "
+        "do not emit identical event streams."
+    )
+    group_sizes = [
+        len(group)
+        for group in group_by_pattern_controller(extracts).values()
+        if group
+    ]
+    sample_size_range = (
+        f"{min(group_sizes)}–{max(group_sizes)}" if group_sizes else "0"
     )
     lines.append(
-        "- **Sample size n=3 per (pattern, controller)** is below the threshold "
-        "for formal statistical inference. Reported mean ± stdev is engineering "
-        "summary only — no t-tests, no p-values."
+        f"- **Observed group sample sizes range from n={sample_size_range}.** "
+        "Reported mean ± sample standard deviation and mean differences are "
+        "engineering summaries only; no formal statistical inference is performed."
     )
-    lines.append(
-        "- **Single-node kind cluster** does not reflect production scheduling "
-        "latency, node-to-node network jitter, or PV provisioning delays."
-    )
+    if any(
+        get_nested(e, "scaling.scaledown_completed") is False for e in extracts
+    ):
+        lines.append(
+            "- **† Censored group**: at least one run ended above minReplicas; "
+            "marked waste-window values are lower bounds, and marked scale-down "
+            "means omit unavailable runs."
+        )
     lines.append("")
 
     if all_warnings:
@@ -551,15 +661,15 @@ def render_report(
     """Compose the full report from sections 1-5."""
     if not extracts:
         return (
-            "# Phase 3 Benchmark Report\n\n"
-            "*No successful experiments found. Run `hack/run_benchmark.sh` first.*\n"
+            "# Stabilization Window Ablation Benchmark Report\n\n"
+            "*No successful experiments found in the supplied experiments root.*\n"
         )
 
     groups = group_by_pattern_controller(extracts)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     header = [
-        "# Phase 3 Benchmark Report",
+        "# Stabilization Window Ablation Benchmark Report",
         "",
         f"> Generated {generated_at} from {len(extracts)} experiment(s) across "
         f"{len({p for p, _ in groups})} pattern(s) × {len({c for _, c in groups})} controller(s).",
@@ -579,8 +689,10 @@ def render_report(
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(
-        description="Aggregate Phase 3 extract.json files into a markdown report",
+        description="Aggregate stabilization-window ablation extracts into markdown",
     )
     parser.add_argument(
         "experiments_root",
@@ -608,7 +720,7 @@ def main() -> int:
             sys.stdout.write("\n")
     else:
         out_path = root / "AGGREGATE_REPORT.md"
-        with out_path.open("w") as f:
+        with out_path.open("w", encoding="utf-8", newline="\n") as f:
             f.write(report)
         # Short progress line.
         n_groups = len({(e.get("pattern"), e.get("controller")) for e in extracts})

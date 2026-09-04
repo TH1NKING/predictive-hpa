@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # hack/run_benchmark.sh
 #
-# Single-experiment orchestrator for Phase 3 PHPA vs native HPA benchmark.
+# Single-experiment orchestrator for the stabilization-window ablation benchmark.
 #
 # USAGE: hack/run_benchmark.sh <pattern> <controller> <repeat_idx>
 #   pattern    : step | ramp | spike
-#   controller : phpa | native_hpa
+#   controller : native_hpa_300 | native_hpa_60 | phpa
 #   repeat_idx : 1-N (positive integer)
 #
 # Exit codes:
@@ -15,7 +15,7 @@
 #   3: data collection failure
 #
 # Side effects:
-#   - Creates experiments/<timestamp>_<pattern>_<controller>_r<idx>/
+#   - Creates $EXPERIMENTS_ROOT/<timestamp>_<pattern>_<controller>_r<idx>/
 #   - Starts/stops controller process (writes /tmp/controller-current.log)
 #   - Re-deploys PHPA sample or native HPA YAML depending on controller
 #   - Resets php-apache Deployment to 1 replica before each run
@@ -41,8 +41,25 @@ case "$PATTERN" in
   *) echo "ERROR: pattern must be step|ramp|spike, got '$PATTERN'" >&2; exit 1 ;;
 esac
 case "$CONTROLLER" in
-  phpa|native_hpa) ;;
-  *) echo "ERROR: controller must be phpa|native_hpa, got '$CONTROLLER'" >&2; exit 1 ;;
+  native_hpa_300)
+    NATIVE_HPA_YAML="config/benchmark/native-hpa.yaml"
+    SCALE_DOWN_STABILIZATION_SECONDS=300
+    PREDICTION_VARIANT="none"
+    ;;
+  native_hpa_60)
+    NATIVE_HPA_YAML="config/benchmark/native-hpa-60.yaml"
+    SCALE_DOWN_STABILIZATION_SECONDS=60
+    PREDICTION_VARIANT="none"
+    ;;
+  phpa)
+    NATIVE_HPA_YAML=""
+    SCALE_DOWN_STABILIZATION_SECONDS=60
+    PREDICTION_VARIANT="ewma_damped_cap"
+    ;;
+  *)
+    echo "ERROR: controller must be native_hpa_300|native_hpa_60|phpa, got '$CONTROLLER'" >&2
+    exit 1
+    ;;
 esac
 if ! [[ "$REPEAT_IDX" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERROR: repeat_idx must be positive integer, got '$REPEAT_IDX'" >&2
@@ -51,17 +68,22 @@ fi
 
 # === Configuration ===
 PHPA_SAMPLE="config/samples/autoscaling_v1alpha1_predictivehpa.yaml"
-NATIVE_HPA_YAML="config/benchmark/native-hpa.yaml"
+EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments}"
+case "$EXPERIMENTS_ROOT" in
+  /*) ;;
+  *) EXPERIMENTS_ROOT="$REPO_ROOT/$EXPERIMENTS_ROOT" ;;
+esac
+CAMPAIGN="${CAMPAIGN:-stabilization-window-ablation-v2}"
 CONTROLLER_LOG="/tmp/controller-current.log"
 CONTROLLER_STARTUP_TIMEOUT=60
 METRIC_ACCUMULATION_SECONDS=30
 # Tail observation after k6 exits. Captures scale-down behavior.
 # Moved out of k6 stages because ramping-arrival-rate executor exits early
 # when target=0 and all in-flight requests are done — see step.js comment.
-# Sized to 360s = 300s (native HPA default --horizontal-pod-autoscaler-
-# downscale-stabilization) + 60s buffer for the final reconcile + Pod
+# Sized to 360s = the longest configured window (Native-300) + 60s buffer
+# for the final reconcile + Pod
 # termination. The earlier 240s value missed native HPA's full scale-down
-# curve in step native_hpa 1 dry-run (only first scale decision captured).
+# curve in a step native_hpa_300 dry-run (only first scale decision captured).
 POST_LOAD_TAIL_SECONDS=360
 PROM_URL="http://localhost:9090"
 
@@ -73,7 +95,7 @@ hack/prerequisites_check.sh
 echo ""
 echo "[2/11] create experiment directory"
 TIMESTAMP_LOCAL=$(date +%Y%m%d_%H%M%S)
-EXP_DIR="experiments/${TIMESTAMP_LOCAL}_${PATTERN}_${CONTROLLER}_r${REPEAT_IDX}"
+EXP_DIR="${EXPERIMENTS_ROOT}/${TIMESTAMP_LOCAL}_${PATTERN}_${CONTROLLER}_r${REPEAT_IDX}"
 mkdir -p "$EXP_DIR"
 echo "  $EXP_DIR"
 
@@ -89,9 +111,12 @@ K6_VERSION_LINE=$(k6 version | head -1)
 
 cat > "$EXP_DIR/metadata.yaml" <<META
 experiment_id: ${TIMESTAMP_LOCAL}_${PATTERN}_${CONTROLLER}_r${REPEAT_IDX}
+campaign: "$CAMPAIGN"
 pattern: $PATTERN
 controller: $CONTROLLER
 repeat: $REPEAT_IDX
+scale_down_stabilization_seconds: $SCALE_DOWN_STABILIZATION_SECONDS
+prediction_variant: "$PREDICTION_VARIANT"
 start_time_utc: "$START_TIME_UTC"
 start_time_unix: $START_TIME_UNIX
 end_time_utc: ""
@@ -210,11 +235,11 @@ if [ "$CONTROLLER" = "phpa" ]; then
   fi
   echo "  controller started"
 
-elif [ "$CONTROLLER" = "native_hpa" ]; then
+elif [ "$CONTROLLER" = "native_hpa_300" ] || [ "$CONTROLLER" = "native_hpa_60" ]; then
   # Ensure PHPA controller is not running (already killed above)
   # PHPA sample stays but is inert without the controller
   kubectl apply -f "$NATIVE_HPA_YAML" >/dev/null
-  echo "  native HPA applied"
+  echo "  native HPA applied from $NATIVE_HPA_YAML"
 fi
 
 # === Step 6: metric accumulation pause ===

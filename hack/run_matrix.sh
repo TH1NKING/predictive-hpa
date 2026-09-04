@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# run_matrix.sh — Phase 3 benchmark matrix automation wrapper.
+# run_matrix.sh — stabilization-window ablation matrix automation wrapper.
 #
-# Drives hack/run_benchmark.sh through the 18-experiment matrix
-# (3 patterns × 2 controllers × 3 repeats), in interleaved order to keep
-# system state comparable across controllers. After each successful
+# Drives hack/run_benchmark.sh through the 27-experiment matrix
+# (3 patterns × 3 controllers × 3 repeats). Controller order rotates on each
+# repeat to reduce run-order bias. After each successful
 # experiment, immediately runs hack/analyze/extract.py so extract.json is
 # always up to date.
 #
 # Behavior:
 # - Fail-fast: any failed experiment (run_benchmark.sh exits non-zero)
 #   aborts the matrix immediately.
-# - Resumable: at startup, scans experiments/ for already-successful runs
+# - Resumable: at startup, scans only $EXPERIMENTS_ROOT for successful runs
 #   matching <pattern>_<controller>_r<idx> and skips them. Re-running the
 #   wrapper after a partial completion picks up where it left off.
 # - Extract is best-effort: if extract.py fails for one experiment, the
@@ -21,6 +21,7 @@
 # Usage:
 #   hack/run_matrix.sh           # run all remaining experiments
 #   hack/run_matrix.sh --dry-run # show plan, don't run anything
+#   EXPERIMENTS_ROOT=experiments/ablation-v2 hack/run_matrix.sh --dry-run
 #
 # Manual interruption:
 #   Ctrl+C once: wrapper exits AFTER current experiment finishes
@@ -30,33 +31,33 @@ set -euo pipefail
 
 # === Matrix definition ===
 # Format: <pattern>:<controller>:<repeat_idx>
-# Order is interleaved: each pattern alternates phpa / native_hpa repeats
-# so both controllers see similar system state when paired.
-MATRIX=(
-  "step:phpa:1"
-  "step:native_hpa:1"
-  "step:phpa:2"
-  "step:native_hpa:2"
-  "step:phpa:3"
-  "step:native_hpa:3"
-  "ramp:phpa:1"
-  "ramp:native_hpa:1"
-  "ramp:phpa:2"
-  "ramp:native_hpa:2"
-  "ramp:phpa:3"
-  "ramp:native_hpa:3"
-  "spike:phpa:1"
-  "spike:native_hpa:1"
-  "spike:phpa:2"
-  "spike:native_hpa:2"
-  "spike:phpa:3"
-  "spike:native_hpa:3"
-)
+# Latin rotation per repeat:
+#   r1: native_hpa_300, native_hpa_60, phpa
+#   r2: native_hpa_60, phpa, native_hpa_300
+#   r3: phpa, native_hpa_300, native_hpa_60
+PATTERNS=(step ramp spike)
+CONTROLLERS=(native_hpa_300 native_hpa_60 phpa)
+MATRIX=()
+for pattern in "${PATTERNS[@]}"; do
+  for repeat_idx in 1 2 3; do
+    rotation=$((repeat_idx - 1))
+    for offset in 0 1 2; do
+      controller_idx=$(((rotation + offset) % ${#CONTROLLERS[@]}))
+      MATRIX+=("${pattern}:${CONTROLLERS[controller_idx]}:${repeat_idx}")
+    done
+  done
+done
 TOTAL="${#MATRIX[@]}"
 
 # === Configuration ===
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-EXPERIMENTS_DIR="$REPO_ROOT/experiments"
+EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments}"
+case "$EXPERIMENTS_ROOT" in
+  /*) ;;
+  *) EXPERIMENTS_ROOT="$REPO_ROOT/$EXPERIMENTS_ROOT" ;;
+esac
+export EXPERIMENTS_ROOT
+EXPERIMENTS_DIR="$EXPERIMENTS_ROOT"
 RUN_BENCHMARK="$REPO_ROOT/hack/run_benchmark.sh"
 EXTRACT_PY="$REPO_ROOT/hack/analyze/extract.py"
 EXTRACT_VENV="$REPO_ROOT/hack/analyze/.venv/bin/python"
@@ -85,6 +86,9 @@ trap on_interrupt INT
 already_succeeded() {
   local pattern="$1" controller="$2" idx="$3"
   local matches
+  if [ ! -d "$EXPERIMENTS_DIR" ]; then
+    return 1
+  fi
   matches=$(find "$EXPERIMENTS_DIR" -maxdepth 1 -type d \
     -name "*_${pattern}_${controller}_r${idx}" \
     ! -name "_INCOMPLETE_*" 2>/dev/null)
@@ -94,7 +98,7 @@ already_succeeded() {
   # If any matching directory has metadata.yaml with status=success, treat as done.
   while IFS= read -r dir; do
     if [ -f "$dir/metadata.yaml" ] && \
-       grep -q "status: success" "$dir/metadata.yaml" 2>/dev/null; then
+       grep -q '^  status: success[[:space:]]*$' "$dir/metadata.yaml" 2>/dev/null; then
       echo "$dir"
       return 0
     fi
@@ -124,6 +128,7 @@ run_extract() {
 
 # === Pre-flight: print plan, count skips ===
 echo "=== Matrix wrapper: $TOTAL experiments planned ==="
+echo "Experiments root: $EXPERIMENTS_DIR"
 echo ""
 SKIP_COUNT=0
 PENDING_COUNT=0
@@ -132,12 +137,12 @@ for i in "${!MATRIX[@]}"; do
   IFS=":" read -r pattern controller idx <<<"${MATRIX[i]}"
   num=$((i + 1))
   if existing=$(already_succeeded "$pattern" "$controller" "$idx"); then
-    printf "[%2d/%d] %-6s %-11s r%-2d  SKIP (already in %s)\n" \
+    printf "[%2d/%d] %-6s %-14s r%-2d  SKIP (already in %s)\n" \
       "$num" "$TOTAL" "$pattern" "$controller" "$idx" "$(basename "$existing")"
     PLAN_STATUS[i]="SKIP"
     SKIP_COUNT=$((SKIP_COUNT + 1))
   else
-    printf "[%2d/%d] %-6s %-11s r%-2d  PENDING\n" \
+    printf "[%2d/%d] %-6s %-14s r%-2d  PENDING\n" \
       "$num" "$TOTAL" "$pattern" "$controller" "$idx"
     PLAN_STATUS[i]="PENDING"
     PENDING_COUNT=$((PENDING_COUNT + 1))
@@ -164,6 +169,7 @@ fi
 # === Pre-flight checks before launching first experiment ===
 echo ""
 echo "=== Pre-flight check ==="
+mkdir -p "$EXPERIMENTS_DIR"
 if [ ! -x "$RUN_BENCHMARK" ]; then
   echo "ERROR: $RUN_BENCHMARK not executable" >&2
   exit 1
@@ -254,4 +260,4 @@ echo ""
 echo "All planned experiments complete."
 echo "Next step: regenerate the aggregate report:"
 echo "  cd hack/analyze && source .venv/bin/activate"
-echo "  python aggregate.py ../../experiments/"
+echo "  python aggregate.py \"$EXPERIMENTS_DIR\""
