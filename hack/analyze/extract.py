@@ -47,11 +47,11 @@ import yaml
 METRIC_ACCUMULATION_SECONDS = 30
 # k6 load durations per pattern (see hack/k6/*.js stages)
 # step: quiet(30s) + ramp-up(1s) + hold(179s) + ramp-down(1s) = 211s
-# ramp/spike will be filled in when those patterns are run.
+# Values are the exact sums of the stages in hack/k6/<pattern>.js.
 PATTERN_LOAD_DURATION_S = {
     "step": 211,
-    "ramp": 211,   # placeholder; verify against hack/k6/ramp.js when ramp matrix begins
-    "spike": 211,  # placeholder; verify against hack/k6/spike.js when spike matrix begins
+    "ramp": 270,
+    "spike": 241,
 }
 
 MIN_REPLICAS = 1  # matches PHPA sample / native HPA YAML
@@ -139,6 +139,7 @@ def load_k6(path: Path) -> tuple[dict, list[str]]:
     dropped = 0
     all_durations_ms: list[float] = []
     success_durations_ms: list[float] = []
+    observed_start_time: datetime | None = None
 
     try:
         with path.open() as f:
@@ -156,6 +157,11 @@ def load_k6(path: Path) -> tuple[dict, list[str]]:
                 data = obj.get("data", {})
                 value = data.get("value")
                 tags = data.get("tags", {})
+                point_time = parse_iso_to_utc(data.get("time"))
+                if point_time is not None and (
+                    observed_start_time is None or point_time < observed_start_time
+                ):
+                    observed_start_time = point_time
 
                 if metric == "http_reqs":
                     total_reqs += int(value or 0)
@@ -190,6 +196,7 @@ def load_k6(path: Path) -> tuple[dict, list[str]]:
         "duration_success_p50_ms": round(percentile(success_durations_ms, 50), 2) if success_durations_ms else None,
         "duration_success_p95_ms": round(percentile(success_durations_ms, 95), 2) if success_durations_ms else None,
         "duration_success_p99_ms": round(percentile(success_durations_ms, 99), 2) if success_durations_ms else None,
+        "observed_start_time_utc": fmt_utc(observed_start_time),
     }, warnings
 
 
@@ -409,18 +416,17 @@ def compute_scaling_metrics(
         first_scaledown_rel_s_after_k6_stop = first_ts_epoch - k6_stop_epoch
 
         terminal = [s for s in scaledowns if s["to"] == MIN_REPLICAS]
-        if terminal:
+        ends_at_min = int(prom_replicas[-1][1]) <= MIN_REPLICAS
+        if ends_at_min and terminal:
             last_ts_epoch = terminal[-1]["rel_s_from_k6_start"] + k6_start_epoch
             full_scaledown_rel_s_after_k6_stop = last_ts_epoch - k6_stop_epoch
             scaledown_completed = True
         else:
-            min_reached = any(int(v) <= MIN_REPLICAS for _, v in prom_replicas)
-            scaledown_completed = min_reached
-            if not min_reached:
-                warnings.append(
-                    "scaledown_completed=false: experiment window ended with "
-                    "replicas above minReplicas; tail observation may be too short"
-                )
+            scaledown_completed = False
+            warnings.append(
+                "scaledown_completed=false: experiment window ended with "
+                "replicas above minReplicas; tail observation may be too short"
+            )
     else:
         # No scale-down detected: either load too short, or replicas never grew.
         if steady_state_replicas is None or steady_state_replicas <= MIN_REPLICAS:
@@ -553,6 +559,11 @@ def extract(exp_dir: Path) -> dict:
     pattern = metadata.get("pattern")
     controller = metadata.get("controller")
     repeat = metadata.get("repeat")
+    campaign = metadata.get("campaign")
+    scale_down_stabilization_seconds = metadata.get(
+        "scale_down_stabilization_seconds"
+    )
+    prediction_variant = metadata.get("prediction_variant")
     experiment_id = metadata.get("experiment_id", exp_dir.name)
     start_time_utc_str = metadata.get("start_time_utc", "")
     end_time_utc_str = metadata.get("end_time_utc", "")
@@ -568,20 +579,31 @@ def extract(exp_dir: Path) -> dict:
             "pattern": pattern,
             "controller": controller,
             "repeat": repeat,
+            "campaign": campaign,
+            "scale_down_stabilization_seconds": scale_down_stabilization_seconds,
+            "prediction_variant": prediction_variant,
             "warnings": warnings,
         }
 
     duration_s = int((end_time - start_time).total_seconds())
 
-    # Derive k6 start/stop from orchestrator constants.
-    from datetime import timedelta
-    k6_start = start_time + timedelta(seconds=METRIC_ACCUMULATION_SECONDS)
-    load_duration = PATTERN_LOAD_DURATION_S.get(pattern, 211)
-    k6_stop = k6_start + timedelta(seconds=load_duration)
-
     # 2. k6
     k6_metrics, w = load_k6(exp_dir / "k6.json")
     warnings.extend(w)
+
+    # Prefer the exact orchestrator timestamp when present, then the earliest
+    # observed k6 Point. Legacy experiments fall back to the old approximation.
+    from datetime import timedelta
+    k6_start = parse_iso_to_utc(metadata.get("k6_start_time_utc", ""))
+    if k6_start is None:
+        k6_start = parse_iso_to_utc(k6_metrics.get("observed_start_time_utc", ""))
+    if k6_start is None:
+        k6_start = start_time + timedelta(seconds=METRIC_ACCUMULATION_SECONDS)
+        warnings.append(
+            "k6 start timestamp unavailable; using metadata-derived fallback"
+        )
+    load_duration = PATTERN_LOAD_DURATION_S.get(pattern, 211)
+    k6_stop = k6_start + timedelta(seconds=load_duration)
 
     # 3. events
     rescales, w = load_events(exp_dir / "events.yaml")
@@ -630,6 +652,9 @@ def extract(exp_dir: Path) -> dict:
         "pattern": pattern,
         "controller": controller,
         "repeat": repeat,
+        "campaign": campaign,
+        "scale_down_stabilization_seconds": scale_down_stabilization_seconds,
+        "prediction_variant": prediction_variant,
         "start_time_utc": fmt_utc(start_time),
         "end_time_utc": fmt_utc(end_time),
         "duration_s": duration_s,
