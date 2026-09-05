@@ -73,7 +73,7 @@ class BenchmarkScriptTests(unittest.TestCase):
         env = os.environ.copy()
         if os.name == "nt":
             git_root = Path(self.bash).resolve().parents[1]
-            git_paths = [git_root / "usr" / "bin", git_root / "bin"]
+            git_paths = [REPO_ROOT / "bin", git_root / "usr" / "bin", git_root / "bin"]
             env["PATH"] = os.pathsep.join(
                 [*(str(path) for path in git_paths), env.get("PATH", "")]
             )
@@ -115,17 +115,24 @@ class BenchmarkScriptTests(unittest.TestCase):
     def test_metadata_fields_and_controller_manifests_are_explicit(self) -> None:
         script = RUN_BENCHMARK.read_text(encoding="utf-8")
         matrix_script = RUN_MATRIX.read_text(encoding="utf-8")
-        default_root = 'EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments}"'
+        default_root = (
+            'EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments/service-routing-v1}"'
+        )
         self.assertIn(default_root, script)
         self.assertIn(default_root, matrix_script)
         self.assertIn(
-            'CAMPAIGN="${CAMPAIGN:-stabilization-window-ablation-v2}"', script
+            'CAMPAIGN="${CAMPAIGN:-service-routing-v1}"', script
         )
         self.assertIn('PREDICTION_VARIANT="ewma_damped_cap"', script)
         for field in (
             "campaign:",
             "scale_down_stabilization_seconds:",
             "prediction_variant:",
+            "traffic_path:",
+            "load_generator:",
+            "endpoint:",
+            "k6_image:",
+            "connection_reuse:",
         ):
             self.assertIn(field, script)
         self.assertIn(
@@ -185,6 +192,13 @@ class BenchmarkScriptTests(unittest.TestCase):
             (old_run / "metadata.yaml").write_text(
                 "result:\n  status: success\n", encoding="utf-8"
             )
+            # A copied historical success must not satisfy the corrected
+            # traffic-path campaign merely because the directory name matches.
+            legacy_current_run = current_root / "20260708_000000_step_phpa_r1"
+            legacy_current_run.mkdir()
+            (legacy_current_run / "metadata.yaml").write_text(
+                "result:\n  status: success\n", encoding="utf-8"
+            )
 
             relative_root = current_root.relative_to(REPO_ROOT).as_posix()
             result = self.run_bash(
@@ -219,7 +233,14 @@ class BenchmarkScriptTests(unittest.TestCase):
             current_run = current_root / "20260826_000001_step_phpa_r1"
             current_run.mkdir()
             (current_run / "metadata.yaml").write_text(
-                "result:\n  status: success\n", encoding="utf-8"
+                'campaign: "service-routing-v1"\n'
+                'traffic_path: "service-clusterip"\n'
+                'load_generator: "in-cluster-service"\n'
+                'endpoint: "http://php-apache.default.svc:80"\n'
+                'k6_image: "grafana/k6:1.3.0"\n'
+                'connection_reuse: false\n'
+                'result:\n  status: success\n',
+                encoding="utf-8",
             )
             resumed = self.run_bash(
                 "hack/run_matrix.sh",
@@ -229,6 +250,40 @@ class BenchmarkScriptTests(unittest.TestCase):
             self.assertEqual(0, resumed.returncode, resumed.stderr)
             self.assertNotIn("command not found", resumed.stderr)
             self.assertIn("Summary: 1 already done, 26 pending.", resumed.stdout)
+
+    def test_matrix_dry_run_never_contacts_a_cluster(self) -> None:
+        with tempfile.TemporaryDirectory(
+            prefix=".matrix-offline-test-", dir=REPO_ROOT
+        ) as temp_dir:
+            temp_root = Path(temp_dir)
+            stub_dir = temp_root / "bin"
+            stub_dir.mkdir()
+            for command in ("kubectl", "kind", "curl", "k6"):
+                stub = stub_dir / command
+                stub.write_text(
+                    '#!/usr/bin/env bash\n'
+                    'printf "%s\\n" "$0 $*" >> "$K6_TEST_TRACE"\n'
+                    'exit 99\n',
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                stub.chmod(0o755)
+            trace = temp_root / "cluster-calls.txt"
+            result = self.run_bash(
+                "-c",
+                'export PATH="$PWD/$K6_TEST_BIN:$PATH"\n'
+                'bash hack/run_matrix.sh --dry-run',
+                extra_env={
+                    "K6_TEST_BIN": stub_dir.relative_to(REPO_ROOT).as_posix(),
+                    "K6_TEST_TRACE": trace.relative_to(REPO_ROOT).as_posix(),
+                    "EXPERIMENTS_ROOT": (
+                        temp_root / "new-campaign"
+                    ).relative_to(REPO_ROOT).as_posix(),
+                },
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("27 pending", result.stdout)
+            self.assertFalse(trace.exists(), "Dry-run contacted a cluster tool")
 
 
 if __name__ == "__main__":

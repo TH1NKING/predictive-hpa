@@ -10,6 +10,19 @@ The final report, environment snapshot, execution log, source snapshot,
 analysis snapshot, and checksum manifest are preserved in the
 [`benchmark-stabilization-window-ablation-v2` release](https://github.com/TH1NKING/predictive-hpa/releases/tag/benchmark-stabilization-window-ablation-v2).
 
+**Post-publication note — 2026-09-05:** Source review identified a load-routing
+limitation. The archived harness targets `http://localhost:8080` through
+`kubectl port-forward svc/php-apache 8080:80`. Kubernetes documents that a
+port-forward session selects one Pod, including when its target is a Service.
+That path does not exercise Service distribution across the Deployment's
+replicas. This confirms a limitation in the recorded harness; it does not
+establish the actual per-Pod request distribution in all historical runs or
+prove that routing caused their high failure rates. See the
+[official port-forward reference](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_port-forward/)
+and the [Service routing validation runbook](service-routing-validation.md).
+The historical tables, archived files, checksums, release assets, and release
+tag remain unchanged. This note reports no new experiment.
+
 ## 1. Goal and hypotheses
 
 This ablation separates two comparisons that would otherwise be confounded:
@@ -173,6 +186,12 @@ CRD, Prometheus, and target-service prerequisite checks.
 
 ## 8. Known limitations
 
+- The archived load harness uses a Service port-forward, which selects one
+  Pod rather than exercising Service distribution across replicas. The current
+  publication has no verified per-Pod request evidence sufficient to establish
+  historical distribution or attribute failure rates to this routing issue.
+  Capacity and request-success conclusions require a new routing calibration;
+  see the dated post-publication note above.
 - Each group has only `n=3`. Means, sample standard deviations, and effect
   differences are engineering summaries; no statistical significance is
   claimed.
@@ -222,10 +241,12 @@ total). All archived members were checked against the final manifest.
 
 ## 10. Reproduction and verification
 
-Run the benchmark only against a dedicated Kind cluster. The following commands
-reconstruct the recorded benchmark source delta over its fixed point, validate
-the implementation, preview the 27-run plan, and then—only when intentionally
-invoked—execute the matrix:
+The commands below reconstruct the **historical v2 harness**, including its
+port-forward load path, for source and analysis verification. They are not the
+procedure for a new comparative benchmark. New runs must first pass
+[Service routing validation](service-routing-validation.md) on a dedicated Kind
+cluster. No new Kind, E2E, or benchmark execution was performed for the
+post-publication update.
 
 ```bash
 git clone https://github.com/TH1NKING/predictive-hpa.git
@@ -240,8 +261,8 @@ python -m unittest discover -s hack/analyze -p 'test_*.py'
 python -m unittest discover -s hack/tests -p 'test_*.py'
 
 EXPERIMENTS_ROOT=experiments/ablation-v2 hack/run_matrix.sh --dry-run
-# Full execution: use only with the intended isolated Kind cluster active.
-EXPERIMENTS_ROOT=experiments/ablation-v2 hack/run_matrix.sh
+# Historical execution command (reference only; do not reuse the v2 data root):
+# EXPERIMENTS_ROOT=experiments/ablation-v2 hack/run_matrix.sh
 ```
 
 To inspect the archived analysis and regenerate its aggregate presentation from

@@ -1,6 +1,6 @@
 # PredictiveHPA (PHPA)
 
-> 基于 EWMA 时序预测的 Kubernetes 自定义 HPA 控制器——在 CPU 负载到达之前扩容，在负载离开之后更快缩容。
+> 基于 EWMA 时序预测的 Kubernetes 自定义 HPA 控制器，用于研究预测信号对扩缩容时机与资源成本的影响。
 
 [![Tests](https://github.com/TH1NKING/predictive-hpa/actions/workflows/test.yml/badge.svg)](https://github.com/TH1NKING/predictive-hpa/actions/workflows/test.yml)
 [![Lint](https://github.com/TH1NKING/predictive-hpa/actions/workflows/lint.yml/badge.svg)](https://github.com/TH1NKING/predictive-hpa/actions/workflows/lint.yml)
@@ -12,36 +12,28 @@
 
 ## 1. 核心价值主张
 
-原生 Kubernetes HPA 是**被动响应式**的：观察到 `当前 CPU > 目标值` 才开始扩容。这意味着突发流量场景下，系统必须先过载、指标先恶化，扩容才会发生——实测中单 Pod 以 250% 利用率超载运行约 30 秒后副本数才开始变化。
+PHPA 从 CPU 历史序列估计未来利用率，将预测信号用于副本决策。它能否更早扩容、降低请求失败或减少资源消耗，需要通过匹配配置的实验验证；当前数据不支持无条件的性能优势。
 
-PHPA 与原生 HPA 使用**完全相同的扩缩容公式**：
+PHPA 使用与原生 HPA 相同形式的基础副本计算公式：
 
 ```
 desiredReplicas = ceil(currentReplicas × cpu% / targetCPU%)
 ```
 
-唯一差异是输入信号：原生 HPA 输入**当前观测值**，PHPA 输入 **`EWMA(history) + slope × horizon` 的预测值**。同公式、不同输入——这个设计让对照实验的差异可以干净地归因于"预测 vs 观测"本身，而不被公式差异污染。
+当前预测实现为 **EWMA 平滑 + 阻尼趋势外推**（阻尼系数 `0.85`），控制器将预测值限制在 `0` 到 `1.3 × 当前 CPU`，再执行副本上下限、稳定窗口和容差规则。相同形式的公式不等于相同的完整控制流程；指标来源、采样延迟与协调行为仍可能不同，因此控制器对比不能直接归因于预测算法本身。
 
 ## 2. 实测数据（PHPA vs 原生 HPA）
 
-基于 18 次 k6 对照实验矩阵（3 种负载模式 × 2 种控制器 × 3 次重复，交替跑序保证集群状态可比），核心指标为**缩容资源浪费窗口**（负载归零后空载 Pod 持续运行的时间）：
+最新发布的 [稳定窗口消融 v2](docs/benchmarks/stabilization-window-ablation-v2.md) 包含 27 次实验：3 种负载模式 × 3 组控制器 × 3 次重复。它分别比较原生 HPA 的 300s/60s 窗口，以及同为 60s 窗口的 PHPA 与原生 HPA。
 
-| 负载模式 | PHPA | 原生 HPA | 改善 |
-|---|---|---|---|
-| step（阶跃） | 194 ± 15 s | 331 ± 69 s | **−41%** |
-| ramp（渐变） | 224 ± 0 s | 429 ± 2 s | **−48%** |
-| spike（脉冲） | 154 ± 17 s | 389 ± 0 s | **−60%** |
+| 对比 | 首次扩容 | 负载停止后的资源拖尾 | 总 Pod-seconds | 请求失败率均值 |
+|---|---|---|---|---|
+| Native-60 相对 Native-300 | 基本不变（差 0.0–0.7s） | 缩短约 203–240s † | 减少约 27%–36% | 变化方向不一致 |
+| PHPA-60 相对 Native-60 | 晚约 18–26s | 延长约 6–28s | 增加约 16%–69% | 降低约 2.1–4.4 个百分点 |
 
-（mean ± stdev，n=3。样本量小，未做显著性检验，诚实标注。）
+PHPA-60 的峰值副本增加约 88%–100%。这些是每组 `n=3` 的描述性均值差，未宣称统计显著。† Native-300 的 step/ramp 存在截尾，对应资源拖尾与缩短幅度为下界。原生 HPA 缩短稳定窗口的资源收益不能当作预测算法的收益。
 
-### 代价（诚实的反面数据）
-
-预测不是免费的。同一组实验中 PHPA 的两个劣势：
-
-- **首次扩容更慢 13%–31%**：EWMA 平滑 + Prometheus `rate()` 1 分钟窗口共同构成"平滑税"——信号要先穿过两层平均才能驱动决策。
-- **稳态过度扩容 80%–100%**：一阶差分外推在上升段会持续高估，稳态副本数显著高于原生 HPA。
-
-这两个数字与改善数字来自同一实验矩阵。PHPA 的适用场景是**缩容成本敏感、可容忍稳态冗余**的负载（如按量计费环境的波谷回收），不是无条件优于原生 HPA 的替代品。
+**证据限制（2026-09-05 补充）：** v2 失败率约 59%–96%，几乎所有组的全请求 p95 触及 10s 上限；归档脚本通过 `kubectl port-forward svc/php-apache` 压测，按 [Kubernetes 文档](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_port-forward/)，该会话选择一个 Pod，不能证明新增副本分担了请求。历史流量实际分布和高失败率根因尚未验证。下一轮应先按 [Service 流量校准流程](docs/benchmarks/service-routing-validation.md) 验证请求分布和容量，再运行正式对照；本次改动没有产生新的实验结果。
 
 ## 3. 架构
 
@@ -51,9 +43,9 @@ kubelet cAdvisor ──► Prometheus (TSDB)
                           ▼
                  ┌─ metricsprovider ─┐     业务语义接口，PromQL 不泄漏到调用方
                  │                   │
-                 │     predictor     │     纯函数 EWMA + 一阶差分外推，stateless
+                 │     predictor     │     纯函数 EWMA + 阻尼趋势外推，stateless
                  │                   │
-                 │     controller    │     Reconcile: clamp → 稳定窗口 → tolerance → scale 子资源
+                 │     controller    │     Reconcile: 预测限幅 → 副本 clamp → 稳定窗口 → tolerance → scale
                  └───────────────────┘
                           │
                           ▼
@@ -79,7 +71,7 @@ kubectl get phpa -w
 ```
 
 
-实测输出（kind 集群，php-apache 负载，target=50%）：
+历史输出示例（kind 集群，php-apache 负载，target=50%；仅用于说明状态列）：
 
 ```
 NAME                   REFERENCE    MINPODS   MAXPODS   REPLICAS   CURRENT%   PREDICTED%   AGE
@@ -91,10 +83,7 @@ predictivehpa-sample   php-apache   1         10        9          44         41
 predictivehpa-sample   php-apache   1         10        8          50         50           65m
 ```
 
-60m 行预测落后于观测（EWMA 抑制单点突变，即第 2 节的"平滑税"）；61m 趋势确立后预测反超并驱动扩容；其后过度扩容（10）被逐步回收至稳态 8 副本、利用率收敛到目标 50%。
-
-
-`PREDICTED%` 列是核心卖点：当预测值领先当前值时，控制器已经在扩容路上。
+`CURRENT%` 和 `PREDICTED%` 分别展示观测与限幅后的预测，`REPLICAS` 展示副本状态。单次输出不能证明提前扩容或容量收益；总体实验结果与限制见第 2 节。
 
 ## 5. CRD 字段
 
@@ -126,21 +115,21 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 
 | 决策 | 选择 | 被否决方案与理由 |
 |---|---|---|
-| 预测算法 | Simple EWMA + 一阶差分外推 | ARIMA/LSTM：控制器要求 O(1) 增量计算、单参数调参、无外部推理依赖；EWMA 是工程上 fit 度最高的选择 |
-| 扩缩容公式 | 与原生 HPA 完全一致 | 自定义公式会成为对照实验的 confounding variable，差异无法归因 |
+| 预测算法 | Simple EWMA + 阻尼趋势外推（系数 0.85） | ARIMA/LSTM：当前实现优先保持计算轻量、无需外部推理依赖 |
+| 扩缩容公式 | 与原生 HPA 采用相同形式的基础公式 | 减少公式差异，但完整控制器对比仍不能隔离预测算法的纯因果效应 |
 | alpha 参数类型 | `alphaPercent int32` (1–99) | `float64`：K8s API 惯例回避浮点（JSON 精度、validation 复杂）；与 `targetCPUUtilizationPercentage` 命名风格一致 |
 | 稳定窗口状态 | in-memory map（单副本） | annotation/status/ConfigMap 持久化：写冲突与语义错配；与原生 HPA 单实例 controller-manager 假设一致，limitation 显式写明 |
 | 字段校验位置 | OpenAPI schema（kubebuilder markers） | 控制器内校验：错误应在 admission 前置拒绝，而非进了 etcd 再报；webhook：当前无跨资源校验需求，不引入证书管理复杂度 |
-| 负数预测 clamp | Reconciler 层，predictor 不动 | predictor 内 clamp：一阶差分在下降信号出负数是算法的正确行为，业务约束属于业务层；保留原始值可观测性 |
+| 预测限幅 | 控制器限制为 0 到当前 CPU 的 1.3 倍，predictor 返回原始值 | predictor 内 clamp：业务约束属于控制器层；原始预测与限幅值的差异可通过日志观察 |
 
 ## 7. 测试策略
 
 双层证据，边界明确：
 
-- **envtest（17 specs，Ginkgo）**：决策逻辑的自动化回归——扩缩容公式、min/max clamp、tolerance 带、稳定窗口压制（注入 FakeClock 做确定性时间控制）。覆盖"控制器对给定输入做出正确决策"。
-- **k6 真集群对照实验（18 次矩阵）**：端到端行为证据——真实 Prometheus 延迟、真实 Pod 启动时间、真实指标噪声下的系统级表现。覆盖"决策在真实环境产生预期效果"。
+- **envtest（Ginkgo）**：决策逻辑的自动化回归——扩缩容公式、min/max clamp、tolerance 带、稳定窗口压制（注入 FakeClock 做确定性时间控制）。覆盖"控制器对给定输入做出正确决策"。
+- **k6 真集群对照实验（v2：27 次矩阵）**：记录指标延迟、Pod 启动与噪声共同作用下的观测结果；流量分配、过载、小样本及截尾限制见第 2 节和完整报告。
 
-envtest 证明逻辑正确，k6 证明效果真实。单元测试（predictor 9 个 + metricsprovider 3 个）覆盖算法边界与 PromQL 构造。
+单元测试覆盖 predictor 算法边界与 metricsprovider 的 PromQL 构造；集群实验的结论范围取决于负载路径、配置匹配与数据质量。
 
 ## 8. 已知 Limitation
 
@@ -149,6 +138,7 @@ envtest 证明逻辑正确，k6 证明效果真实。单元测试（predictor 9 
 3. **不支持 scale-to-zero**——`minReplicas: 0` 被运行时 fallback 到 1（需要外部 activator 架构，见 Roadmap）
 4. **仅支持 Deployment**——StatefulSet 等其他 workload 类型会被拒绝
 5. **仅支持 CPU 指标**——无 memory / 自定义指标抽象
+6. **历史压测流量路径待校准**——v2 不能证明请求在副本间分散，暂不据此承诺成功率、提前扩容或成本收益
 
 ## 9. Roadmap
 

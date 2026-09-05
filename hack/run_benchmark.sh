@@ -16,7 +16,7 @@
 #
 # Side effects:
 #   - Creates $EXPERIMENTS_ROOT/<timestamp>_<pattern>_<controller>_r<idx>/
-#   - Starts/stops controller process (writes /tmp/controller-current.log)
+#   - Starts/stops only its own controller process (per-run controller.log)
 #   - Re-deploys PHPA sample or native HPA YAML depending on controller
 #   - Resets php-apache Deployment to 1 replica before each run
 
@@ -26,6 +26,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
+source "$SCRIPT_DIR/lib/k6_runner.sh"
 
 # === Argument validation ===
 if [ $# -ne 3 ]; then
@@ -68,13 +69,15 @@ fi
 
 # === Configuration ===
 PHPA_SAMPLE="config/samples/autoscaling_v1alpha1_predictivehpa.yaml"
-EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments}"
+EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments/service-routing-v1}"
 case "$EXPERIMENTS_ROOT" in
   /*) ;;
   *) EXPERIMENTS_ROOT="$REPO_ROOT/$EXPERIMENTS_ROOT" ;;
 esac
-CAMPAIGN="${CAMPAIGN:-stabilization-window-ablation-v2}"
-CONTROLLER_LOG="/tmp/controller-current.log"
+CAMPAIGN="${CAMPAIGN:-service-routing-v1}"
+CONTROLLER_PID=""
+CONTROLLER_KUBECONFIG=""
+CONTROLLER_BINARY=""
 CONTROLLER_STARTUP_TIMEOUT=60
 METRIC_ACCUMULATION_SECONDS=30
 # Tail observation after k6 exits. Captures scale-down behavior.
@@ -89,29 +92,36 @@ PROM_URL="http://localhost:9090"
 
 # === Step 1: prerequisites ===
 echo "[1/11] prerequisite check"
-hack/prerequisites_check.sh
+bash hack/prerequisites_check.sh
 
 # === Step 2: create experiment directory ===
 echo ""
 echo "[2/11] create experiment directory"
 TIMESTAMP_LOCAL=$(date +%Y%m%d_%H%M%S)
 EXP_DIR="${EXPERIMENTS_ROOT}/${TIMESTAMP_LOCAL}_${PATTERN}_${CONTROLLER}_r${REPEAT_IDX}"
-mkdir -p "$EXP_DIR"
+mkdir -p "$EXPERIMENTS_ROOT"
+mkdir "$EXP_DIR"
 echo "  $EXP_DIR"
+CONTROLLER_LOG="$EXP_DIR/controller.log"
 
 # === Step 3: write initial metadata.yaml ===
 echo ""
 echo "[3/11] write metadata.yaml"
 START_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 START_TIME_UNIX=$(date +%s)
-GIT_COMMIT=$(git rev-parse --short HEAD)
+GIT_COMMIT=$(git rev-parse HEAD)
 GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 GIT_DIRTY=$([ -z "$(git status --porcelain)" ] && echo "false" || echo "true")
-K6_VERSION_LINE=$(k6 version | head -1)
+K8S_VERSION=$(k6_runner_kubectl version -o json | jq -r ' .serverVersion.gitVersion')
 
 cat > "$EXP_DIR/metadata.yaml" <<META
 experiment_id: ${TIMESTAMP_LOCAL}_${PATTERN}_${CONTROLLER}_r${REPEAT_IDX}
 campaign: "$CAMPAIGN"
+traffic_path: "$K6_TRAFFIC_PATH"
+load_generator: "$K6_EXECUTION_MODE"
+endpoint: "$K6_BASE_URL"
+k6_image: "$K6_IMAGE"
+connection_reuse: false
 pattern: $PATTERN
 controller: $CONTROLLER
 repeat: $REPEAT_IDX
@@ -126,9 +136,9 @@ git:
   branch: $GIT_BRANCH
   dirty: $GIT_DIRTY
 env:
-  k6_version: "$K6_VERSION_LINE"
-  cluster: kind-hpa-dev
-  k8s_version: "1.35.0"
+  k6_version: "see k6-version.txt"
+  cluster: "$BENCHMARK_CONTEXT"
+  k8s_version: "$K8S_VERSION"
 result:
   status: in_progress
   failure_reason: ""
@@ -153,93 +163,99 @@ fail_experiment() {
   exit "$exit_code"
 }
 
-# === Step 4: reset Deployment to 1 replica ===
+# Own only the controller process started below. Unexpected shell errors and
+# interrupts mark the run failed while retaining all partial local evidence.
+cleanup_benchmark() {
+  local status=$?
+  trap - EXIT INT TERM
+  if [ -n "$CONTROLLER_PID" ]; then
+    kill -TERM "$CONTROLLER_PID" 2>/dev/null || true
+    for ((stop_wait=0; stop_wait<15; stop_wait++)); do
+      kill -0 "$CONTROLLER_PID" 2>/dev/null || break
+      sleep 1
+    done
+    kill -KILL "$CONTROLLER_PID" 2>/dev/null || true
+    wait "$CONTROLLER_PID" 2>/dev/null || true
+  fi
+  if [ -n "$CONTROLLER_KUBECONFIG" ]; then
+    rm -f -- "$CONTROLLER_KUBECONFIG"
+  fi
+  if [ -n "$CONTROLLER_BINARY" ]; then
+    rm -f -- "$CONTROLLER_BINARY"
+  fi
+  if grep -q '^  status: in_progress' "$EXP_DIR/metadata.yaml"; then
+    sed -i 's|^  status: in_progress|  status: failed|' "$EXP_DIR/metadata.yaml"
+    sed -i 's|^  failure_reason: ""|  failure_reason: "orchestrator interrupted or unexpected command failure"|' "$EXP_DIR/metadata.yaml"
+    update_metadata end_time_utc "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+    update_metadata end_time_unix "$(date +%s)"
+    [ "$status" -ne 0 ] || status=2
+  fi
+  exit "$status"
+}
+trap cleanup_benchmark EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Record the precise target configuration and runtime image IDs before changes.
+k6_runner_kubectl get deploy php-apache -o json > "$EXP_DIR/deployment-before.json"
+k6_runner_kubectl get pods -l run=php-apache -o json > "$EXP_DIR/workload-pods-before.json"
+k6_runner_kubectl get service php-apache -o json > "$EXP_DIR/service-before.json"
+k6_runner_kubectl get endpointslices -l kubernetes.io/service-name=php-apache -o json > "$EXP_DIR/endpoints-before.json"
+k6_runner_kubectl get hpa -o json > "$EXP_DIR/hpa-before.json"
+k6_runner_kubectl get predictivehpas -o json > "$EXP_DIR/phpa-before.json"
+
+# Refuse extra policies targeting this Deployment rather than deleting objects
+# outside the two benchmark fixtures that this orchestrator manages.
+if ! jq -e 'all(.items[]; .spec.scaleTargetRef.name != "php-apache" or .metadata.name == "php-apache")' \
+    "$EXP_DIR/hpa-before.json" >/dev/null; then
+  fail_experiment "another HPA targets php-apache; remove that conflict before benchmarking" 1
+fi
+if ! jq -e 'all(.items[]; .spec.scaleTargetRef.name != "php-apache" or .metadata.name == "predictivehpa-sample")' \
+    "$EXP_DIR/phpa-before.json" >/dev/null; then
+  fail_experiment "another PHPA targets php-apache; remove that conflict before benchmarking" 1
+fi
+
+# Do not kill unrelated make/go processes or the owner of a shared port. An
+# existing controller must be stopped deliberately before any benchmark writes.
+command -v ss >/dev/null || fail_experiment "ss is required to check controller listener ownership" 1
+if ss -ltn | awk '$4 ~ /:8081$/ {found=1} END {exit !found}'; then
+  fail_experiment "port 8081 is already in use; stop the existing controller before benchmarking" 1
+fi
+
+# Disable both policies before resetting replicas, so a prior run cannot race
+# the reset. Every Kubernetes command is bound to the validated Kind context.
 echo ""
-echo "[4/11] reset Deployment to 1 replica"
-kubectl scale deploy php-apache --replicas=1 >/dev/null
-if ! kubectl rollout status deploy/php-apache --timeout=60s >/dev/null; then
+echo "[4/11] disable previous autoscaling policies and reset Deployment"
+k6_runner_kubectl delete hpa php-apache --ignore-not-found=true >/dev/null
+k6_runner_kubectl delete -f "$PHPA_SAMPLE" --ignore-not-found=true >/dev/null
+k6_runner_kubectl scale deploy php-apache --replicas=1 >/dev/null
+if ! k6_runner_kubectl rollout status deploy/php-apache --timeout=60s --request-timeout=65s >/dev/null; then
   fail_experiment "Deployment rollout did not stabilize within 60s"
 fi
-echo "  Deployment ready"
 
-# === Step 5: switch controller ===
 echo ""
 echo "[5/11] switch controller ($CONTROLLER)"
-
-# Kill any existing controller. We send SIGTERM to *every* pattern that
-# could possibly be a controller process from a prior run, then wait for
-# the metrics/health port (8081) to be released before starting a new one.
-# Three signals are necessary because make run forks multiple processes:
-#   - "make run" parent (bash wrapper from the Makefile target)
-#   - "go run cmd/main.go" (the go toolchain's compile-and-exec wrapper)
-#   - "go-build.../main" (the actual compiled binary, often parented to go run)
-echo "  killing any existing controller processes..."
-# Best-effort by name for the make/go wrappers.
-pkill -f "make run" 2>/dev/null || true
-pkill -f "go run.*cmd/main.go" 2>/dev/null || true
-# Definitive teardown: kill whatever holds the controller health port 8081.
-# `go run` execs the compiled binary from an unpredictable temp path (e.g.
-# /tmp/go-buildNNN/b001/exe/main) whose argv does not match a stable name
-# pattern (the old "/go-build/.*/main" pattern misses "go-buildNNN" — no
-# slash after go-build), so identify the process by the port it binds
-# instead. SIGTERM first, escalate to SIGKILL if it does not release.
-for i in $(seq 1 15); do
-  # Extract the :8081 holder's pid with awk (not grep): grep exits 1 when
-  # there is no match, which under `set -o pipefail` + `set -e` would abort
-  # the whole script the moment no controller is running (the common case).
-  # awk exits 0 on no match, so an empty result is not an error.
-  pids=$(ss -ltnp 2>/dev/null | awk -F'pid=' '/:8081 /{split($2,a,","); print a[1]}' | sort -u)
-  if [ -z "$pids" ]; then
-    break
-  fi
-  sig=TERM
-  if [ "$i" -ge 10 ]; then
-    sig=KILL
-  fi
-  echo "$pids" | xargs -r kill -"$sig" 2>/dev/null || true
-  sleep 1
-done
-
 if [ "$CONTROLLER" = "phpa" ]; then
-  # Ensure no native HPA conflicts
-  kubectl delete hpa php-apache --ignore-not-found=true >/dev/null
-  # Ensure PHPA sample exists
-  kubectl apply -f "$PHPA_SAMPLE" >/dev/null
-
-  # Truncate controller log so grep below cannot match stale "Starting workers"
-  : > "$CONTROLLER_LOG"
-
-  # Start controller in background. We disown so the orchestrator can exit
-  # without taking the controller with it (it is intentionally a long-lived
-  # process that the orchestrator owns the lifecycle of).
-  echo "  starting controller..."
-  nohup make run > "$CONTROLLER_LOG" 2>&1 &
-  disown
-  # Wait for the controller-runtime "Starting workers" log line. The 60s
-  # ceiling accommodates the Makefile preamble (controller-gen + fmt + vet
-  # + go build), which can take 15-25s on a cold cache.
+  k6_runner_kubectl apply -f "$PHPA_SAMPLE" >/dev/null
+  # The private kubeconfig is kept in /tmp, never in exported run artifacts.
+  CONTROLLER_KUBECONFIG=$(mktemp /tmp/phpa-benchmark-kubeconfig.XXXXXX)
+  chmod 600 "$CONTROLLER_KUBECONFIG"
+  k6_runner_kubectl config view --minify --flatten --raw > "$CONTROLLER_KUBECONFIG"
+  CONTROLLER_BINARY=$(mktemp /tmp/phpa-benchmark-controller.XXXXXX)
+  if ! go build -o "$CONTROLLER_BINARY" ./cmd; then
+    fail_experiment "controller build failed"
+  fi
+  KUBECONFIG="$CONTROLLER_KUBECONFIG" "$CONTROLLER_BINARY" > "$CONTROLLER_LOG" 2>&1 &
+  CONTROLLER_PID=$!
   STARTED=false
-  for i in $(seq 1 $CONTROLLER_STARTUP_TIMEOUT); do
-    if grep -q "Starting workers" "$CONTROLLER_LOG" 2>/dev/null; then
-      STARTED=true
-      break
-    fi
-    # Also fail fast if make run died (exit-status detectable in log)
-    if grep -qE "make: \*\*\*|address already in use|exit status 1" "$CONTROLLER_LOG" 2>/dev/null; then
-      fail_experiment "controller failed to start (check $CONTROLLER_LOG; common causes: port 8081 still bound, build error)"
-    fi
+  for ((i=0; i<CONTROLLER_STARTUP_TIMEOUT; i++)); do
+    if grep -q "Starting workers" "$CONTROLLER_LOG"; then STARTED=true; break; fi
+    kill -0 "$CONTROLLER_PID" 2>/dev/null || fail_experiment "controller failed to start (see controller.log)"
     sleep 1
   done
-  if [ "$STARTED" = "false" ]; then
-    fail_experiment "controller did not reach 'Starting workers' within ${CONTROLLER_STARTUP_TIMEOUT}s (check $CONTROLLER_LOG)"
-  fi
-  echo "  controller started"
-
-elif [ "$CONTROLLER" = "native_hpa_300" ] || [ "$CONTROLLER" = "native_hpa_60" ]; then
-  # Ensure PHPA controller is not running (already killed above)
-  # PHPA sample stays but is inert without the controller
-  kubectl apply -f "$NATIVE_HPA_YAML" >/dev/null
-  echo "  native HPA applied from $NATIVE_HPA_YAML"
+  [ "$STARTED" = true ] || fail_experiment "controller startup timed out (see controller.log)"
+else
+  k6_runner_kubectl apply -f "$NATIVE_HPA_YAML" >/dev/null
 fi
 
 # === Step 6: metric accumulation pause ===
@@ -250,10 +266,9 @@ sleep "$METRIC_ACCUMULATION_SECONDS"
 # === Step 7: run k6 load ===
 echo ""
 echo "[7/11] run k6 pattern: $PATTERN"
-K6_SCRIPT="hack/k6/${PATTERN}.js"
 K6_JSON="$EXP_DIR/k6.json"
-if ! k6 run --out json="$K6_JSON" --log-output=file="$EXP_DIR/k6-warnings.log" "$K6_SCRIPT"; then
-  fail_experiment "k6 run failed (see $EXP_DIR/k6.json)"
+if ! k6_runner_run "${PATTERN}.js" "$EXP_DIR"; then
+  fail_experiment "in-cluster k6 run failed (see k6-runner.json and retained artifacts)"
 fi
 
 # Tail observation: k6's ramping-arrival-rate executor exits early when
@@ -289,6 +304,8 @@ prom_query_range() {
   if ! result=$(curl -sf --max-time 10 "$url"); then
     fail_experiment "Prometheus query_range failed for $key" 3
   fi
+  jq -e '.status == "success"' <<<"$result" >/dev/null || \
+    fail_experiment "Prometheus returned an error for $key" 3
   echo "  \"$key\": $result${comma}" >> "$PROM_OUT"
 }
 
@@ -300,6 +317,14 @@ prom_query_range "cpu_pct" \
   '(avg(rate(container_cpu_usage_seconds_total{namespace="default",pod=~"php-apache-.*",container!=""}[1m]))/avg(kube_pod_container_resource_requests{namespace="default",pod=~"php-apache-.*",resource="cpu"}))*100' \
   ","
 
+prom_query_range "cpu_by_pod" \
+  'sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="default",pod=~"php-apache-.*",container!="",container!="POD"}[1m]))' \
+  ","
+
+prom_query_range "load_generator_cpu" \
+  'sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="default",pod=~"phpa-k6-.*",container="k6"}[1m]))' \
+  ","
+
 prom_query_range "rps_pkt_rate" \
   'sum(rate(container_network_receive_packets_total{namespace="default",pod=~"php-apache-.*"}[1m]))' \
   ""
@@ -307,12 +332,10 @@ prom_query_range "rps_pkt_rate" \
 echo "}" >> "$PROM_OUT"
 
 # K8s events
-kubectl get events --sort-by='.lastTimestamp' -o yaml > "$EXP_DIR/events.yaml"
+k6_runner_kubectl get events --sort-by='.lastTimestamp' -o yaml > "$EXP_DIR/events.yaml"
 
-# Controller log (only meaningful for phpa)
-if [ "$CONTROLLER" = "phpa" ] && [ -f "$CONTROLLER_LOG" ]; then
-  cp "$CONTROLLER_LOG" "$EXP_DIR/controller.log"
-fi
+k6_runner_kubectl get pods -l run=php-apache -o json > "$EXP_DIR/workload-pods-after.json"
+k6_runner_kubectl get endpointslices -l kubernetes.io/service-name=php-apache -o json > "$EXP_DIR/endpoints-after.json"
 
 echo "  collected: k6.json, prom.json, events.yaml$([ "$CONTROLLER" = "phpa" ] && echo ", controller.log")"
 
@@ -333,6 +356,11 @@ echo "  prom replicas series count: $PROM_REPLICAS_SERIES"
 if [ "$PROM_REPLICAS_SERIES" -eq 0 ]; then
   fail_experiment "prom replicas series is empty (Prometheus may have lost connection)" 3
 fi
+
+if [ "$CONTROLLER" = phpa ]; then
+  kill -0 "$CONTROLLER_PID" 2>/dev/null || fail_experiment "controller exited during the experiment"
+fi
+[ "$K6_REQS" -gt 0 ] || fail_experiment "k6 did not record any requests" 3
 
 # === Step 11: mark success ===
 echo ""
