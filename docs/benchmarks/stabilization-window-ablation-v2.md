@@ -23,6 +23,10 @@ and the [Service routing validation runbook](service-routing-validation.md).
 The historical tables, archived files, checksums, release assets, and release
 tag remain unchanged. This note reports no new experiment.
 
+Subsequent [Service routing calibration results from 2026-09-05](service-routing-validation-results-20260905.md)
+record separate fixed-replica observations on the new load path; they do not
+reconstruct this campaign's historical traffic or revise its numerical data.
+
 ## 1. Goal and hypotheses
 
 This ablation separates two comparisons that would otherwise be confounded:

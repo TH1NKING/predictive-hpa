@@ -1,8 +1,12 @@
 # Service routing validation before the next benchmark
 
-Status: implementation and protocol prepared on **2026-09-05**. No new Kind
-cluster, E2E test, calibration, or benchmark was run for this change. The v2
-release, its tag, archived datasets, and checksums remain historical records.
+Status: implementation and protocol prepared on **2026-09-05**, followed by
+an authorized live diagnostic with 14 valid probes on the dedicated Kind
+cluster. The [results report](service-routing-validation-results-20260905.md)
+records request distribution and a repeated one-to-five-replica improvement
+at 25 RPS under a diagnostic service criterion. This was a fixed-replica
+calibration; a formal autoscaler comparison remains separate. The v2 release,
+its tag, archived datasets and checksums remain historical records.
 
 ## Why calibration comes first
 
@@ -195,8 +199,10 @@ application latency and success thresholds:
 
 For each regime, specify offered load relative to both initial and maximum
 replica capacity. A workload may overload one initial Pod yet fit after
-expansion; report this distinction. Do not reuse the historical `25 RPS` as a
-validated capacity setting without new calibration.
+expansion; report this distinction. The September 5 diagnostic observed this
+at 25 RPS: one Pod failed the criterion while five passed. That result does
+not make 25 RPS a universally validated capacity setting; calibrate it for the
+declared environment and the normal, near-capacity and overload regimes.
 
 Before a formal v3 run, match Native-60 and PHPA-60 on minimum/maximum replicas,
 CPU target, resource requests/limits, application image, stabilization window,

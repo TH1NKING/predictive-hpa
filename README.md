@@ -33,7 +33,9 @@ desiredReplicas = ceil(currentReplicas × cpu% / targetCPU%)
 
 PHPA-60 的峰值副本增加约 88%–100%。这些是每组 `n=3` 的描述性均值差，未宣称统计显著。† Native-300 的 step/ramp 存在截尾，对应资源拖尾与缩短幅度为下界。原生 HPA 缩短稳定窗口的资源收益不能当作预测算法的收益。
 
-**证据限制（2026-09-05 补充）：** v2 失败率约 59%–96%，几乎所有组的全请求 p95 触及 10s 上限；归档脚本通过 `kubectl port-forward svc/php-apache` 压测，按 [Kubernetes 文档](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_port-forward/)，该会话选择一个 Pod，不能证明新增副本分担了请求。历史流量实际分布和高失败率根因尚未验证。下一轮应先按 [Service 流量校准流程](docs/benchmarks/service-routing-validation.md) 验证请求分布和容量，再运行正式对照；本次改动没有产生新的实验结果。
+**v2 证据限制（2026-09-05 补充）：** v2 失败率约 59%–96%，几乎所有组的全请求 p95 触及 10s 上限；归档脚本通过 `kubectl port-forward svc/php-apache` 压测，按 [Kubernetes 文档](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_port-forward/)，该会话选择一个 Pod，不能证明新增副本分担了请求。历史流量实际分布和高失败率根因尚未验证。
+
+**新的 Service 路径校准已完成：** [2026-09-05 校准报告](docs/benchmarks/service-routing-validation-results-20260905.md) 记录了 14 次有效固定副本探针，每个目标 Pod 均有请求证据。同为 25 RPS，5 副本在 90s 和反序 180s 探针中均为 100% HTTP 200、p95 约 80–87ms；1 副本两次均未达到预设成功率与延迟标准。这证明了本次环境与负载下从 1 到 5 副本的承载改善，不证明精确最大容量、5 到 10 副本的容量增益、统计显著性或预测算法收益。正式控制器对照仍需遵循 [校准与实验流程](docs/benchmarks/service-routing-validation.md)。
 
 ## 3. 架构
 
@@ -138,7 +140,7 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 3. **不支持 scale-to-zero**——`minReplicas: 0` 被运行时 fallback 到 1（需要外部 activator 架构，见 Roadmap）
 4. **仅支持 Deployment**——StatefulSet 等其他 workload 类型会被拒绝
 5. **仅支持 CPU 指标**——无 memory / 自定义指标抽象
-6. **历史压测流量路径待校准**——v2 不能证明请求在副本间分散，暂不据此承诺成功率、提前扩容或成本收益
+6. **历史压测结论受流量路径限制**——新 Service 校准验证了当前请求分配，但不能追溯证明 v2 历史流量分布或预测收益
 
 ## 9. Roadmap
 
