@@ -71,7 +71,7 @@ case "${1:-}" in
               printf '{"metrics":{"http_reqs":{"count":1,"rate":0.5}}}\n'
             fi
             ;;
-          k6-version.txt) printf 'k6 v1.3.0\n' ;;
+          k6-version.txt) printf '%s\n' "${MOCK_K6_VERSION:-k6 v1.3.0}" ;;
           k6-exit-code) printf '%s\n' "${MOCK_K6_EXIT_CODE:-0}" ;;
           k6-start-time-utc) printf '2026-09-05T00:00:00Z\n' ;;
           k6-end-time-utc) printf '2026-09-05T00:00:02Z\n' ;;
@@ -291,6 +291,74 @@ class K6RunnerTests(unittest.TestCase):
         self.assertIn("99", metadata["failure_reason"])
         self.assertEqual(NDJSON, (self.output_dir / "k6.json").read_text(encoding="utf-8"))
         self.assert_own_resources_cleaned()
+
+    def test_official_image_build_version_is_preserved_and_succeeds(self) -> None:
+        version = "k6 v1.3.0+dirty (commit/5870e99ae8-dirty, go1.25.1, linux/amd64)"
+        image = (
+            "grafana/k6:1.3.0@sha256:"
+            "a90b459a3768c46ad1013da53af24189f735d7112273c6ac3212ca8ed0e18656"
+        )
+        result = self.invoke(
+            'k6_runner_run step.js "$K6_TEST_OUTPUT"',
+            K6_IMAGE=image,
+            MOCK_K6_VERSION=version,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("success", self.read_json("k6-runner.json")["status"])
+        self.assertEqual(image, self.read_json("k6-runner.json")["image"])
+        self.assertEqual(
+            version + "\n", (self.output_dir / "k6-version.txt").read_text(encoding="utf-8")
+        )
+        self.assert_own_resources_cleaned()
+
+    def test_version_accepts_build_metadata_but_rejects_other_release_suffixes(self) -> None:
+        self.output_dir.mkdir()
+        artifacts = {
+            "k6.json": NDJSON,
+            "k6-summary.json": '{"metrics":{"http_reqs":{"count":1}}}\n',
+            "k6-start-time-utc": "2026-09-05T00:00:00Z\n",
+            "k6-end-time-utc": "2026-09-05T00:00:02Z\n",
+            "k6-start-time-unix": "1788566400\n",
+            "k6-end-time-unix": "1788566402\n",
+            "k6-exit-code": "0\n",
+        }
+        for filename, contents in artifacts.items():
+            (self.output_dir / filename).write_text(contents, encoding="utf-8")
+        accepted = (
+            "k6 v1.3.0",
+            "k6 v1.3.0 (commit/5870e99ae8, go1.25.1, linux/amd64)",
+            "k6 v1.3.0+dirty",
+            "k6 v1.3.0+build.001.g5870e99ae8-dirty (go1.25.1, linux/amd64)",
+            "k6 v1.3.0+BUILD-7.0",
+        )
+        rejected = (
+            "k6 v1.3.1+dirty",
+            "k6 v1.30.0+dirty",
+            "k6 v1.3.01+dirty",
+            "k6 v1.3.0-rc.1",
+            "k6 v1.3.0-rc.1+dirty",
+            "k6 v1.3.0dirty",
+            "k6 v1.3.0+",
+            "k6 v1.3.0+.dirty",
+            "k6 v1.3.0+dirty.",
+            "k6 v1.3.0+build..dirty",
+            "k6 v1.3.0+build_dirty",
+            "k6 v1.3.0+dirty+again",
+            "k6 v1.3.0+dirty/extra",
+        )
+        for version in (*accepted, *rejected):
+            with self.subTest(version=version):
+                (self.output_dir / "k6-version.txt").write_text(
+                    version + "\n", encoding="utf-8"
+                )
+                result = self.invoke('k6_runner_validate_artifacts "$K6_TEST_OUTPUT"')
+                self.assertEqual(0 if version in accepted else 1, result.returncode, result.stderr)
+                if version in rejected:
+                    self.assertIn("does not match the pinned image version", result.stderr)
+                self.assertEqual(
+                    version + "\n", (self.output_dir / "k6-version.txt").read_text(encoding="utf-8")
+                )
+        self.assertEqual([], self.calls())
 
     def test_nested_summary_counter_is_also_accepted(self) -> None:
         result = self.invoke(

@@ -188,7 +188,9 @@ k6_runner_validate_artifacts() {
     echo "ERROR: k6-summary.json must contain a valid summary with completed requests" >&2
     return 1
   fi
-  grep -Eq '^k6 v1\.3\.0([[:space:]]|$)' "$output_dir/k6-version.txt" || {
+  # Official images can report SemVer build metadata (for example +dirty).
+  # Keep the release exact and reject prereleases or malformed build suffixes.
+  grep -Eq '^k6 v1\.3\.0(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?([[:space:]]|$)' "$output_dir/k6-version.txt" || {
     echo "ERROR: collected k6 version does not match the pinned image version" >&2; return 1;
   }
   for file in k6-start-time-utc k6-end-time-utc; do
