@@ -5,35 +5,20 @@
 
 import http from 'k6/http';
 
-// php-apache Service is reached via:
-//   kubectl port-forward svc/php-apache 8080:80
-// See docs/PHASE3_BENCHMARK_DESIGN.md for the rationale of choosing
-// port-forward over an in-cluster k6 Job.
-export const BASE_URL = 'http://localhost:8080';
+// The runner executes inside the dedicated Kind cluster and sends each request
+// through the Service ClusterIP. Its fixed environment disables connection
+// reuse so existing keep-alive connections do not pin traffic to earlier Pods.
+export const BASE_URL = 'http://php-apache.default.svc:80';
 
 // Per-request timeout. php-apache responses are ~1-5ms when not
 // overloaded; the 10s ceiling exists only to prevent indefinite hangs
 // from skewing latency percentiles.
 export const REQUEST_TIMEOUT = '10s';
 
-// Target RPS for all three patterns. CALIBRATED in Phase 3.2 against
-// the actual application behavior of registry.k8s.io/hpa-example.
-//
-// Calibration findings (experiments/calibration/calibration_20260526_*.md):
-//   - RPS=5 (1 RPS/Pod across 5 Pods): CPU=14.5%, latency p95=38ms (clean)
-//   - RPS=15 (3 RPS/Pod): saturated, dropped=101, p95 hit 10s timeout
-//   - The hpa-example image is intentionally CPU-bound (1M sqrt iterations
-//     per request) + Apache prefork MPM limits concurrent workers,
-//     yielding ~2-3 RPS/Pod realistic capacity (not the theoretical
-//     ~10 RPS/Pod estimated pre-calibration).
-//
-// TARGET_RPS=25 is chosen as a workload that:
-//   1. Triggers scaling from 1 replica (25 RPS on 1 Pod is clearly overload)
-//   2. Stabilizes within maxReplicas=10 capacity (25 RPS across 10 Pods =
-//      2.5 RPS/Pod, in the linear non-saturated regime)
-//   3. Leaves SLA-grade latency headroom post-scale-up for clean PHPA vs
-//      native HPA comparison (vs ~34 RPS which would push the system to
-//      the saturation knee)
+// Historical offered load, retained only to preserve the workload definition.
+// Earlier capacity estimates used a port-forward that selected one Pod; the
+// intended 10-Pod capacity and latency headroom have not been validated.
+// Recalibrate through the Service before treating new matrix data as evidence.
 export const TARGET_RPS = 25;
 
 // Quiet period at the start of each test. Required for:

@@ -52,6 +52,10 @@ hack/analyze/.venv/
 hack/**/__pycache__/
 hack/**/*.pyc
 
+# Routing diagnostics contain raw requests, Pod logs and environment snapshots.
+/benchmark-runs/
+/experiments/service-routing-v1/
+
 # v0.1.0 baseline archive — mirror the live experiments/ raw-data exclusions
 experiments-v0.1.0-baseline/*/k6.json
 experiments-v0.1.0-baseline/*/prom.json

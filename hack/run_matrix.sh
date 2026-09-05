@@ -21,7 +21,7 @@
 # Usage:
 #   hack/run_matrix.sh           # run all remaining experiments
 #   hack/run_matrix.sh --dry-run # show plan, don't run anything
-#   EXPERIMENTS_ROOT=experiments/ablation-v2 hack/run_matrix.sh --dry-run
+#   EXPERIMENTS_ROOT=experiments/service-routing-v1 hack/run_matrix.sh --dry-run
 #
 # Manual interruption:
 #   Ctrl+C once: wrapper exits AFTER current experiment finishes
@@ -51,12 +51,16 @@ TOTAL="${#MATRIX[@]}"
 
 # === Configuration ===
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments}"
+EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments/service-routing-v1}"
 case "$EXPERIMENTS_ROOT" in
   /*) ;;
   *) EXPERIMENTS_ROOT="$REPO_ROOT/$EXPERIMENTS_ROOT" ;;
 esac
 export EXPERIMENTS_ROOT
+CAMPAIGN="${CAMPAIGN:-service-routing-v1}"
+export CAMPAIGN
+source "$REPO_ROOT/hack/lib/k6_runner.sh"
+k6_runner_validate_config
 EXPERIMENTS_DIR="$EXPERIMENTS_ROOT"
 RUN_BENCHMARK="$REPO_ROOT/hack/run_benchmark.sh"
 EXTRACT_PY="$REPO_ROOT/hack/analyze/extract.py"
@@ -64,9 +68,12 @@ EXTRACT_VENV="$REPO_ROOT/hack/analyze/.venv/bin/python"
 
 # === Argument parsing ===
 DRY_RUN=false
-if [ "${1:-}" = "--dry-run" ]; then
-  DRY_RUN=true
-fi
+case "${1:-}" in
+  --dry-run) DRY_RUN=true ;;
+  "") ;;
+  *) echo "USAGE: $0 [--dry-run]" >&2; exit 1 ;;
+esac
+[ $# -le 1 ] || { echo "USAGE: $0 [--dry-run]" >&2; exit 1; }
 
 # === Helpers ===
 
@@ -95,10 +102,17 @@ already_succeeded() {
   if [ -z "$matches" ]; then
     return 1
   fi
-  # If any matching directory has metadata.yaml with status=success, treat as done.
+  # Resume only compatible Service-path evidence from this campaign and image.
+  # Missing fields deliberately reject archived v2 successes even in this root.
   while IFS= read -r dir; do
     if [ -f "$dir/metadata.yaml" ] && \
-       grep -q '^  status: success[[:space:]]*$' "$dir/metadata.yaml" 2>/dev/null; then
+       grep -q '^  status: success[[:space:]]*$' "$dir/metadata.yaml" 2>/dev/null &&
+       grep -Fxq "campaign: \"$CAMPAIGN\"" "$dir/metadata.yaml" &&
+       grep -Fxq "traffic_path: \"$K6_TRAFFIC_PATH\"" "$dir/metadata.yaml" &&
+       grep -Fxq "load_generator: \"$K6_EXECUTION_MODE\"" "$dir/metadata.yaml" &&
+       grep -Fxq "endpoint: \"$K6_BASE_URL\"" "$dir/metadata.yaml" &&
+       grep -Fxq "k6_image: \"$K6_IMAGE\"" "$dir/metadata.yaml" &&
+       grep -Fxq 'connection_reuse: false' "$dir/metadata.yaml"; then
       echo "$dir"
       return 0
     fi
