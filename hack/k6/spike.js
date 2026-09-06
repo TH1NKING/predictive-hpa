@@ -23,6 +23,8 @@
 import {
   TARGET_RPS,
   PRE_LOAD_QUIET_SECONDS,
+  PRE_ALLOCATED_VUS,
+  MAX_VUS,
   get,
 } from './lib/common.js';
 
@@ -54,8 +56,8 @@ export const options = {
       executor: 'ramping-arrival-rate',
       startRate: 0,
       timeUnit: '1s',
-      preAllocatedVUs: 100,
-      maxVUs: 200,
+      preAllocatedVUs: PRE_ALLOCATED_VUS,
+      maxVUs: MAX_VUS,
       stages: buildStages(),
     },
   },

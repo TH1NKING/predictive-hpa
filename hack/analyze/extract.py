@@ -25,15 +25,16 @@ Design notes:
   fields plus a warnings entry; aggregate.py is responsible for handling nulls.
 - All timestamps in the output are UTC ISO 8601 with 'Z' suffix.
 - Latencies are reported in milliseconds (matching k6's native unit).
-- "k6 stop" is computed as start_time + METRIC_ACCUMULATION_SECONDS + STEP_DURATION
-  rather than parsed from k6 output, because the orchestrator drives those timings
-  deterministically.
+- Historical scaling/resource fields preserve their original definitions.
+- controlled-pilot-v1 adds an explicitly named measurement window using runner
+  timestamp files and fixed offered-load-end + 360s, with coverage validation.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -55,6 +56,11 @@ PATTERN_LOAD_DURATION_S = {
 }
 
 MIN_REPLICAS = 1  # matches PHPA sample / native HPA YAML
+CONTROLLED_PROTOCOL = "controlled-pilot-v1"
+PILOT_IDENTITY_FIELDS = (
+    "protocol_version", "rps", "pre_allocated_vus", "max_vus",
+    "benchmark_source_sha256", "benchmark_config_sha256", "post_load_tail_seconds",
+)
 
 
 def parse_iso_to_utc(s: str) -> datetime | None:
@@ -139,6 +145,7 @@ def load_k6(path: Path) -> tuple[dict, list[str]]:
     dropped = 0
     all_durations_ms: list[float] = []
     success_durations_ms: list[float] = []
+    http_200_count = 0
     observed_start_time: datetime | None = None
 
     try:
@@ -174,6 +181,8 @@ def load_k6(path: Path) -> tuple[dict, list[str]]:
                     if value is None:
                         continue
                     all_durations_ms.append(float(value))
+                    if tags.get("status") == "200":
+                        http_200_count += 1
                     if tags.get("expected_response") == "true" and tags.get("status") == "200":
                         success_durations_ms.append(float(value))
     except OSError as e:
@@ -189,6 +198,11 @@ def load_k6(path: Path) -> tuple[dict, list[str]]:
         "total_requests": total_reqs if total_reqs else failed_denominator,
         "failed_count": failed_count,
         "failed_rate_pct": round(failed_rate, 2) if failed_rate is not None else None,
+        "successful_requests_http_200": http_200_count,
+        "successful_rate_http_200_pct": (
+            round(http_200_count / failed_denominator * 100.0, 2)
+            if failed_denominator else None
+        ),
         "dropped_iterations": dropped,
         "duration_p50_ms": round(percentile(all_durations_ms, 50), 2) if all_durations_ms else None,
         "duration_p95_ms": round(percentile(all_durations_ms, 95), 2) if all_durations_ms else None,
@@ -548,6 +562,121 @@ def compute_resource_metrics(
 # Main
 # ============================================================================
 
+def compute_controlled_measurement(
+    exp_dir: Path, metadata: dict, prom_replicas: list[tuple[int, float]],
+) -> tuple[dict, list[str]]:
+    """Measure one fixed load-onset-to-tail window without setup or drain bias.
+
+    Replica samples hold their value until the next sample. A boundary may use
+    a preceding sample at most 15 seconds old; larger observation gaps invalidate
+    this measurement instead of silently extrapolating. Historical metric keys
+    remain separate and retain their original definitions.
+    """
+    result: dict = {
+        "window_valid": False,
+        "sampling_precision_s": 15,
+        "data_source": "prom.json replicas",
+        "events": [],
+    }
+    try:
+        runner_start = int((exp_dir / "k6-start-time-unix").read_text().strip())
+        runner_end = int((exp_dir / "k6-end-time-unix").read_text().strip())
+        schedule = PATTERN_LOAD_DURATION_S[metadata["pattern"]]
+        tail_seconds = int(metadata["post_load_tail_seconds"])
+        onset = runner_start + 30
+        offered_end = runner_start + schedule
+        tail_end = int(metadata["observation_end_time_unix"])
+        if runner_start <= 0 or runner_end < offered_end - 2:
+            raise ValueError("runner timestamps do not cover the declared load schedule")
+        if tail_seconds != 360 or tail_end != offered_end + tail_seconds:
+            raise ValueError("observation boundary does not match offered load end + 360s")
+        if int(metadata["end_time_unix"]) < tail_end:
+            raise ValueError("collection ended before the declared observation boundary")
+        for key, expected in (("load_start_time_unix", onset),
+                              ("offered_load_end_time_unix", offered_end)):
+            if key in metadata and int(metadata[key]) != expected:
+                raise ValueError(f"{key} disagrees with the runner timestamp and schedule")
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return result, [f"controlled measurement unavailable: {exc}"]
+
+    result.update({
+        "runner_start_time_unix": runner_start,
+        "runner_end_time_unix": runner_end,
+        "load_onset_time_unix": onset,
+        "offered_load_end_time_unix": offered_end,
+        "tail_end_time_unix": tail_end,
+        "window_duration_s": tail_end - onset,
+        "post_load_duration_s": tail_seconds,
+    })
+    samples = sorted(prom_replicas)
+    baseline = [sample for sample in samples if sample[0] <= onset]
+    if not baseline or onset - baseline[-1][0] > 15:
+        return result, ["controlled measurement unavailable: no replica sample within 15s before load onset"]
+    # Retain only the last sample preceding onset and changes inside the window.
+    timeline = [baseline[-1]] + [s for s in samples if onset < s[0] <= tail_end]
+    if (tail_end - timeline[-1][0] > 15
+            or any(b[0] - a[0] > 15 for a, b in zip(timeline, timeline[1:]))):
+        return result, ["controlled measurement unavailable: replica observation gap exceeds 15s"]
+    if any(not math.isfinite(v) or v < MIN_REPLICAS or v != int(v)
+           for _, v in timeline):
+        return result, ["controlled measurement unavailable: invalid replica sample"]
+    if any(a[0] >= b[0] for a, b in zip(timeline, timeline[1:])):
+        return result, ["controlled measurement unavailable: duplicate replica sample timestamp"]
+
+    events: list[dict] = []
+    previous = int(timeline[0][1])
+    for ts, value in timeline[1:]:
+        replicas = int(value)
+        if replicas != previous:
+            events.append({"time_unix": ts, "after_load_onset_s": ts - onset,
+                           "from": previous, "to": replicas})
+        previous = replicas
+    pod_seconds = post_load_pod_seconds = excess_pod_seconds = above_min_seconds = 0.0
+    replicas_at_offered_end = int(timeline[0][1])
+    for index, (ts, replicas) in enumerate(timeline):
+        next_ts = timeline[index + 1][0] if index + 1 < len(timeline) else tail_end
+        segment_start, segment_end = max(ts, onset), min(next_ts, tail_end)
+        pod_seconds += replicas * max(0, segment_end - segment_start)
+        post_seconds = max(0, segment_end - max(segment_start, offered_end))
+        post_load_pod_seconds += replicas * post_seconds
+        excess_pod_seconds += max(0, replicas - MIN_REPLICAS) * post_seconds
+        if replicas > MIN_REPLICAS:
+            above_min_seconds += post_seconds
+        if ts <= offered_end:
+            replicas_at_offered_end = int(replicas)
+
+    scaleups = [e for e in events if e["to"] > e["from"]]
+    post_downs = [e for e in events if e["time_unix"] >= offered_end and e["to"] < e["from"]]
+    completed = timeline[-1][1] == MIN_REPLICAS
+    returns_to_min = [e for e in post_downs if e["to"] == MIN_REPLICAS]
+    full_down = None
+    if completed:
+        full_down = returns_to_min[-1]["time_unix"] - offered_end if returns_to_min else 0
+    result.update({
+        "window_valid": True,
+        "events": events,
+        "initial_replicas_at_load_onset": int(timeline[0][1]),
+        "replicas_at_offered_load_end": replicas_at_offered_end,
+        "final_replicas": int(timeline[-1][1]),
+        "peak_replicas": int(max(v for _, v in timeline)),
+        "first_scaleup_after_load_onset_s": scaleups[0]["after_load_onset_s"] if scaleups else None,
+        "first_scaledown_after_offered_load_end_s": (
+            post_downs[0]["time_unix"] - offered_end if post_downs else None
+        ),
+        "full_scaledown_after_offered_load_end_s": full_down,
+        "scaledown_completed": completed,
+        "pod_seconds_load_onset_to_tail_end": round(pod_seconds, 1),
+        "avg_replicas_load_onset_to_tail_end": round(pod_seconds / (tail_end - onset), 2),
+        "pod_seconds_post_load": round(post_load_pod_seconds, 1),
+        "excess_pod_seconds_post_load": round(excess_pod_seconds, 1),
+        "post_load_above_min_s": round(above_min_seconds, 1),
+    })
+    warnings = [] if completed else [
+        "controlled measurement scale-down censored: replicas remain above minReplicas at fixed tail end"
+    ]
+    return result, warnings
+
+
 def extract(exp_dir: Path) -> dict:
     """Run the full extraction pipeline for one experiment directory."""
     warnings: list[str] = []
@@ -555,6 +684,8 @@ def extract(exp_dir: Path) -> dict:
     # 1. Metadata
     metadata, w = load_metadata(exp_dir / "metadata.yaml")
     warnings.extend(w)
+    pilot_identity = ({key: metadata.get(key) for key in PILOT_IDENTITY_FIELDS}
+                      if metadata.get("protocol_version") else {})
 
     pattern = metadata.get("pattern")
     controller = metadata.get("controller")
@@ -575,6 +706,7 @@ def extract(exp_dir: Path) -> dict:
     if start_time is None or end_time is None:
         warnings.append("metadata missing start/end time; relative metrics unavailable")
         return {
+            **pilot_identity,
             "experiment_id": experiment_id,
             "pattern": pattern,
             "controller": controller,
@@ -620,6 +752,11 @@ def extract(exp_dir: Path) -> dict:
 
     # 6. resource derived
     resource = compute_resource_metrics(prom_replicas, k6_stop, end_time)
+    controlled = {}
+    if metadata.get("protocol_version") == CONTROLLED_PROTOCOL:
+        measurement, w = compute_controlled_measurement(exp_dir, metadata, prom_replicas)
+        controlled["measurement"] = measurement
+        warnings.extend(w)
 
     # 7. events.yaml is retained as a SECONDARY signal — useful for native_hpa
     # because it provides per-second precision SuccessfulRescale timestamps that
@@ -648,6 +785,8 @@ def extract(exp_dir: Path) -> dict:
         phpa_metrics = compute_phpa_metrics(decisions)
 
     return {
+        **pilot_identity,
+        **controlled,
         "experiment_id": experiment_id,
         "pattern": pattern,
         "controller": controller,
@@ -711,6 +850,9 @@ def main() -> int:
             bits.append(f"warnings={n_warnings}")
         print(f"extracted {result.get('experiment_id')}: " + " ".join(bits))
 
+    if (result.get("protocol_version") == CONTROLLED_PROTOCOL
+            and not result.get("measurement", {}).get("window_valid")):
+        return 2
     return 0
 
 

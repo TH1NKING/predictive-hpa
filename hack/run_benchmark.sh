@@ -27,6 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 source "$SCRIPT_DIR/lib/k6_runner.sh"
+source "$SCRIPT_DIR/lib/benchmark_config.sh"
 
 # === Argument validation ===
 if [ $# -ne 3 ]; then
@@ -68,6 +69,8 @@ if ! [[ "$REPEAT_IDX" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 # === Configuration ===
+benchmark_config_init
+benchmark_config_fingerprint
 PHPA_SAMPLE="config/samples/autoscaling_v1alpha1_predictivehpa.yaml"
 EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments/service-routing-v1}"
 case "$EXPERIMENTS_ROOT" in
@@ -122,6 +125,16 @@ load_generator: "$K6_EXECUTION_MODE"
 endpoint: "$K6_BASE_URL"
 k6_image: "$K6_IMAGE"
 connection_reuse: false
+protocol_version: "$BENCHMARK_PROTOCOL_VERSION"
+rps: $RPS
+benchmark_source_sha256: "$BENCHMARK_SOURCE_SHA256"
+benchmark_config_sha256: "$BENCHMARK_CONFIG_SHA256"
+pre_allocated_vus: $BENCHMARK_PRE_ALLOCATED_VUS
+max_vus: $BENCHMARK_MAX_VUS
+post_load_tail_seconds: $POST_LOAD_TAIL_SECONDS
+load_start_time_unix: 0
+offered_load_end_time_unix: 0
+observation_end_time_unix: 0
 pattern: $PATTERN
 controller: $CONTROLLER
 repeat: $REPEAT_IDX
@@ -232,6 +245,20 @@ k6_runner_kubectl scale deploy php-apache --replicas=1 >/dev/null
 if ! k6_runner_kubectl rollout status deploy/php-apache --timeout=60s --request-timeout=65s >/dev/null; then
   fail_experiment "Deployment rollout did not stabilize within 60s"
 fi
+# rollout status can return while old Pods are still terminating. Start every
+# controller from exactly one ready Pod, including the native-HPA baseline.
+RESET_READY=false
+for ((reset_wait=0; reset_wait<90; reset_wait++)); do
+  if k6_runner_kubectl get pods -l run=php-apache -o json |
+      jq -e '.items | length == 1 and all(.[];
+        .metadata.deletionTimestamp == null and
+        any(.status.conditions[]?; .type == "Ready" and .status == "True"))' >/dev/null; then
+    RESET_READY=true
+    break
+  fi
+  sleep 2
+done
+[ "$RESET_READY" = true ] || fail_experiment "Deployment did not settle at one ready Pod"
 
 echo ""
 echo "[5/11] switch controller ($CONTROLLER)"
@@ -267,7 +294,7 @@ sleep "$METRIC_ACCUMULATION_SECONDS"
 echo ""
 echo "[7/11] run k6 pattern: $PATTERN"
 K6_JSON="$EXP_DIR/k6.json"
-if ! k6_runner_run "${PATTERN}.js" "$EXP_DIR"; then
+if ! k6_runner_run "${PATTERN}.js" "$EXP_DIR" "RPS=$RPS" "PROBE_TOKEN=$(basename "$EXP_DIR")"; then
   fail_experiment "in-cluster k6 run failed (see k6-runner.json and retained artifacts)"
 fi
 
@@ -276,8 +303,28 @@ fi
 # on a trailing k6 stage to observe scale-down. The orchestrator pauses
 # here to ensure both PHPA and native HPA scale-down sequences are
 # captured in the Prometheus and controller log data collected next.
-echo "  k6 done; tail observation pause (${POST_LOAD_TAIL_SECONDS}s) for scale-down"
-sleep "$POST_LOAD_TAIL_SECONDS"
+# Use the same offered-load and observation boundaries for both controllers.
+# Request drain, artifact copying and controller preparation must not extend
+# one group's cost window. The runner records the actual process timestamps.
+K6_START_TIME_UNIX=$(cat "$EXP_DIR/k6-start-time-unix")
+case "$PATTERN" in
+  step) OFFERED_DURATION_SECONDS=211 ;;
+  ramp) OFFERED_DURATION_SECONDS=270 ;;
+  spike) OFFERED_DURATION_SECONDS=241 ;;
+esac
+LOAD_START_TIME_UNIX=$((K6_START_TIME_UNIX + 30))
+OFFERED_LOAD_END_TIME_UNIX=$((K6_START_TIME_UNIX + OFFERED_DURATION_SECONDS))
+OBSERVATION_END_TIME_UNIX=$((OFFERED_LOAD_END_TIME_UNIX + POST_LOAD_TAIL_SECONDS))
+update_metadata load_start_time_unix "$LOAD_START_TIME_UNIX"
+update_metadata offered_load_end_time_unix "$OFFERED_LOAD_END_TIME_UNIX"
+update_metadata observation_end_time_unix "$OBSERVATION_END_TIME_UNIX"
+# Collect one more scrape after the fixed boundary so analysis can interpolate
+# at that boundary without extrapolating a stale replica value.
+TAIL_WAIT_SECONDS=$((OBSERVATION_END_TIME_UNIX + 15 - $(date +%s)))
+if (( TAIL_WAIT_SECONDS > 0 )); then
+  echo "  Observing fixed post-load tail; ${TAIL_WAIT_SECONDS}s remaining including final scrape"
+  sleep "$TAIL_WAIT_SECONDS"
+fi
 
 # === Step 8: record end time ===
 END_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -299,7 +346,7 @@ prom_query_range() {
   local key="$1" query="$2" comma="$3"
   local encoded
   encoded=$(printf '%s' "$query" | jq -sRr @uri)
-  local url="$PROM_URL/api/v1/query_range?query=${encoded}&start=${START_TIME_UNIX}&end=${END_TIME_UNIX}&step=15s"
+  local url="$PROM_URL/api/v1/query_range?query=${encoded}&start=$((K6_START_TIME_UNIX - 15))&end=${END_TIME_UNIX}&step=15s"
   local result
   if ! result=$(curl -sf --max-time 10 "$url"); then
     fail_experiment "Prometheus query_range failed for $key" 3
@@ -323,6 +370,10 @@ prom_query_range "cpu_by_pod" \
 
 prom_query_range "load_generator_cpu" \
   'sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="default",pod=~"phpa-k6-.*",container="k6"}[1m]))' \
+  ","
+
+prom_query_range "load_generator_memory" \
+  'sum by (pod) (container_memory_working_set_bytes{namespace="default",pod=~"phpa-k6-.*",container="k6"})' \
   ","
 
 prom_query_range "rps_pkt_rate" \

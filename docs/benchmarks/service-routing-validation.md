@@ -220,8 +220,10 @@ within matched blocks, preserve failed runs, and use a separate campaign root.
 The single-run interface remains
 `bash hack/run_benchmark.sh step native_hpa_60 1`; it now launches k6 in the
 cluster. The default campaign/root are `service-routing-v1` and
-`experiments/service-routing-v1`. This interface and the three-repeat matrix
-are pilot tooling, not a complete formal v3 protocol.
+`experiments/service-routing-v1`. The matrix defaults to three repeats and now
+supports explicit load, controller and pattern selection; see the
+[controlled pilot protocol](controlled-pilot.md) for configuration and matched
+measurement windows. These remain pilot tools, not a complete formal v3 protocol.
 
 Report request success, first scale-up timing, peak replicas, total
 Pod-seconds, post-load resource tail and censored outcomes separately. Matching
