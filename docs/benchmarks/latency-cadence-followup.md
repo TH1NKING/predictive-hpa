@@ -101,3 +101,10 @@ Retain the 30-second default. This focused pilot is intended to validate the
 mechanism and expose service/resource tradeoffs; it does not establish a better
 global default or production performance. Publish the observed result whether
 positive, negative or inconclusive, and explain the method in the Chinese guide.
+
+## Execution record
+
+Completed on September 7 with source `32568c1cd6a2543bcc525b75abd41365bff5d6d2`.
+All four assignments, complete scenario windows and restoration checks passed;
+independent raw recomputation matched 112 comparisons. The default remains 30s.
+See the [results and attribution limits](latency-cadence-followup-20260907.md).
