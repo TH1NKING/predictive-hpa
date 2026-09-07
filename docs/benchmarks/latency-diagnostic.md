@@ -75,6 +75,12 @@ Raw CPU counters and CPU-request gauges are queried as literal 90-second range
 vectors. Independent CPU-expression and Kubernetes observations target a
 2-second interval without catch-up bursts. Every call retains its request and
 response boundaries, so a cycle is not presented as an atomic snapshot.
+After k6 collection, parse its retained scenario-start metric before waiting for
+the tail. Continue observation until at least the actual workload end plus
+360 seconds and one extra 15-second replica sample. Keep the original extractor's
+process-clock window explicitly labeled for historical compatibility; compute
+diagnostic occupancy over the actual scenario window and reject incomplete
+coverage. Slow generator initialization must not shorten that window.
 
 Check recovery between runs. Preserve failed attempts, missed phases, collector
 errors, HTTP failures, timeouts, and dropped iterations. If the environment no

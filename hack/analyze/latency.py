@@ -269,16 +269,29 @@ def scenario_occupancy(directory: Path, onset: float, metadata: dict) -> dict:
     return report
 
 
-def analyze(directory: Path) -> dict:
-    metadata = yaml.safe_load((directory / "metadata.yaml").read_text(encoding="utf-8"))
+def scenario_schedule(directory: Path) -> dict:
+    """Read the workload's actual schedule before post-load collection is complete."""
     attempts = [row["data"] for row in records(directory / "k6.json")
                 if row.get("type") == "Point" and row.get("metric") == "latency_request_attempt"]
     if not attempts:
         raise ValueError("Missing latency_request_attempt evidence; process start is not scenario start")
-    starts = {float(row["value"]) / 1000 for row in attempts}
+    starts = {epoch(float(row["value"]) / 1000) for row in attempts}
+    if any(start <= 0 for start in starts):
+        raise ValueError("Scenario start must be a positive Unix epoch")
     if len(starts) != 1:
         raise ValueError("Diagnostic request points disagree on scenario.startTime")
     onset = starts.pop() + 30
+    first_attempt = min(epoch(row["time"]) for row in attempts)
+    if first_attempt < onset:
+        raise ValueError("Diagnostic request attempt precedes the scheduled load onset")
+    return {"load_onset_unix": onset, "offered_load_end_unix": onset + 181,
+            "observation_end_unix": onset + 541, "first_request_attempt_unix": first_attempt}
+
+
+def analyze(directory: Path) -> dict:
+    metadata = yaml.safe_load((directory / "metadata.yaml").read_text(encoding="utf-8"))
+    schedule = scenario_schedule(directory)
+    onset = schedule["load_onset_unix"]
     observations = records(directory / "latency-observations.ndjson")
     plan = json.loads((directory / "latency-plan.json").read_text(encoding="utf-8"))
     cycles = controller_cycles(directory / "controller.log")
@@ -303,7 +316,7 @@ def analyze(directory: Path) -> dict:
         flags.append("incomplete_scenario_replica_window")
     return {"protocol_version": "latency-diagnostic-v1", "experiment_id": metadata["experiment_id"],
             "timing": {"load_onset_unix": onset,
-                       "first_request_attempt_seconds": min(epoch(row["time"]) for row in attempts) - onset, **timing},
+                       "first_request_attempt_seconds": schedule["first_request_attempt_unix"] - onset, **timing},
             "source_visibility": source_evidence(observations, onset), "phase": phase,
             "reconciliations": cycles, "new_pods": pods,
             "scenario_window_occupancy": occupancy,
@@ -318,10 +331,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--schedule-only", action="store_true",
+                        help="Read actual k6 schedule boundaries without requiring post-load evidence")
     args = parser.parse_args()
     try:
-        report = analyze(args.run_dir)
-        destination = args.output or args.run_dir / "latency.json"
+        report = scenario_schedule(args.run_dir) if args.schedule_only else analyze(args.run_dir)
+        destination = args.output or args.run_dir / ("latency-schedule.json" if args.schedule_only else "latency.json")
         destination.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
         print(destination)
         return 0

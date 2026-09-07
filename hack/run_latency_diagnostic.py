@@ -132,10 +132,19 @@ class Observer:
         for pod in response.get("items", []):
             metadata = pod["metadata"]
             uid, name = metadata["uid"], metadata["name"]
-            if uid in self.followers:
-                continue
             status = next((item for item in pod.get("status", {}).get("containerStatuses", [])
                            if item.get("name") == "php-apache"), {})
+            if uid in self.followers:
+                follower = self.followers[uid]
+                identity = (status.get("restartCount"), status.get("containerID"))
+                original = (follower["restart_count"], follower["container_id"])
+                if status and identity != original and identity != follower.get("last_changed_identity"):
+                    follower["last_changed_identity"] = identity
+                    self.record({"kind": "pod_log_stream", "status": "error", "request_started_at": utc(),
+                                 "request_finished_at": utc(), "pod": name,
+                                 "original_container": original, "observed_container": identity,
+                                 "error": "Container identity changed after log attachment; request evidence has a gap"})
+                continue
             if not (status.get("state", {}).get("running") or status.get("state", {}).get("terminated")):
                 continue
             if not re.fullmatch(r"[a-zA-Z0-9.-]+", name) or not re.fullmatch(r"[a-zA-Z0-9-]+", uid):
@@ -152,7 +161,8 @@ class Observer:
                 raise
             self.followers[uid] = {"process": process, "stdout": stdout, "stderr": stderr,
                                    "name": name, "uid": uid, "first_followed_at": utc(),
-                                   "restart_count": status.get("restartCount", 0), "image_id": status.get("imageID")}
+                                   "restart_count": status.get("restartCount", 0), "container_id": status.get("containerID"),
+                                   "image_id": status.get("imageID")}
             if status.get("restartCount", 0):
                 self.record({"kind": "pod_log_stream", "status": "error", "request_started_at": utc(),
                              "request_finished_at": utc(), "pod": name,

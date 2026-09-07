@@ -386,9 +386,34 @@ OBSERVATION_END_TIME_UNIX=$((OFFERED_LOAD_END_TIME_UNIX + POST_LOAD_TAIL_SECONDS
 update_metadata load_start_time_unix "$LOAD_START_TIME_UNIX"
 update_metadata offered_load_end_time_unix "$OFFERED_LOAD_END_TIME_UNIX"
 update_metadata observation_end_time_unix "$OBSERVATION_END_TIME_UNIX"
+TAIL_OBSERVATION_END_TIME_UNIX="$OBSERVATION_END_TIME_UNIX"
+if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+  # Preserve the original extractor's process-start window while collecting the
+  # entire diagnostic window even when k6 initialization takes over 15 seconds.
+  if ! "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/analyze/latency.py" "$EXP_DIR" \
+      --schedule-only --output "$EXP_DIR/latency-schedule.json" \
+      > "$EXP_DIR/latency-schedule.log" 2>&1; then
+    fail_experiment "could not determine actual diagnostic workload schedule" 3
+  fi
+  if ! LATENCY_OBSERVATION_END_CEILING=$(jq -ers '
+      if length != 1 then error("expected one schedule") else .[0] end |
+      [.load_onset_unix, .offered_load_end_unix, .observation_end_unix] as $times |
+      if all($times[]; type == "number" and . > 0 and . < 1000000000000) and
+          .offered_load_end_unix - .load_onset_unix == 181 and
+          .observation_end_unix - .offered_load_end_unix == 360
+      then .observation_end_unix | ceil else error("invalid diagnostic schedule") end
+      ' "$EXP_DIR/latency-schedule.json" 2>> "$EXP_DIR/latency-schedule.log"); then
+    fail_experiment "actual diagnostic workload schedule is missing or invalid" 3
+  fi
+  if (( LATENCY_OBSERVATION_END_CEILING > TAIL_OBSERVATION_END_TIME_UNIX )); then
+    TAIL_OBSERVATION_END_TIME_UNIX="$LATENCY_OBSERVATION_END_CEILING"
+  fi
+  printf 'latency_collection_not_before_unix: %s\n' "$((TAIL_OBSERVATION_END_TIME_UNIX + 15))" \
+    >> "$EXP_DIR/metadata.yaml"
+fi
 # Collect one more scrape after the fixed boundary so analysis can interpolate
 # at that boundary without extrapolating a stale replica value.
-TAIL_WAIT_SECONDS=$((OBSERVATION_END_TIME_UNIX + 15 - $(date +%s)))
+TAIL_WAIT_SECONDS=$((TAIL_OBSERVATION_END_TIME_UNIX + 15 - $(date +%s)))
 if (( TAIL_WAIT_SECONDS > 0 )); then
   echo "  Observing fixed post-load tail; ${TAIL_WAIT_SECONDS}s remaining including final scrape"
   sleep "$TAIL_WAIT_SECONDS"

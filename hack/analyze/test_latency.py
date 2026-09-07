@@ -196,6 +196,22 @@ class LatencyCLI(unittest.TestCase):
             self.assertEqual(ONSET - 3, evidence["cpu"][0]["sample_unix"])
             self.assertEqual(1, evidence["overlapping_observer_query_count"])
 
+    def test_schedule_only_keeps_full_tail_when_k6_initialization_takes_forty_seconds(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            # The process launched 40s before the scenario; no Prometheus, Pod,
+            # controller or metadata artifacts exist yet at this public boundary.
+            (directory / "k6-start-time-unix").write_text(str(int(ONSET - 70)), encoding="utf-8")
+            (directory / "k6.json").write_text(json.dumps({"type": "Point", "metric": "latency_request_attempt",
+                "data": {"time": stamp(0.25), "value": (ONSET - 30) * 1000}}) + "\n", encoding="utf-8")
+            result = subprocess.run([sys.executable, str(ANALYZER), str(directory), "--schedule-only"],
+                                    capture_output=True, text=True, timeout=20)
+            self.assertEqual(0, result.returncode, result.stderr)
+            schedule = json.loads((directory / "latency-schedule.json").read_text(encoding="utf-8"))
+            self.assertEqual(ONSET, schedule["load_onset_unix"])
+            self.assertEqual(ONSET + 181, schedule["offered_load_end_unix"])
+            self.assertEqual(ONSET + 541, schedule["observation_end_unix"])
+
 
 if __name__ == "__main__":
     unittest.main()
