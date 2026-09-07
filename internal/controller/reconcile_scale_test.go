@@ -111,6 +111,65 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 		}
 	}
 
+	It("records a correlated decision and successful Scale boundary before finishing reconciliation", func() {
+		deploy := makeDeployment(testNamespace, "timing-app", 1)
+		Expect(k8sClient.Create(ctx, deploy)).To(Succeed())
+		deploy.Status.Replicas = 1
+		Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
+		fakeMetrics.SetConstantCPU(testNamespace, deploy.Name, 100, 5, 30*time.Second)
+		minR := int32(1)
+		phpa := makePHPA(testNamespace, "timing-phpa", deploy.Name, &minR)
+		phpa.Spec.DecisionMode = autoscalingv1alpha1.DecisionModeCurrent
+		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			updated := &appsv1.Deployment{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(deploy), updated)).To(Succeed())
+			g.Expect(*updated.Spec.Replicas).To(Equal(int32(2)))
+			records := controllerDiagnosticLog.records(testNamespace)
+			var decision, scale, finished map[string]any
+			for _, record := range records {
+				if record["msg"] == "Scaled Deployment" && record["previousDesiredReplicas"] == float64(1) {
+					scale = record
+					break
+				}
+			}
+			g.Expect(scale).NotTo(BeNil())
+			cycle := scale["reconcileStartedAt"]
+			g.Expect(cycle).NotTo(BeNil())
+			for _, record := range records {
+				if record["reconcileStartedAt"] != cycle {
+					continue
+				}
+				switch record["msg"] {
+				case "Evaluated PredictiveHPA scaling decision":
+					decision = record
+				case "Finished PredictiveHPA reconciliation":
+					finished = record
+				}
+			}
+			g.Expect(decision).NotTo(BeNil())
+			g.Expect(finished).NotTo(BeNil())
+			g.Expect(decision["decisionMode"]).To(Equal("Current"))
+			g.Expect(decision["decisionCPU%"]).To(Equal(float64(100)))
+			g.Expect(decision["finalDesired"]).To(Equal(float64(2)))
+			g.Expect(decision["skipReason"]).To(Equal(""))
+			g.Expect(finished["requeueAfterSeconds"]).To(Equal(float64(30)))
+			g.Expect(finished["reconcileError"]).To(Equal(""))
+			stamps := []time.Time{
+				diagnosticTime(scale, "reconcileStartedAt"), diagnosticTime(decision, "decisionAt"),
+				diagnosticTime(scale, "scaleWriteStartedAt"), diagnosticTime(scale, "scaleWriteFinishedAt"),
+				diagnosticTime(finished, "reconcileFinishedAt"),
+			}
+			for i, stamp := range stamps {
+				g.Expect(stamp.IsZero()).To(BeFalse())
+				if i > 0 {
+					g.Expect(stamp.Before(stamps[i-1])).To(BeFalse())
+				}
+			}
+		}, 10*time.Second, 100*time.Millisecond).Should(Succeed())
+	})
+
 	DescribeTable("decision modes at load onset", func(mode autoscalingv1alpha1.DecisionMode, expected int32) {
 		deploy := makeDeployment(testNamespace, "onset-app", 1)
 		Expect(k8sClient.Create(ctx, deploy)).To(Succeed())

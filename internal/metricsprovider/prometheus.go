@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/th1nking/predictive-hpa/internal/predictor"
 )
@@ -64,17 +65,40 @@ func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 	ctx context.Context,
 	namespace, deployment string,
 	window time.Duration,
-) ([]predictor.Sample, error) {
+) (samples []predictor.Sample, queryErr error) {
 	query := fmt.Sprintf(cpuUtilQueryTemplate, namespace, deployment, namespace, deployment)
 
 	end := time.Now()
 	start := end.Add(-window)
 
+	queryStarted := time.Now()
 	result, _, err := p.api.QueryRange(ctx, query, promv1.Range{
 		Start: start,
 		End:   end,
 		Step:  p.step,
 	})
+	queryFinished := time.Now()
+	defer func() {
+		var latestEvaluationAt any
+		if len(samples) > 0 {
+			latestEvaluationAt = samples[len(samples)-1].Timestamp.UTC().Format(time.RFC3339Nano)
+		}
+		errorMessage := ""
+		if queryErr != nil {
+			errorMessage = queryErr.Error()
+		}
+		// QueryRange timestamps identify evaluation points, not source scrapes.
+		// Raw-series visibility is collected separately by the experiment observer.
+		logf.FromContext(ctx).Info("Queried CPU utilization",
+			"queryStartedAt", queryStarted.UTC().Format(time.RFC3339Nano),
+			"queryFinishedAt", queryFinished.UTC().Format(time.RFC3339Nano),
+			"queryDurationSeconds", queryFinished.Sub(queryStarted).Seconds(),
+			"rangeStartAt", start.UTC().Format(time.RFC3339Nano),
+			"rangeEndAt", end.UTC().Format(time.RFC3339Nano),
+			"queryStepSeconds", p.step.Seconds(), "cpuRateWindowSeconds", 60,
+			"latestEvaluationAt", latestEvaluationAt, "samples", len(samples),
+			"queryError", errorMessage)
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("metricsprovider: query_range: %w", err)
 	}
@@ -92,7 +116,7 @@ func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 	}
 
 	series := matrix[0]
-	samples := make([]predictor.Sample, len(series.Values))
+	samples = make([]predictor.Sample, len(series.Values))
 	for i, v := range series.Values {
 		samples[i] = predictor.Sample{
 			Timestamp: v.Timestamp.Time(),

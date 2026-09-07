@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -98,8 +99,15 @@ type PredictiveHPAReconciler struct {
 // observed within the past spec.scaleDownStabilizationWindowSeconds.
 // History is kept in-memory and lost on controller restart; restart-safe
 // persistence is on the v1beta1 roadmap.
-func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
+func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
+	// Diagnostic wall time is independent of the injectable policy clock. Carry
+	// this boundary into the metrics provider so its query shares the same trace.
+	reconcileStarted := time.Now()
+	log := logf.FromContext(ctx).WithValues("reconcileStartedAt", reconcileStarted.UTC().Format(time.RFC3339Nano))
+	ctx = logf.IntoContext(ctx, log)
+	defer func() {
+		logReconciliationCompletion(log, reconcileStarted, result, reconcileErr)
+	}()
 
 	// 1. Fetch PredictiveHPA. On NotFound, drop the in-memory history for
 	//    this key to prevent map leaks (controller-runtime invokes Reconcile
@@ -267,22 +275,36 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		skipReason = "DesiredEqualsCurrent"
 	case withinTolerance(decisionCPU, phpa.Spec.TargetCPUUtilizationPercentage):
 		skipReason = "WithinToleranceBand"
-	default:
+	}
+	// Persist the policy outcome before Scale/status writes: either can fail,
+	// and a later status conflict must not erase evidence of an earlier decision.
+	log.Info("Evaluated PredictiveHPA scaling decision",
+		"decisionAt", time.Now().UTC().Format(time.RFC3339Nano),
+		"decisionMode", mode, "decisionCPU%", decisionCPU,
+		"rawPredictedCPU%", rawPredicted, "currentCPU%", currentCPU, "predictedCPU%", predicted,
+		"currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "finalDesired", finalDesired,
+		"stabilized", stabilized, "skipReason", skipReason, "samples", len(samples),
+		"latestEvaluationAt", samples[len(samples)-1].Timestamp.UTC().Format(time.RFC3339Nano))
+	if skipReason == "" {
 		scale := &autoscalingv1.Scale{}
 		if err := r.SubResource("scale").Get(ctx, &deploy, scale); err != nil {
 			return ctrl.Result{}, fmt.Errorf("get Deployment scale: %w", err)
 		}
 		previousDesiredReplicas := scale.Spec.Replicas
 		scale.Spec.Replicas = finalDesired
+		scaleWriteStarted := time.Now()
 		if err := r.SubResource("scale").Update(
 			ctx, &deploy, client.WithSubResourceBody(scale),
 		); err != nil {
 			return ctrl.Result{}, fmt.Errorf("update Deployment scale: %w", err)
 		}
+		scaleWriteFinished := time.Now()
 		scaled = true
 		// Log at the successful write boundary, before a possibly failing status
 		// update. Replica sampling can observe this action on a later scrape.
 		log.Info("Scaled Deployment", "deployment", deploy.Name,
+			"scaleWriteStartedAt", scaleWriteStarted.UTC().Format(time.RFC3339Nano),
+			"scaleWriteFinishedAt", scaleWriteFinished.UTC().Format(time.RFC3339Nano),
 			"decisionMode", mode, "decisionCPU%", decisionCPU,
 			"currentReplicas", currentReplicas, "previousDesiredReplicas", previousDesiredReplicas,
 			"finalDesired", finalDesired, "scaled", true)
@@ -341,6 +363,18 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	)
 
 	return ctrl.Result{RequeueAfter: requeueDefault}, nil
+}
+
+func logReconciliationCompletion(log logr.Logger, started time.Time, result ctrl.Result, err error) {
+	finished := time.Now()
+	errorMessage := ""
+	if err != nil {
+		errorMessage = err.Error()
+	}
+	log.Info("Finished PredictiveHPA reconciliation",
+		"reconcileFinishedAt", finished.UTC().Format(time.RFC3339Nano),
+		"reconcileDurationSeconds", finished.Sub(started).Seconds(),
+		"reconcileError", errorMessage, "requeueAfterSeconds", result.RequeueAfter.Seconds())
 }
 
 // SetupWithManager sets up the controller with the Manager.
