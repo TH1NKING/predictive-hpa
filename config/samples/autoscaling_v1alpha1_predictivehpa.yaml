@@ -11,6 +11,7 @@ spec:
   minReplicas: 1
   maxReplicas: 10
   targetCPUUtilizationPercentage: 50
+  decisionMode: Predictive  # Predictive（默认）/ Current / Hybrid
   prediction:
     algorithm: EWMA
     alphaPercent: 30        # alpha = 0.3

@@ -1,7 +1,5 @@
 // hack/k6/lib/common.js
-// Shared configuration for Phase 3 benchmark load patterns.
-// All numeric values that may need calibration are centralized here so
-// that Phase 3.2 calibration only needs to touch this file.
+// Shared, validated configuration for controlled benchmark load patterns.
 
 import http from 'k6/http';
 
@@ -10,16 +8,33 @@ import http from 'k6/http';
 // reuse so existing keep-alive connections do not pin traffic to earlier Pods.
 export const BASE_URL = 'http://php-apache.default.svc:80';
 
-// Per-request timeout. php-apache responses are ~1-5ms when not
-// overloaded; the 10s ceiling exists only to prevent indefinite hangs
-// from skewing latency percentiles.
+// Bound request drain when the application is overloaded. Timeouts remain
+// failures in the all-request latency and success-rate measurements.
 export const REQUEST_TIMEOUT = '10s';
 
-// Historical offered load, retained only to preserve the workload definition.
-// Earlier capacity estimates used a port-forward that selected one Pod; the
-// intended 10-Pod capacity and latency headroom have not been validated.
-// Recalibrate through the Service before treating new matrix data as evidence.
-export const TARGET_RPS = 25;
+// The orchestrator records and explicitly passes RPS to the in-cluster runner.
+// A missing value preserves the historical default; an explicit empty or invalid
+// value fails before issuing any requests.
+const configuredRPS = __ENV.RPS === undefined ? '25' : __ENV.RPS;
+if (!/^[1-9][0-9]{0,3}$/.test(configuredRPS) || Number(configuredRPS) > 1000) {
+  throw new Error('RPS must be an integer from 1 to 1000');
+}
+export const TARGET_RPS = Number(configuredRPS);
+
+// Sustain the offered arrival rate even while requests approach their timeout.
+// Report dropped iterations and generator resources to check this assumption.
+export const PRE_ALLOCATED_VUS = Math.max(20, TARGET_RPS * 10);
+export const MAX_VUS = Math.max(40, TARGET_RPS * 12);
+
+// Identify this experiment in per-Pod access logs, including Pods removed
+// during scale-down. Keep manual invocations usable without an orchestrator.
+const requestHeaders = {};
+if (__ENV.PROBE_TOKEN !== undefined) {
+  if (!/^[A-Za-z0-9_-]+$/.test(__ENV.PROBE_TOKEN)) {
+    throw new Error('PROBE_TOKEN must contain only letters, digits, underscores or hyphens');
+  }
+  requestHeaders['User-Agent'] = `phpa-benchmark/${__ENV.PROBE_TOKEN}`;
+}
 
 // Quiet period at the start of each test. Required for:
 //   1. metrics-server scrape interval (default 15s) refreshing baseline
@@ -40,6 +55,7 @@ export const PRE_LOAD_QUIET_SECONDS = 30;
 export function get(phase) {
   return http.get(BASE_URL + '/', {
     timeout: REQUEST_TIMEOUT,
+    headers: requestHeaders,
     tags: { phase: phase },
   });
 }

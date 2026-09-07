@@ -25,6 +25,8 @@ def set_nested(obj: dict[str, Any], path: str, value: Any) -> None:
     current = obj
     parts = path.split(".")
     for part in parts[:-1]:
+        if current.get(part) is None:
+            current[part] = {}
         current = current.setdefault(part, {})
     current[parts[-1]] = value
 
@@ -55,6 +57,179 @@ def synthetic_extract(controller: str, repeat: int, metric_value: float) -> dict
             "skip_reasons": {},
         }
     return result
+
+
+def pilot_extract(controller: str = "native_hpa_60") -> dict:
+    result = synthetic_extract(controller, 1, 10)
+    result.update({
+        "protocol_version": "controlled-pilot-v1", "campaign": "pilot-test",
+        "rps": 25, "pre_allocated_vus": 100, "max_vus": 200,
+        "benchmark_source_sha256": "a" * 64, "benchmark_config_sha256": "b" * 64,
+        "post_load_tail_seconds": 360, "measurement": {"window_valid": True},
+    })
+    for _, path, _, _ in aggregate.PILOT_METRIC_SPECS:
+        set_nested(result, path, 25 if controller == "phpa" else 30)
+    result["measurement"].update({
+        "scaledown_completed": True,
+        "window_duration_s": 541,
+        "load_onset_time_unix": 1767226200,
+        "offered_load_end_time_unix": 1767226381,
+        "tail_end_time_unix": 1767226741,
+    })
+    return result
+
+
+def pilot_metadata(result: dict) -> dict:
+    metadata = {key: result[key] for key in aggregate.PILOT_RUN_IDENTITY_FIELDS}
+    metadata.update({"git": {"commit": result["git_commit"]}, "result": {"status": "success"}})
+    for metadata_path, extracted_path in aggregate.PILOT_WINDOW_IDENTITIES:
+        metadata[metadata_path] = aggregate.get_nested(result, extracted_path)
+    return metadata
+
+
+class ControlledAggregateTests(unittest.TestCase):
+    def test_same_controller_report_preserves_three_modes_and_logged_decision_timing(self) -> None:
+        results = []
+        for controller, mode in (("phpa_current", "Current"), ("phpa", "Predictive"),
+                                 ("phpa_hybrid", "Hybrid")):
+            item = pilot_extract(controller)
+            item["decision_mode"] = mode
+            item["prediction_variant"] = "ewma_damped_cap"
+            item["phpa"] = {"first_upscale_decision_after_load_onset_s": 11.5,
+                            "scale_decision_source": "Scaled Deployment"}
+            results.append(item)
+        report = aggregate.render_report(results, [])
+        self.assertIn("| Metric | PHPA-Current | PHPA-Predictive | PHPA-Hybrid |", report)
+        self.assertIn("Current - Predictive", report)
+        self.assertIn("Hybrid - Predictive", report)
+        self.assertIn("First logged successful upscale after load onset", report)
+        self.assertIn("First scale-up after load onset", report)
+        self.assertIn("11.500 s (n=1)", report)
+        self.assertIn("same controller", report)
+        self.assertNotIn("compares complete controllers", report)
+        self.assertNotIn("Native-60", report)
+
+    def test_treatment_identity_rejects_relabelling_missing_or_stale_modes(self) -> None:
+        for controller, mode in (("phpa", "Current"), ("phpa_current", None),
+                                 ("native_hpa_60", "Predictive")):
+            with self.subTest(controller=controller, mode=mode):
+                result = pilot_extract(controller)
+                if mode is not None:
+                    result["decision_mode"] = mode
+                with self.assertRaisesRegex(ValueError, "decision_mode"):
+                    aggregate.render_report([result], [])
+        result = pilot_extract("phpa")
+        result["decision_mode"] = "Predictive"
+        metadata = pilot_metadata(result)
+        metadata["decision_mode"] = "Current"
+        with self.assertRaisesRegex(ValueError, "metadata/extract decision_mode mismatch"):
+            aggregate.validate_pilot_run(metadata, result)
+        with self.assertRaisesRegex(ValueError, "decision_mode"):
+            aggregate.render_report([result, pilot_extract()], [])
+
+    def test_load_accepts_matching_complete_pilot_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / "test-run"
+            directory.mkdir()
+            result = pilot_extract()
+            metadata = pilot_metadata(result)
+            (directory / "metadata.yaml").write_text(yaml.safe_dump(metadata), encoding="utf-8")
+            (directory / "extract.json").write_text(json.dumps(result), encoding="utf-8")
+            loaded, skipped = aggregate.load_extracts(root)
+        self.assertEqual([result], loaded)
+        self.assertEqual([], skipped)
+
+    def test_load_rejects_reclassified_run_and_changed_window_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / "test-run"
+            directory.mkdir()
+            result = pilot_extract()
+            (directory / "extract.json").write_text(json.dumps(result), encoding="utf-8")
+            cases = (
+                ("experiment_id", "copied-run"), ("pattern", "ramp"),
+                ("controller", "phpa"), ("repeat", 2),
+                ("scale_down_stabilization_seconds", 300),
+                ("prediction_variant", "changed-algorithm"),
+                ("git.commit", "another-commit"),
+                ("load_start_time_unix", 1767226201),
+                ("offered_load_end_time_unix", 1767226382),
+                ("observation_end_time_unix", 1767226742),
+            )
+            for field, changed in cases:
+                with self.subTest(field=field):
+                    metadata = pilot_metadata(result)
+                    set_nested(metadata, field, changed)
+                    (directory / "metadata.yaml").write_text(yaml.safe_dump(metadata), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, f"metadata/extract {field} mismatch"):
+                        aggregate.load_extracts(root)
+
+    def test_pilot_run_rejects_missing_extracted_fields_without_enrichment(self) -> None:
+        paths = list(aggregate.PILOT_RUN_IDENTITY_FIELDS) + ["git_commit"]
+        paths.extend(path for _, path in aggregate.PILOT_WINDOW_IDENTITIES)
+        for path in paths:
+            with self.subTest(path=path):
+                result = pilot_extract()
+                metadata = pilot_metadata(result)
+                parent = result
+                parts = path.split(".")
+                for part in parts[:-1]:
+                    parent = parent[part]
+                parent.pop(parts[-1])
+                with self.assertRaises(ValueError):
+                    aggregate.validate_pilot_run(metadata, result, "stale-run")
+                self.assertIsNone(aggregate.get_nested(result, path))
+
+    def test_load_rejects_missing_metadata_even_when_extract_is_complete(self) -> None:
+        result = pilot_extract()
+        metadata = pilot_metadata(result)
+        del metadata["observation_end_time_unix"]
+        with self.assertRaisesRegex(ValueError, "observation_end_time_unix missing"):
+            aggregate.validate_pilot_run(metadata, result)
+
+    def test_pilot_rejects_mixed_load_protocol_configuration_and_source(self) -> None:
+        for field, other in (("rps", 50), ("protocol_version", None),
+                             ("pre_allocated_vus", 200), ("max_vus", 300),
+                             ("benchmark_config_sha256", "c" * 64),
+                             ("benchmark_source_sha256", "d" * 64),
+                             ("campaign", "another-campaign"), ("post_load_tail_seconds", 300)):
+            with self.subTest(field=field):
+                candidate = pilot_extract("phpa")
+                candidate[field] = other
+                with self.assertRaisesRegex(ValueError, field):
+                    aggregate.render_report([pilot_extract(), candidate], [])
+
+    def test_pilot_rejects_invalid_observation_and_mixed_controller_settings(self) -> None:
+        invalid = pilot_extract()
+        invalid["measurement"]["window_valid"] = False
+        with self.assertRaisesRegex(ValueError, "invalid controlled measurement"):
+            aggregate.render_report([invalid], [])
+        different = pilot_extract()
+        different["scale_down_stabilization_seconds"] = 300
+        with self.assertRaisesRegex(ValueError, "scale_down_stabilization_seconds"):
+            aggregate.render_report([pilot_extract(), different], [])
+
+    def test_controlled_report_uses_new_window_metrics_and_controller_difference(self) -> None:
+        report = aggregate.render_report([pilot_extract(), pilot_extract("phpa")], [])
+        self.assertIn("Pod-seconds (load onset to fixed tail end)", report)
+        self.assertIn("First scale-up after load onset", report)
+        self.assertIn("Controller difference", report)
+        self.assertNotIn("Pod-seconds (experiment total)", report)
+        self.assertNotIn("Prediction effect", report)
+
+    def test_load_refuses_stale_extracted_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / "test-run"
+            directory.mkdir()
+            result = pilot_extract()
+            metadata = pilot_metadata(result)
+            metadata.update({"result": {"status": "success"}, "rps": 50})
+            (directory / "metadata.yaml").write_text(yaml.safe_dump(metadata), encoding="utf-8")
+            (directory / "extract.json").write_text(json.dumps(result), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "metadata/extract rps mismatch"):
+                aggregate.load_extracts(root)
 
 
 class AggregateReportTests(unittest.TestCase):

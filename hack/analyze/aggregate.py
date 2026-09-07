@@ -44,6 +44,8 @@ from typing import Any
 
 import yaml
 
+from extract import validate_decision_mode
+
 
 # Stable report order and user-facing labels for the three-way ablation.
 CONTROLLER_COLUMNS: tuple[tuple[str, str], ...] = (
@@ -52,6 +54,10 @@ CONTROLLER_COLUMNS: tuple[tuple[str, str], ...] = (
     ("phpa", "PHPA-60"),
 )
 CONTROLLER_LABELS = dict(CONTROLLER_COLUMNS)
+DECISION_MODE_COLUMNS = (
+    ("phpa_current", "PHPA-Current"), ("phpa", "PHPA-Predictive"),
+    ("phpa_hybrid", "PHPA-Hybrid"),
+)
 
 WINDOW_BASELINE_CONTROLLER = "native_hpa_300"
 WINDOW_CANDIDATE_CONTROLLER = "native_hpa_60"
@@ -97,6 +103,64 @@ PHPA_METRIC_SPECS: list[tuple[str, str, str, str]] = [
     ("Stabilized=true count",    "phpa.stabilized_true_count",    ".0f", ""),
 ]
 
+CONTROLLED_PROTOCOL = "controlled-pilot-v1"
+PILOT_IDENTITY_FIELDS = (
+    "protocol_version", "campaign", "rps", "pre_allocated_vus", "max_vus",
+    "benchmark_source_sha256", "benchmark_config_sha256", "post_load_tail_seconds",
+)
+PILOT_RUN_IDENTITY_FIELDS = PILOT_IDENTITY_FIELDS + (
+    "experiment_id", "pattern", "controller", "repeat",
+    "scale_down_stabilization_seconds", "prediction_variant",
+)
+PILOT_WINDOW_IDENTITIES = (
+    ("load_start_time_unix", "measurement.load_onset_time_unix"),
+    ("offered_load_end_time_unix", "measurement.offered_load_end_time_unix"),
+    ("observation_end_time_unix", "measurement.tail_end_time_unix"),
+)
+PILOT_METRIC_SPECS = METRIC_SPECS[:5] + [
+    ("HTTP 200 requests", "k6.successful_requests_http_200", ".0f", ""),
+    ("HTTP 200 rate", "k6.successful_rate_http_200_pct", ".2f", "%"),
+    ("First scale-up after load onset", "measurement.first_scaleup_after_load_onset_s", ".0f", " s"),
+    ("First logged successful upscale after load onset", "phpa.first_upscale_decision_after_load_onset_s", ".3f", " s"),
+    ("Peak replicas during observation", "measurement.peak_replicas", ".1f", ""),
+    ("First scale-down after offered load end", "measurement.first_scaledown_after_offered_load_end_s", ".0f", " s"),
+    ("Full scale-down after offered load end", "measurement.full_scaledown_after_offered_load_end_s", ".0f", " s"),
+    ("Pod-seconds (load onset to fixed tail end)", "measurement.pod_seconds_load_onset_to_tail_end", ".0f", ""),
+    ("Pod-seconds after offered load end", "measurement.pod_seconds_post_load", ".0f", ""),
+    ("Excess Pod-seconds above minReplicas after offered load end", "measurement.excess_pod_seconds_post_load", ".0f", ""),
+    ("Time above minReplicas after offered load end", "measurement.post_load_above_min_s", ".0f", " s"),
+]
+
+
+def validate_pilot_compatibility(extracts: list[dict]) -> None:
+    """Refuse to pool different loads, sources or definitions in a new pilot."""
+    if not any(e.get("protocol_version") == CONTROLLED_PROTOCOL for e in extracts):
+        return
+    for field in PILOT_IDENTITY_FIELDS:
+        values = {str(e.get(field)) for e in extracts}
+        if any(e.get(field) is None or e.get(field) == "" for e in extracts) or len(values) != 1:
+            raise ValueError(f"incompatible controlled pilot: mixed or missing {field}: {sorted(values)}")
+    variants: dict[tuple[str, str], dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    explicit_modes = any("decision_mode" in item for item in extracts)
+    for item in extracts:
+        validate_decision_mode(item)
+        if explicit_modes and "decision_mode" not in item:
+            raise ValueError("incompatible controlled pilot: missing decision_mode")
+        if get_nested(item, "measurement.window_valid") is not True:
+            raise ValueError(
+                f"invalid controlled measurement in {item.get('experiment_id', '?')}; "
+                "inspect extraction warnings before aggregation"
+            )
+        group = (item.get("pattern"), item.get("controller"))
+        for field in ("scale_down_stabilization_seconds", "prediction_variant"):
+            if item.get(field) is None:
+                raise ValueError(f"incompatible controlled pilot: missing {field} in {group}")
+            variants[group][field].add(str(item.get(field)))
+    for group, fields in variants.items():
+        for field, values in fields.items():
+            if len(values) != 1:
+                raise ValueError(f"incompatible controlled pilot: mixed {field} in {group}")
+
 
 def get_nested(obj: dict, path: str) -> Any:
     """Walk a dotted path in a nested dict. Returns None on any miss."""
@@ -108,6 +172,36 @@ def get_nested(obj: dict, path: str) -> Any:
         if cur is None:
             return None
     return cur
+
+
+def validate_pilot_run(metadata: dict, extracted: dict, experiment_name: str = "?") -> None:
+    """Validate a controlled run's metadata/extract pair without filling gaps.
+
+    Public so matrix resume checks use the same contract as report loading.
+    Raises ValueError for missing or stale identity/window fields or an invalid
+    measurement; legacy loading deliberately does not call this function.
+    """
+    if (metadata.get("protocol_version") != CONTROLLED_PROTOCOL
+            or extracted.get("protocol_version") != CONTROLLED_PROTOCOL):
+        raise ValueError(
+            f"metadata/extract protocol_version mismatch in {experiment_name}; re-run extract.py"
+        )
+    pairs = [(field, field) for field in PILOT_RUN_IDENTITY_FIELDS]
+    if "decision_mode" in metadata or "decision_mode" in extracted:
+        pairs.append(("decision_mode", "decision_mode"))
+    pairs.extend((("git.commit", "git_commit"), *PILOT_WINDOW_IDENTITIES))
+    for metadata_path, extracted_path in pairs:
+        original = get_nested(metadata, metadata_path)
+        derived = get_nested(extracted, extracted_path)
+        if original is None or original == "" or derived is None or derived == "":
+            raise ValueError(
+                f"metadata/extract {metadata_path} missing in {experiment_name}; re-run extract.py"
+            )
+        if original != derived:
+            raise ValueError(
+                f"metadata/extract {metadata_path} mismatch in {experiment_name}; re-run extract.py"
+            )
+    validate_pilot_compatibility([extracted])
 
 
 def fmt_value(value: Any, fmt: str, unit: str) -> str:
@@ -203,18 +297,21 @@ def load_extracts(root: Path) -> tuple[list[dict], list[str]]:
             )
             continue
 
-        # Keep aggregation useful when extract.json predates these metadata
-        # fields or was produced independently. New extracts already contain
-        # them, while setdefault preserves any explicitly extracted value.
-        data.setdefault("campaign", meta.get("campaign"))
-        data.setdefault(
-            "scale_down_stabilization_seconds",
-            meta.get("scale_down_stabilization_seconds"),
-        )
-        data.setdefault("prediction_variant", meta.get("prediction_variant"))
+        if (meta.get("protocol_version") == CONTROLLED_PROTOCOL
+                or data.get("protocol_version") == CONTROLLED_PROTOCOL):
+            validate_pilot_run(meta, data, exp_dir.name)
+        else:
+            # Preserve historical enrichment for extracts predating these fields.
+            data.setdefault("campaign", meta.get("campaign"))
+            data.setdefault(
+                "scale_down_stabilization_seconds",
+                meta.get("scale_down_stabilization_seconds"),
+            )
+            data.setdefault("prediction_variant", meta.get("prediction_variant"))
 
         extracts.append(data)
 
+    validate_pilot_compatibility(extracts)
     return extracts, skip_messages
 
 
@@ -222,6 +319,7 @@ def group_by_pattern_controller(
     extracts: list[dict],
 ) -> dict[tuple[str, str], list[dict]]:
     """Group extracts by (pattern, controller) tuple."""
+    validate_pilot_compatibility(extracts)
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for e in extracts:
         key = (e.get("pattern") or "?", e.get("controller") or "?")
@@ -666,6 +764,8 @@ def render_report(
         )
 
     groups = group_by_pattern_controller(extracts)
+    if extracts[0].get("protocol_version") == CONTROLLED_PROTOCOL:
+        return render_controlled_report(extracts, skip_messages, groups)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     header = [
@@ -686,6 +786,94 @@ def render_report(
     ]
 
     return "\n".join(sections)
+
+
+def render_controlled_report(
+    extracts: list[dict], skip_messages: list[str],
+    groups: dict[tuple[str, str], list[dict]],
+) -> str:
+    """Report explicit fixed-window metrics without relabelling archived v2 data."""
+    ablation = any(item.get("controller") in ("phpa_current", "phpa_hybrid") for item in extracts)
+    available_columns = CONTROLLER_COLUMNS[:2] + DECISION_MODE_COLUMNS if ablation else CONTROLLER_COLUMNS
+    columns = [(key, label) for key, label in available_columns
+               if any(e.get("controller") == key for e in extracts)]
+    lines = ["# Controlled Pilot Benchmark Report", "", render_setup(extracts)]
+    if ablation:
+        mode_by_controller = {item["controller"]: item["decision_mode"] for item in extracts}
+        lines.append("- **Decision modes**: " + ", ".join(
+            f"{key}={mode_by_controller[key]}" for key, _ in columns))
+    for field in PILOT_IDENTITY_FIELDS:
+        lines.append(f"- **{field}**: `{extracts[0].get(field)}`")
+    lines.extend([
+        "", "## Fixed observation window", "",
+        "Load onset is the recorded k6 runner start + 30s. Offered load end uses the "
+        "declared pattern schedule (step 211s, ramp 270s, spike 241s from runner start). "
+        "Every observation ends 360s after offered load end, excluding preparation and "
+        "variable runner drain/collection time from resource comparisons.", "",
+        "Pod-seconds estimate the integral of sampled Deployment status replicas with "
+        "a piecewise constant hold, at 15s precision. They are not CPU-seconds or billing "
+        "measurements. HTTP metrics include in-flight requests finishing after offered load end.", "",
+        "| Experiment | Load onset (Unix) | Offered load end (Unix) | Fixed tail end (Unix) | Window (s) | Scale-down complete |",
+        "|---|---|---|---|---|---|",
+    ])
+    for item in extracts:
+        measurement = item["measurement"]
+        values = [measurement.get(key) for key in (
+            "load_onset_time_unix", "offered_load_end_time_unix", "tail_end_time_unix",
+            "window_duration_s", "scaledown_completed",
+        )]
+        lines.append(f"| {item.get('experiment_id')} | " + " | ".join(map(str, values)) + " |")
+    differences = [("Controller difference", "phpa", "native_hpa_60")]
+    explanation = ("The difference is PHPA-60 minus Native-60 and compares complete controllers; "
+                   "it does not isolate prediction as a causal effect.")
+    if ablation:
+        differences = [("Current - Predictive", "phpa_current", "phpa"),
+                       ("Hybrid - Predictive", "phpa_hybrid", "phpa")]
+        explanation = ("The treatments use the same controller, metric source and scaling settings; "
+                       "only the selected decision mode differs. Differences are group means, "
+                       "with Predictive as the baseline.")
+    for pattern in sorted({pattern for pattern, _ in groups}):
+        lines.extend(["", f"## {pattern} comparison", "",
+                      "Values are mean ± sample standard deviation, or a single-run value with n=1. "
+                      + explanation, "",
+                      "| Metric | " + " | ".join(label for _, label in columns) + " | "
+                      + " | ".join(label for label, _, _ in differences) + " |",
+                      "|---|" + "---|" * (len(columns) + len(differences))])
+        for name, path, fmt, unit in PILOT_METRIC_SPECS:
+            formatted = []
+            censored_groups = set()
+            for controller, _ in columns:
+                group = groups.get((pattern, controller), [])
+                rendered = fmt_mean_stdev(metric_values(group, path), fmt, unit)
+                censored = path in {
+                    "measurement.full_scaledown_after_offered_load_end_s",
+                    "measurement.post_load_above_min_s",
+                } and any(get_nested(e, "measurement.scaledown_completed") is False for e in group)
+                formatted.append(rendered + (" †" if censored else ""))
+                if censored:
+                    censored_groups.add(controller)
+            for _, candidate, baseline in differences:
+                difference = compute_delta(metric_values(groups.get((pattern, candidate), []), path),
+                                           metric_values(groups.get((pattern, baseline), []), path))
+                formatted.append(difference + (" †" if {candidate, baseline} & censored_groups else ""))
+            lines.append(f"| {name} | " + " | ".join(formatted) + " |")
+    lines.extend(["", "## Limitations and exclusions", "",
+                  "- This small pilot provides descriptive evidence; no statistical significance is claimed.",
+                  "- Replica changes have 15s sampling precision; a change straddling load onset cannot be timed more precisely.",
+                  "- Logged successful upscales compare the submitted target with the previous desired replica count and use the timestamp immediately after a Scale update; this is separate from Pod readiness and sampled replica rise. Legacy Reconciled logs are a fallback measured after status persistence and compare with observed replicas, which may lag the desired count. Missing logged upscales remain n/a.",
+                  "- † marks scale-down censored at the fixed tail end. Time above minReplicas is then a lower bound for complete recovery; missing full scale-down times are omitted from means.",
+                  "- Fixed-window Pod-seconds remain observed window costs even if scale-down is censored.",
+                  "- Failed rate follows k6 expected-response policy; HTTP 200 rate separately counts strict status 200."])
+    for item in extracts:
+        for warning in item.get("warnings", []):
+            # Preserve source warnings while excluding timing warnings belonging
+            # only to the legacy calculation retained separately in extract.json.
+            if not warning.startswith(("scaledown_completed=false", "no scale-down events detected",
+                                       "k6 start timestamp unavailable")):
+                lines.append(f"- {item.get('experiment_id')}: {warning}")
+    lines.extend(f"- {message}" for message in skip_messages)
+    lines.append("")
+    return "\n".join(lines)
 
 
 def main() -> int:
@@ -711,8 +899,12 @@ def main() -> int:
         print(f"ERROR: {root} is not a directory", file=sys.stderr)
         return 1
 
-    extracts, skip_messages = load_extracts(root)
-    report = render_report(extracts, skip_messages)
+    try:
+        extracts, skip_messages = load_extracts(root)
+        report = render_report(extracts, skip_messages)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
     if args.stdout:
         sys.stdout.write(report)

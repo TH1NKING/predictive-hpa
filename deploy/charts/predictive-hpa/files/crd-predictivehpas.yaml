@@ -66,6 +66,19 @@ spec:
           spec:
             description: spec defines the desired state of PredictiveHPA
             properties:
+              decisionMode:
+                default: Predictive
+                description: |-
+                  decisionMode selects the CPU signal for replica decisions. Predictive uses
+                  the bounded EWMA forecast; Current uses observed CPU. Hybrid expands on
+                  current CPU and uses the more conservative signal for shrinking, with
+                  forecast-only expansion disabled. All modes share prediction readiness,
+                  replica bounds, tolerance and stabilization. Defaults to Predictive.
+                enum:
+                - Predictive
+                - Current
+                - Hybrid
+                type: string
               maxReplicas:
                 description: |-
                   maxReplicas is the upper bound for the number of replicas.
@@ -248,8 +261,8 @@ spec:
                 type: string
               predictedCPUUtilizationPercentage:
                 description: |-
-                  predictedCPUUtilizationPercentage is the EWMA-predicted CPU utilization
-                  at horizon, used to drive the scale-up decision.
+                  predictedCPUUtilizationPercentage is the bounded EWMA forecast at horizon.
+                  It is observable in every decision mode, including Current.
                 format: int32
                 type: integer
             type: object

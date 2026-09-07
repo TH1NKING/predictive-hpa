@@ -12,7 +12,7 @@
 
 ## 1. 核心价值主张
 
-PHPA 从 CPU 历史序列估计未来利用率，将预测信号用于副本决策。它能否更早扩容、降低请求失败或减少资源消耗，需要通过匹配配置的实验验证；当前数据不支持无条件的性能优势。
+PHPA 从 CPU 历史序列估计未来利用率，可选择预测、当前值或混合信号用于副本决策。它能否更早扩容、降低请求失败或减少资源消耗，需要通过匹配配置的实验验证；当前数据不支持无条件的性能优势。
 
 PHPA 使用与原生 HPA 相同形式的基础副本计算公式：
 
@@ -20,11 +20,36 @@ PHPA 使用与原生 HPA 相同形式的基础副本计算公式：
 desiredReplicas = ceil(currentReplicas × cpu% / targetCPU%)
 ```
 
-当前预测实现为 **EWMA 平滑 + 阻尼趋势外推**（阻尼系数 `0.85`），控制器将预测值限制在 `0` 到 `1.3 × 当前 CPU`，再执行副本上下限、稳定窗口和容差规则。相同形式的公式不等于相同的完整控制流程；指标来源、采样延迟与协调行为仍可能不同，因此控制器对比不能直接归因于预测算法本身。
+当前预测实现为 **EWMA 平滑 + 阻尼趋势外推**（阻尼系数 `0.85`），控制器将预测值限制在 `0` 到 `1.3 × 当前 CPU`，按 `decisionMode` 选择决策信号，再执行副本上下限、稳定窗口和容差规则。相同形式的公式不等于相同的完整控制流程；指标来源、采样延迟与协调行为仍可能不同，因此控制器对比不能直接归因于预测算法本身。
 
-## 2. 实测数据（PHPA vs 原生 HPA）
+## 2. 实测数据
 
-最新发布的 [稳定窗口消融 v2](docs/benchmarks/stabilization-window-ablation-v2.md) 包含 27 次实验：3 种负载模式 × 3 组控制器 × 3 次重复。它分别比较原生 HPA 的 300s/60s 窗口，以及同为 60s 窗口的 PHPA 与原生 HPA。
+最新的[同控制器决策消融](docs/benchmarks/decision-mode-ablation-20260907.md)比较了 Current、Predictive、Hybrid 各三次匹配的 25 RPS step 运行：
+
+| 描述性均值（每组 n=3） | Current | Predictive（默认） | Hybrid |
+|---|---:|---:|---:|
+| HTTP 200 成功率 | 69.85% | 68.68% | 68.40% |
+| 首次成功提高副本目标 | 48.67s | 48.67s | 48.33s |
+| 首次采样副本增加 | 65s | 65s | 65s |
+| 总 Pod-seconds（541s 窗口） | 2,101 | 2,261 | 2,181 |
+| 负载后 Pod-seconds（360s） | 1,126 | 1,236 | 1,196 |
+
+**本轮没有观察到平均首次扩容提前，也未证明整体服务优势。** Current 的总副本占用均值少 7.1%；三组成功率相近，但小样本不能证明服务非劣效或稳定资源收益。每次均丢弃一次迭代，全请求 p95 均接近 10 秒，均未达到诊断服务标准。回归及现场日志证实了当前值扩容保护的作用，同时说明低观测值也会推迟决策。详细取舍见[中文讲解](docs/benchmarks/decision-mode-ablation-guide.zh-CN.md)。
+
+### 2026-09-06：PHPA 与原生 HPA 的受控对照
+
+上一轮 [容量校准与受控 step 对照](docs/benchmarks/capacity-and-controlled-pilot-20260906.md) 完成了 18 个固定副本探针，以及 Native-60 / PHPA-60 各 3 次、25 RPS 的匹配实验。通过集群内 Service 发压，并统一从负载开始到停止后 360s 的统计窗口。两个批次比较对象与环境记录不同，不直接合并为同一组实验。
+
+| 描述性均值（每组 n=3） | Native-60 | PHPA-60 |
+|---|---:|---:|
+| HTTP 200 成功率 | 85.63% | 65.41% |
+| 首次观察到扩容 | 40s | 70s |
+| 总 Pod-seconds（同为 541s 窗口） | 2,306 | 2,101 |
+| 停止负载后的 Pod-seconds | 1,037 | 1,161 |
+
+本轮 PHPA 扩容更晚、成功率更低；总副本占用减少约 8.9%，但负载后的占用增加约 12.0%。较少副本伴随服务质量下降，不能据此宣称效率收益。两组全请求 p95 均接近 10s，合计有 5 次丢弃迭代；均未达到校准使用的 99% 成功率／500ms p95 标准。副本变化按 15s 采样，结论限于本轮小样本 step 场景，不宣称统计显著或预测算法的独立因果效果。方法与取舍见[中文讲解](docs/benchmarks/controlled-pilot-guide.zh-CN.md)。
+
+历史 [稳定窗口消融 v2](docs/benchmarks/stabilization-window-ablation-v2.md) 包含 27 次实验：3 种负载模式 × 3 组控制器 × 3 次重复。它分别比较原生 HPA 的 300s/60s 窗口，以及同为 60s 窗口的 PHPA 与原生 HPA。两个批次的流量路径、并发配置和统计窗口不同，不能将数值变化归因于单一修改。
 
 | 对比 | 首次扩容 | 负载停止后的资源拖尾 | 总 Pod-seconds | 请求失败率均值 |
 |---|---|---|---|---|
@@ -35,7 +60,7 @@ PHPA-60 的峰值副本增加约 88%–100%。这些是每组 `n=3` 的描述性
 
 **v2 证据限制（2026-09-05 补充）：** v2 失败率约 59%–96%，几乎所有组的全请求 p95 触及 10s 上限；归档脚本通过 `kubectl port-forward svc/php-apache` 压测，按 [Kubernetes 文档](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_port-forward/)，该会话选择一个 Pod，不能证明新增副本分担了请求。历史流量实际分布和高失败率根因尚未验证。
 
-**新的 Service 路径校准已完成：** [2026-09-05 校准报告](docs/benchmarks/service-routing-validation-results-20260905.md) 记录了 14 次有效固定副本探针，每个目标 Pod 均有请求证据。同为 25 RPS，5 副本在 90s 和反序 180s 探针中均为 100% HTTP 200、p95 约 80–87ms；1 副本两次均未达到预设成功率与延迟标准。这证明了本次环境与负载下从 1 到 5 副本的承载改善，不证明精确最大容量、5 到 10 副本的容量增益、统计显著性或预测算法收益。正式控制器对照仍需遵循 [校准与实验流程](docs/benchmarks/service-routing-validation.md)。
+**2026-09-05 Service 路径校准：** [2026-09-05 校准报告](docs/benchmarks/service-routing-validation-results-20260905.md) 记录了 14 次有效固定副本探针，每个目标 Pod 均有请求证据。同为 25 RPS，5 副本在 90s 和反序 180s 探针中均为 100% HTTP 200、p95 约 80–87ms；1 副本两次均未达到预设成功率与延迟标准。这证明了本次环境与负载下从 1 到 5 副本的承载改善，不证明精确最大容量、5 到 10 副本的容量增益、统计显著性或预测算法收益。正式控制器对照仍需遵循 [校准与实验流程](docs/benchmarks/service-routing-validation.md)。
 
 ## 3. 架构
 
@@ -105,6 +130,7 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 | `prediction.alphaPercent` | int32 | — | EWMA 平滑系数 ×100，1–99 |
 | `prediction.window` | Duration | — | 历史回溯窗口 |
 | `prediction.horizon` | Duration | — | 预测视野 |
+| `decisionMode` | enum | `Predictive` | `Predictive` 用预测值；`Current` 用当前值；`Hybrid` 当前值触发扩容，预测辅助保守缩容 |
 | `scaleDownStabilizationWindowSeconds` | *int32 | 60 | 缩容稳定窗口（原生 HPA 默认 300s） |
 
 ### status
@@ -112,6 +138,11 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 `currentReplicas` / `desiredReplicas` / `currentCPUUtilizationPercentage` / `predictedCPUUtilizationPercentage` / `lastScaleTime` / `conditions`（含 `ScaleDownStabilized`）。
 
 非法配置（如 `algorithm: ARIMA`、`alphaPercent: 200`）由 OpenAPI v3 schema 在 admission 阶段直接拒绝，控制器代码不重复校验。字段详情：`kubectl explain phpa.spec.prediction`。
+
+三种决策模式共享指标源、预测计算、30s 重排队配置、容差和稳定窗口；资源事件也可能触发协调。`Hybrid` 的决策信号为
+`max(当前 CPU, min(限幅预测 CPU, 目标 CPU))`：预测不能单独触发扩容，也不能让缩容低于当前需求。
+`Current` 仍计算预测供观察，保留共同的样本就绪要求。省略 `decisionMode` 保持原有行为。
+模式对照的方法与验收标准见[同控制器消融方案](docs/benchmarks/decision-mode-ablation.md)；新增模式本身不代表已证明性能收益。
 
 ## 6. 设计决策摘要
 
@@ -148,7 +179,6 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 - 可配置 tolerance（`spec.tolerance`，当前写死 10%）
 - 扩缩方向独立的稳定窗口
 - ConfigMap 持久化稳定窗口历史（重启安全）
-- 混合模式：扩容用当前值、缩容用预测值（针对"首次扩容慢"的定向修复）
 
 ### v2alpha1（架构级变更，超出当前范围）
 - Scale-to-zero（需要 KEDA Activator 式外部唤醒机制，是架构问题而非参数问题）

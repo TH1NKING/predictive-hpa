@@ -31,6 +31,10 @@ helm install predictive-hpa ./deploy/charts/predictive-hpa \
 > PredictiveHPA *实例* 的 spec 字段，写在你创建的 PredictiveHPA 资源里，不是 chart
 > 部署参数。一个 chart 可服务多个不同调参的 PHPA 实例。
 
+`spec.decisionMode` 也属于实例配置：可选 `Predictive`（默认）、`Current`、`Hybrid`。
+Hybrid 用当前 CPU 触发扩容，预测只辅助保守缩容；省略字段保留旧行为。
+使用新模式前需要更新 CRD 和控制器镜像，不能仅修改实例 YAML。
+
 ## CRD 来源（重要）
 
 CRD 的 OpenAPI schema 是 `make manifests` 的生成产物，chart **不手维护** schema。
