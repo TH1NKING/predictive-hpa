@@ -24,12 +24,17 @@ benchmark_config_init() {
       0|10|20) ;;
       *) echo "ERROR: LATENCY_OFFSET_SECONDS must be 0, 10, or 20" >&2; return 1 ;;
     esac
+    LATENCY_REQUEUE_SECONDS="${LATENCY_REQUEUE_SECONDS-30}"
+    case "$LATENCY_REQUEUE_SECONDS" in
+      15|30) ;;
+      *) echo "ERROR: LATENCY_REQUEUE_SECONDS must be 15 or 30" >&2; return 1 ;;
+    esac
     LATENCY_GATE_TIMEOUT_SECONDS="${LATENCY_GATE_TIMEOUT_SECONDS-180}"
     if [ "$LATENCY_GATE_TIMEOUT_SECONDS" != 180 ]; then
       echo "ERROR: latency gate timeout is fixed at 180 seconds" >&2
       return 1
     fi
-    export LATENCY_OFFSET_SECONDS LATENCY_GATE_TIMEOUT_SECONDS
+    export LATENCY_OFFSET_SECONDS LATENCY_GATE_TIMEOUT_SECONDS LATENCY_REQUEUE_SECONDS
   else
     BENCHMARK_PATTERNS="${BENCHMARK_PATTERNS-step ramp spike}"
     BENCHMARK_CONTROLLERS="${BENCHMARK_CONTROLLERS-native_hpa_300 native_hpa_60 phpa}"
@@ -140,6 +145,7 @@ benchmark_config_fingerprint() {
       if [ "$LATENCY_DIAGNOSTIC" = true ]; then
         printf '%s\n' 'latency_diagnostic=latency-diagnostic-v1' \
           "latency_offset_seconds=$LATENCY_OFFSET_SECONDS" \
+          "latency_requeue_seconds=$LATENCY_REQUEUE_SECONDS" \
           "latency_gate_timeout_seconds=$LATENCY_GATE_TIMEOUT_SECONDS" \
           'latency_observer_interval_seconds=2' 'latency_phase_tolerance_seconds=2' \
           'latency_gate_clock_precision_seconds=1' 'latency_launch_rounding=ceil'

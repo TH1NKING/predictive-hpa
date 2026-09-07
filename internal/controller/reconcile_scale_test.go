@@ -17,6 +17,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	ctrl "sigs.k8s.io/controller-runtime"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
 	"github.com/th1nking/predictive-hpa/internal/predictor"
@@ -110,6 +113,32 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 			},
 		}
 	}
+
+	It("uses the configured requeue interval while waiting for a missing Deployment", func() {
+		phpa := makePHPA(testNamespace, "cadence-phpa", "not-created", nil)
+		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+		var diagnostics diagnosticLogBuffer
+		logger := zap.New(zap.WriteTo(&diagnostics), zap.UseDevMode(false)).WithValues("namespace", testNamespace)
+		reconciler := &PredictiveHPAReconciler{
+			Client:          k8sClient,
+			RequeueInterval: 15 * time.Second,
+		}
+
+		result, err := reconciler.Reconcile(logf.IntoContext(ctx, logger), ctrl.Request{
+			NamespacedName: client.ObjectKeyFromObject(phpa),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.RequeueAfter).To(Equal(15 * time.Second))
+		var finished map[string]any
+		for _, record := range diagnostics.records(testNamespace) {
+			if record["msg"] == "Finished PredictiveHPA reconciliation" {
+				finished = record
+			}
+		}
+		Expect(finished).NotTo(BeNil())
+		Expect(finished["requeueAfterSeconds"]).To(Equal(float64(15)))
+		Expect(finished["reconcileError"]).To(Equal(""))
+	})
 
 	It("records a correlated decision and successful Scale boundary before finishing reconciliation", func() {
 		deploy := makeDeployment(testNamespace, "timing-app", 1)

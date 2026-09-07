@@ -97,7 +97,7 @@ def controller_evidence(cycles: list[dict], onset: float, plan: dict) -> tuple[d
         flags.append("reconcile_gap_exceeds_nominal_interval")
     if error is not None and error > tolerance:
         flags.append("requested_phase_missed")
-    return timing, {"requested_offset_seconds": requested, "actual_reconcile_gap_seconds": gap,
+    return timing, {"requested_offset_seconds": requested, "requeue_seconds": cadence, "actual_reconcile_gap_seconds": gap,
                     "phase_error_seconds": error, "within_tolerance": error is not None and error <= tolerance,
                     "tolerance_seconds": tolerance}, flags
 

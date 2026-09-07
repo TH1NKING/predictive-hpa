@@ -176,6 +176,7 @@ if [ "$LATENCY_DIAGNOSTIC" = true ]; then
 latency_diagnostic: true
 latency_protocol_version: "latency-diagnostic-v1"
 latency_offset_seconds: $LATENCY_OFFSET_SECONDS
+latency_requeue_seconds: $LATENCY_REQUEUE_SECONDS
 latency_gate_timeout_seconds: $LATENCY_GATE_TIMEOUT_SECONDS
 latency_occupancy_window_reference: "integer_process_start_plus_30_seconds"
 LATENCY_META
@@ -323,7 +324,11 @@ if [[ "$CONTROLLER" = phpa* ]]; then
   if ! go build -o "$CONTROLLER_BINARY" ./cmd; then
     fail_experiment "controller build failed"
   fi
-  KUBECONFIG="$CONTROLLER_KUBECONFIG" "$CONTROLLER_BINARY" > "$CONTROLLER_LOG" 2>&1 &
+  CONTROLLER_EXTRA_ARGS=()
+  if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+    CONTROLLER_EXTRA_ARGS+=("--requeue-interval=${LATENCY_REQUEUE_SECONDS}s")
+  fi
+  KUBECONFIG="$CONTROLLER_KUBECONFIG" "$CONTROLLER_BINARY" "${CONTROLLER_EXTRA_ARGS[@]}" > "$CONTROLLER_LOG" 2>&1 &
   CONTROLLER_PID=$!
   STARTED=false
   for ((i=0; i<CONTROLLER_STARTUP_TIMEOUT; i++)); do
@@ -350,6 +355,7 @@ K6_EXTRA_ARGS=()
 if [ "$LATENCY_DIAGNOSTIC" = true ]; then
   "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/run_latency_diagnostic.py" observe \
     --run-dir "$EXP_DIR" --context "$BENCHMARK_CONTEXT" --offset-seconds "$LATENCY_OFFSET_SECONDS" \
+    --requeue-seconds "$LATENCY_REQUEUE_SECONDS" \
     > "$EXP_DIR/latency-observer.log" 2>&1 &
   LATENCY_OBSERVER_PID=$!
   OBSERVER_STARTED=false

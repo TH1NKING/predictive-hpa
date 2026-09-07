@@ -64,10 +64,11 @@ def frozen_plan() -> dict:
 
 
 class Observer:
-    def __init__(self, directory: Path, context: str, offset: int) -> None:
+    def __init__(self, directory: Path, context: str, offset: int, requeue_seconds: int = 30) -> None:
         self.directory = directory.resolve()
         self.context = context
         self.offset = offset
+        self.requeue_seconds = requeue_seconds
         self.kube = ["kubectl", "--context", context, "--namespace", "default", "--request-timeout=10s"]
         self.stop = threading.Event()
         self.lock = threading.Lock()
@@ -77,8 +78,11 @@ class Observer:
         self.gate_released = False
         self.runner_name = None
         self.started = utc()
-        self.plan = {**frozen_plan(), "requested_offset_seconds": offset, "context": context,
-                     "observer_started_at": self.started}
+        # The observer describes one run; slot order belongs to its outer campaign.
+        self.plan = {key: value for key, value in frozen_plan().items() if key != "slots"}
+        self.plan.update({"requested_offset_seconds": offset, "context": context,
+                          "observer_started_at": self.started, "requeue_seconds": requeue_seconds,
+                          "anchor_condition": f"Next finished one-replica reconcile after gate readiness, no error, {requeue_seconds}s requeue"})
         self.stream = None
 
     def record(self, row: dict) -> None:
@@ -234,7 +238,7 @@ class Observer:
                 for cycle in cycles:
                     finish, decision = cycle.get("finish", {}), cycle.get("decision", {})
                     if (finish and epoch(finish["reconcileFinishedAt"]) > gate_ready_at
-                            and finish.get("requeueAfterSeconds") == 30 and not finish.get("reconcileError")
+                            and finish.get("requeueAfterSeconds") == self.requeue_seconds and not finish.get("reconcileError")
                             and decision.get("currentReplicas") == 1 and decision.get("finalDesired") == 1
                             and float(decision.get("currentCPU%", 100)) < 5):
                         eligible.append(cycle)
@@ -349,6 +353,7 @@ def main() -> int:
     observe.add_argument("--run-dir", type=Path, required=True)
     observe.add_argument("--context", required=True)
     observe.add_argument("--offset-seconds", type=int, choices=(0, 10, 20), required=True)
+    observe.add_argument("--requeue-seconds", type=int, choices=(15, 30), default=30)
     args = parser.parse_args()
     if args.plan and args.command is None:
         print(json.dumps(frozen_plan(), indent=2))
@@ -358,7 +363,7 @@ def main() -> int:
     if not re.fullmatch(r"kind-[a-z0-9][a-z0-9-]*", args.context):
         parser.error("Observer requires an explicit dedicated Kind context")
     try:
-        return Observer(args.run_dir, args.context, args.offset_seconds).run()
+        return Observer(args.run_dir, args.context, args.offset_seconds, args.requeue_seconds).run()
     except (OSError, ValueError) as error:
         print(f"Latency observer failed: {error}", file=sys.stderr)
         return 3

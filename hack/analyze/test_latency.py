@@ -212,6 +212,28 @@ class LatencyCLI(unittest.TestCase):
             self.assertEqual(ONSET + 181, schedule["offered_load_end_unix"])
             self.assertEqual(ONSET + 541, schedule["observation_end_unix"])
 
+    def test_fifteen_second_cadence_reports_its_phase_without_wrapping_a_long_gap(self) -> None:
+        for gap, matches in ((10.5, True), (25, False)):
+            with self.subTest(gap=gap), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                self.fixture(directory)
+                write_json(directory / "latency-plan.json", {"requested_offset_seconds": 10,
+                           "requeue_seconds": 15, "phase_tolerance_seconds": 2})
+                (directory / "latency-observations.ndjson").write_text("", encoding="utf-8")
+                (directory / "controller.log").write_text("\n".join([
+                    log_record("Evaluated PredictiveHPA scaling decision", -gap-1,
+                               decisionAt=stamp(-gap-.5), currentReplicas=1, finalDesired=1, **{"currentCPU%": 2}),
+                    log_record("Finished PredictiveHPA reconciliation", -gap-1,
+                               reconcileFinishedAt=stamp(-gap), reconcileError="", requeueAfterSeconds=15),
+                ]), encoding="utf-8")
+                report = self.analyze(directory)
+                self.assertEqual(15, report["phase"]["requeue_seconds"])
+                self.assertEqual(gap, report["phase"]["actual_reconcile_gap_seconds"])
+                self.assertEqual(matches, report["phase"]["within_tolerance"])
+                if not matches:
+                    self.assertIsNone(report["phase"]["phase_error_seconds"])
+                    self.assertIn("reconcile_gap_exceeds_nominal_interval", report["quality"]["flags"])
+
 
 if __name__ == "__main__":
     unittest.main()
