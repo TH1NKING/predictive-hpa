@@ -116,6 +116,7 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 | `prediction.alphaPercent` | int32 | — | EWMA 平滑系数 ×100，1–99 |
 | `prediction.window` | Duration | — | 历史回溯窗口 |
 | `prediction.horizon` | Duration | — | 预测视野 |
+| `decisionMode` | enum | `Predictive` | `Predictive` 用预测值；`Current` 用当前值；`Hybrid` 当前值触发扩容，预测辅助保守缩容 |
 | `scaleDownStabilizationWindowSeconds` | *int32 | 60 | 缩容稳定窗口（原生 HPA 默认 300s） |
 
 ### status
@@ -123,6 +124,11 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 `currentReplicas` / `desiredReplicas` / `currentCPUUtilizationPercentage` / `predictedCPUUtilizationPercentage` / `lastScaleTime` / `conditions`（含 `ScaleDownStabilized`）。
 
 非法配置（如 `algorithm: ARIMA`、`alphaPercent: 200`）由 OpenAPI v3 schema 在 admission 阶段直接拒绝，控制器代码不重复校验。字段详情：`kubectl explain phpa.spec.prediction`。
+
+三种决策模式共享指标源、预测计算、30s 协调间隔、容差和稳定窗口。`Hybrid` 的决策信号为
+`max(当前 CPU, min(限幅预测 CPU, 目标 CPU))`：预测不能单独触发扩容，也不能让缩容低于当前需求。
+`Current` 仍计算预测供观察，保留共同的样本就绪要求。省略 `decisionMode` 保持原有行为。
+模式对照的方法与验收标准见[同控制器消融方案](docs/benchmarks/decision-mode-ablation.md)；新增模式本身不代表已证明性能收益。
 
 ## 6. 设计决策摘要
 
@@ -159,7 +165,7 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 - 可配置 tolerance（`spec.tolerance`，当前写死 10%）
 - 扩缩方向独立的稳定窗口
 - ConfigMap 持久化稳定窗口历史（重启安全）
-- 混合模式：扩容用当前值、缩容用预测值（针对"首次扩容慢"的定向修复）
+- 三种决策模式已在 v1alpha1 提供；其服务质量与资源效果通过同控制器对照验证
 
 ### v2alpha1（架构级变更，超出当前范围）
 - Scale-to-zero（需要 KEDA Activator 式外部唤醒机制，是架构问题而非参数问题）

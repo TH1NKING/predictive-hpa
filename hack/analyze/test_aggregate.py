@@ -25,6 +25,8 @@ def set_nested(obj: dict[str, Any], path: str, value: Any) -> None:
     current = obj
     parts = path.split(".")
     for part in parts[:-1]:
+        if current.get(part) is None:
+            current[part] = {}
         current = current.setdefault(part, {})
     current[parts[-1]] = value
 
@@ -86,6 +88,45 @@ def pilot_metadata(result: dict) -> dict:
 
 
 class ControlledAggregateTests(unittest.TestCase):
+    def test_same_controller_report_preserves_three_modes_and_logged_decision_timing(self) -> None:
+        results = []
+        for controller, mode in (("phpa_current", "Current"), ("phpa", "Predictive"),
+                                 ("phpa_hybrid", "Hybrid")):
+            item = pilot_extract(controller)
+            item["decision_mode"] = mode
+            item["prediction_variant"] = "ewma_damped_cap"
+            item["phpa"] = {"first_upscale_decision_after_load_onset_s": 11.5,
+                            "scale_decision_source": "Scaled Deployment"}
+            results.append(item)
+        report = aggregate.render_report(results, [])
+        self.assertIn("| Metric | PHPA-Current | PHPA-Predictive | PHPA-Hybrid |", report)
+        self.assertIn("Current - Predictive", report)
+        self.assertIn("Hybrid - Predictive", report)
+        self.assertIn("First logged successful upscale after load onset", report)
+        self.assertIn("First scale-up after load onset", report)
+        self.assertIn("11.500 s (n=1)", report)
+        self.assertIn("same controller", report)
+        self.assertNotIn("compares complete controllers", report)
+        self.assertNotIn("Native-60", report)
+
+    def test_treatment_identity_rejects_relabelling_missing_or_stale_modes(self) -> None:
+        for controller, mode in (("phpa", "Current"), ("phpa_current", None),
+                                 ("native_hpa_60", "Predictive")):
+            with self.subTest(controller=controller, mode=mode):
+                result = pilot_extract(controller)
+                if mode is not None:
+                    result["decision_mode"] = mode
+                with self.assertRaisesRegex(ValueError, "decision_mode"):
+                    aggregate.render_report([result], [])
+        result = pilot_extract("phpa")
+        result["decision_mode"] = "Predictive"
+        metadata = pilot_metadata(result)
+        metadata["decision_mode"] = "Current"
+        with self.assertRaisesRegex(ValueError, "metadata/extract decision_mode mismatch"):
+            aggregate.validate_pilot_run(metadata, result)
+        with self.assertRaisesRegex(ValueError, "decision_mode"):
+            aggregate.render_report([result, pilot_extract()], [])
+
     def test_load_accepts_matching_complete_pilot_identity(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

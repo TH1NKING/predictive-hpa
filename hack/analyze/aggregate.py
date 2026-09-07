@@ -44,6 +44,8 @@ from typing import Any
 
 import yaml
 
+from extract import validate_decision_mode
+
 
 # Stable report order and user-facing labels for the three-way ablation.
 CONTROLLER_COLUMNS: tuple[tuple[str, str], ...] = (
@@ -52,6 +54,10 @@ CONTROLLER_COLUMNS: tuple[tuple[str, str], ...] = (
     ("phpa", "PHPA-60"),
 )
 CONTROLLER_LABELS = dict(CONTROLLER_COLUMNS)
+DECISION_MODE_COLUMNS = (
+    ("phpa_current", "PHPA-Current"), ("phpa", "PHPA-Predictive"),
+    ("phpa_hybrid", "PHPA-Hybrid"),
+)
 
 WINDOW_BASELINE_CONTROLLER = "native_hpa_300"
 WINDOW_CANDIDATE_CONTROLLER = "native_hpa_60"
@@ -115,6 +121,7 @@ PILOT_METRIC_SPECS = METRIC_SPECS[:5] + [
     ("HTTP 200 requests", "k6.successful_requests_http_200", ".0f", ""),
     ("HTTP 200 rate", "k6.successful_rate_http_200_pct", ".2f", "%"),
     ("First scale-up after load onset", "measurement.first_scaleup_after_load_onset_s", ".0f", " s"),
+    ("First logged successful upscale after load onset", "phpa.first_upscale_decision_after_load_onset_s", ".3f", " s"),
     ("Peak replicas during observation", "measurement.peak_replicas", ".1f", ""),
     ("First scale-down after offered load end", "measurement.first_scaledown_after_offered_load_end_s", ".0f", " s"),
     ("Full scale-down after offered load end", "measurement.full_scaledown_after_offered_load_end_s", ".0f", " s"),
@@ -134,7 +141,11 @@ def validate_pilot_compatibility(extracts: list[dict]) -> None:
         if any(e.get(field) is None or e.get(field) == "" for e in extracts) or len(values) != 1:
             raise ValueError(f"incompatible controlled pilot: mixed or missing {field}: {sorted(values)}")
     variants: dict[tuple[str, str], dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    explicit_modes = any("decision_mode" in item for item in extracts)
     for item in extracts:
+        validate_decision_mode(item)
+        if explicit_modes and "decision_mode" not in item:
+            raise ValueError("incompatible controlled pilot: missing decision_mode")
         if get_nested(item, "measurement.window_valid") is not True:
             raise ValueError(
                 f"invalid controlled measurement in {item.get('experiment_id', '?')}; "
@@ -176,6 +187,8 @@ def validate_pilot_run(metadata: dict, extracted: dict, experiment_name: str = "
             f"metadata/extract protocol_version mismatch in {experiment_name}; re-run extract.py"
         )
     pairs = [(field, field) for field in PILOT_RUN_IDENTITY_FIELDS]
+    if "decision_mode" in metadata or "decision_mode" in extracted:
+        pairs.append(("decision_mode", "decision_mode"))
     pairs.extend((("git.commit", "git_commit"), *PILOT_WINDOW_IDENTITIES))
     for metadata_path, extracted_path in pairs:
         original = get_nested(metadata, metadata_path)
@@ -780,9 +793,15 @@ def render_controlled_report(
     groups: dict[tuple[str, str], list[dict]],
 ) -> str:
     """Report explicit fixed-window metrics without relabelling archived v2 data."""
-    columns = [(key, label) for key, label in CONTROLLER_COLUMNS
+    ablation = any(item.get("controller") in ("phpa_current", "phpa_hybrid") for item in extracts)
+    available_columns = CONTROLLER_COLUMNS[:2] + DECISION_MODE_COLUMNS if ablation else CONTROLLER_COLUMNS
+    columns = [(key, label) for key, label in available_columns
                if any(e.get("controller") == key for e in extracts)]
     lines = ["# Controlled Pilot Benchmark Report", "", render_setup(extracts)]
+    if ablation:
+        mode_by_controller = {item["controller"]: item["decision_mode"] for item in extracts}
+        lines.append("- **Decision modes**: " + ", ".join(
+            f"{key}={mode_by_controller[key]}" for key, _ in columns))
     for field in PILOT_IDENTITY_FIELDS:
         lines.append(f"- **{field}**: `{extracts[0].get(field)}`")
     lines.extend([
@@ -804,16 +823,25 @@ def render_controlled_report(
             "window_duration_s", "scaledown_completed",
         )]
         lines.append(f"| {item.get('experiment_id')} | " + " | ".join(map(str, values)) + " |")
+    differences = [("Controller difference", "phpa", "native_hpa_60")]
+    explanation = ("The difference is PHPA-60 minus Native-60 and compares complete controllers; "
+                   "it does not isolate prediction as a causal effect.")
+    if ablation:
+        differences = [("Current - Predictive", "phpa_current", "phpa"),
+                       ("Hybrid - Predictive", "phpa_hybrid", "phpa")]
+        explanation = ("The treatments use the same controller, metric source and scaling settings; "
+                       "only the selected decision mode differs. Differences are group means, "
+                       "with Predictive as the baseline.")
     for pattern in sorted({pattern for pattern, _ in groups}):
         lines.extend(["", f"## {pattern} comparison", "",
                       "Values are mean ± sample standard deviation, or a single-run value with n=1. "
-                      "The difference is PHPA-60 minus Native-60 and compares complete controllers; "
-                      "it does not isolate prediction as a causal effect.", "",
-                      "| Metric | " + " | ".join(label for _, label in columns) + " | Controller difference |",
-                      "|---|" + "---|" * (len(columns) + 1)])
+                      + explanation, "",
+                      "| Metric | " + " | ".join(label for _, label in columns) + " | "
+                      + " | ".join(label for label, _, _ in differences) + " |",
+                      "|---|" + "---|" * (len(columns) + len(differences))])
         for name, path, fmt, unit in PILOT_METRIC_SPECS:
             formatted = []
-            censored_any = False
+            censored_groups = set()
             for controller, _ in columns:
                 group = groups.get((pattern, controller), [])
                 rendered = fmt_mean_stdev(metric_values(group, path), fmt, unit)
@@ -822,14 +850,17 @@ def render_controlled_report(
                     "measurement.post_load_above_min_s",
                 } and any(get_nested(e, "measurement.scaledown_completed") is False for e in group)
                 formatted.append(rendered + (" †" if censored else ""))
-                if controller in ("phpa", "native_hpa_60"):
-                    censored_any = censored_any or censored
-            difference = compute_delta(metric_values(groups.get((pattern, "phpa"), []), path),
-                                       metric_values(groups.get((pattern, "native_hpa_60"), []), path))
-            lines.append(f"| {name} | " + " | ".join(formatted) + f" | {difference}" + (" †" if censored_any else "") + " |")
+                if censored:
+                    censored_groups.add(controller)
+            for _, candidate, baseline in differences:
+                difference = compute_delta(metric_values(groups.get((pattern, candidate), []), path),
+                                           metric_values(groups.get((pattern, baseline), []), path))
+                formatted.append(difference + (" †" if {candidate, baseline} & censored_groups else ""))
+            lines.append(f"| {name} | " + " | ".join(formatted) + " |")
     lines.extend(["", "## Limitations and exclusions", "",
                   "- This small pilot provides descriptive evidence; no statistical significance is claimed.",
                   "- Replica changes have 15s sampling precision; a change straddling load onset cannot be timed more precisely.",
+                  "- Logged successful upscales compare the submitted target with the previous desired replica count and use the timestamp immediately after a Scale update; this is separate from Pod readiness and sampled replica rise. Legacy Reconciled logs are a fallback measured after status persistence and compare with observed replicas, which may lag the desired count. Missing logged upscales remain n/a.",
                   "- † marks scale-down censored at the fixed tail end. Time above minReplicas is then a lower bound for complete recovery; missing full scale-down times are omitted from means.",
                   "- Fixed-window Pod-seconds remain observed window costs even if scale-down is censored.",
                   "- Failed rate follows k6 expected-response policy; HTTP 200 rate separately counts strict status 200."])

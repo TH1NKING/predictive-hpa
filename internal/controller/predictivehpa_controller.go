@@ -42,9 +42,8 @@ import (
 
 const (
 	// requeueDefault is the interval between reconciliations under normal
-	// conditions. The native HPA controller uses 15s; we use 30s because
-	// the EWMA history window (typically 5m) is much larger than the
-	// polling interval — more frequent reconciliation yields no signal.
+	// conditions. Keep the existing 30s interval in every decision mode so
+	// the ablation does not also change polling cadence.
 	requeueDefault = 30 * time.Second
 
 	// requeueOnConfigError is used when the user has configured something
@@ -118,7 +117,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// 2. Validate scaleTargetRef.
 	if phpa.Spec.ScaleTargetRef.Kind != "Deployment" {
-		log.Info("unsupported scaleTargetRef kind (v1alpha1 supports Deployment only)",
+		log.Info("Unsupported scaleTargetRef kind (v1alpha1 supports Deployment only)",
 			"kind", phpa.Spec.ScaleTargetRef.Kind)
 		return ctrl.Result{RequeueAfter: requeueOnConfigError}, nil
 	}
@@ -131,7 +130,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	if err := r.Get(ctx, deployKey, &deploy); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("target Deployment not found", "deployment", deployKey)
+			log.Info("Target Deployment not found", "deployment", deployKey)
 			return ctrl.Result{RequeueAfter: requeueDefault}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get Deployment: %w", err)
@@ -144,7 +143,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	)
 	if err != nil {
 		if errors.Is(err, metricsprovider.ErrNoData) {
-			log.Info("metrics not yet available, will retry",
+			log.Info("Metrics not yet available, will retry",
 				"deployment", deploy.Name)
 			return ctrl.Result{RequeueAfter: requeueDefault}, nil
 		}
@@ -160,7 +159,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	})
 	if err != nil {
 		if errors.Is(err, predictor.ErrInsufficientData) {
-			log.Info("insufficient samples for prediction, will retry",
+			log.Info("Insufficient samples for prediction, will retry",
 				"samples", len(samples))
 			return ctrl.Result{RequeueAfter: requeueDefault}, nil
 		}
@@ -180,6 +179,22 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			"raw", rawPredicted, "bounded", predicted, "currentCPU", currentCPU)
 	}
 
+	// Select only the decision signal. Forecast computation and all subsequent
+	// policy stages remain identical, so mode comparisons share the same pipeline.
+	mode := phpa.Spec.DecisionMode
+	if mode == "" {
+		mode = autoscalingv1alpha1.DecisionModePredictive
+	}
+	decisionCPU := predicted
+	switch mode {
+	case autoscalingv1alpha1.DecisionModeCurrent:
+		decisionCPU = currentCPU
+	case autoscalingv1alpha1.DecisionModeHybrid:
+		// Current demand alone can expand. A higher forecast may retain replicas
+		// during falling demand, but cannot expand by itself or undercut current CPU.
+		decisionCPU = max(currentCPU, min(predicted, float64(phpa.Spec.TargetCPUUtilizationPercentage)))
+	}
+
 	// 7. Compute desired replicas (formula + min/max clamp).
 	currentReplicas := deploy.Status.Replicas
 
@@ -187,13 +202,13 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if phpa.Spec.MinReplicas != nil {
 		minReplicas = *phpa.Spec.MinReplicas
 		if minReplicas < 1 {
-			log.V(1).Info("minReplicas=0 not supported in v1alpha1; treating as 1")
+			log.V(1).Info("Minimum replicas of zero not supported in v1alpha1; treating as 1")
 		}
 	}
 
 	desiredReplicas := computeDesiredReplicas(
 		currentReplicas,
-		predicted,
+		decisionCPU,
 		phpa.Spec.TargetCPUUtilizationPercentage,
 		minReplicas,
 		phpa.Spec.MaxReplicas,
@@ -250,13 +265,14 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	switch {
 	case finalDesired == currentReplicas:
 		skipReason = "DesiredEqualsCurrent"
-	case withinTolerance(predicted, phpa.Spec.TargetCPUUtilizationPercentage):
+	case withinTolerance(decisionCPU, phpa.Spec.TargetCPUUtilizationPercentage):
 		skipReason = "WithinToleranceBand"
 	default:
 		scale := &autoscalingv1.Scale{}
 		if err := r.SubResource("scale").Get(ctx, &deploy, scale); err != nil {
 			return ctrl.Result{}, fmt.Errorf("get Deployment scale: %w", err)
 		}
+		previousDesiredReplicas := scale.Spec.Replicas
 		scale.Spec.Replicas = finalDesired
 		if err := r.SubResource("scale").Update(
 			ctx, &deploy, client.WithSubResourceBody(scale),
@@ -264,6 +280,12 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, fmt.Errorf("update Deployment scale: %w", err)
 		}
 		scaled = true
+		// Log at the successful write boundary, before a possibly failing status
+		// update. Replica sampling can observe this action on a later scrape.
+		log.Info("Scaled Deployment", "deployment", deploy.Name,
+			"decisionMode", mode, "decisionCPU%", decisionCPU,
+			"currentReplicas", currentReplicas, "previousDesiredReplicas", previousDesiredReplicas,
+			"finalDesired", finalDesired, "scaled", true)
 	}
 
 	// 10. Update status.
@@ -303,7 +325,10 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, fmt.Errorf("update status: %w", err)
 	}
 
-	log.Info("reconciled",
+	log.Info("Reconciled PredictiveHPA",
+		"decisionMode", mode,
+		"decisionCPU%", fmt.Sprintf("%.2f", decisionCPU),
+		"rawPredictedCPU%", fmt.Sprintf("%.2f", rawPredicted),
 		"currentCPU%", fmt.Sprintf("%.2f", currentCPU),
 		"predictedCPU%", fmt.Sprintf("%.2f", predicted),
 		"currentReplicas", currentReplicas,

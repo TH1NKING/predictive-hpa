@@ -52,6 +52,14 @@ var _ = Describe("PredictiveHPA CRD validation", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+		Expect(phpa.Spec.DecisionMode).To(Equal(autoscalingv1alpha1.DecisionModePredictive))
+
+		// The public admission boundary rejects unknown modes, independently
+		// of whether a controller is running or a target Deployment exists.
+		phpa.Spec.DecisionMode = "Unknown"
+		err := k8sClient.Update(ctx, phpa)
+		Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("decisionMode"))
 	})
 
 	It("rejects an invalid prediction algorithm", func() {

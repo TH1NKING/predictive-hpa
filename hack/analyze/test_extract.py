@@ -58,6 +58,93 @@ def controlled_fixture(directory: Path, preparation_s: int = 600, drain_s: int =
 
 
 class ControlledMeasurementTests(unittest.TestCase):
+    def test_successful_scale_without_previous_desired_count_is_invalid(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            metadata, _ = controlled_fixture(directory)
+            metadata.update({"controller": "phpa", "decision_mode": "Predictive"})
+            (directory / "metadata.yaml").write_text(yaml.safe_dump(metadata), encoding="utf-8")
+            body = {"decisionMode": "Predictive", "currentReplicas": 1,
+                    "finalDesired": 2, "scaled": True}
+            (directory / "controller.log").write_text(
+                f"2026-01-01T00:10:03Z\tINFO\tScaled Deployment\t{json.dumps(body)}\n"
+                f"2026-01-01T00:10:04Z\tINFO\tReconciled\t{json.dumps(body)}\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "previousDesiredReplicas"):
+                extractor.extract(directory)
+
+    def test_logged_upscale_uses_previous_desired_when_observed_replicas_lag(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            metadata, _ = controlled_fixture(directory)
+            metadata.update({"controller": "phpa_hybrid", "decision_mode": "Hybrid"})
+            (directory / "metadata.yaml").write_text(yaml.safe_dump(metadata), encoding="utf-8")
+            lines = []
+            for offset, message, previous, final in (
+                (3, "Scaled Deployment", 3, 2),
+                (4, "Reconciled PredictiveHPA", 3, 2),
+                (11.5, "Scaled Deployment", 2, 3),
+                (12, "Reconciled PredictiveHPA", 2, 3),
+            ):
+                timestamp = datetime.fromtimestamp(ONSET + offset, timezone.utc).isoformat()
+                body = {"decisionMode": "Hybrid", "currentReplicas": 1,
+                        "previousDesiredReplicas": previous, "finalDesired": final, "scaled": True}
+                lines.append(f"{timestamp}\tINFO\t{message}\t{json.dumps(body)}\n")
+            (directory / "controller.log").write_text("".join(lines), encoding="utf-8")
+            result = extractor.extract(directory)
+        self.assertEqual(11.5, result["phpa"]["first_upscale_decision_after_load_onset_s"])
+        self.assertEqual(2, result["phpa"]["total_reconciles"])
+
+    def test_extraction_rejects_wrong_or_missing_treatment_identity(self) -> None:
+        for controller, mode, logged_mode in (
+            ("phpa_current", "Hybrid", "Hybrid"),
+            ("phpa_hybrid", None, "Hybrid"),
+            ("phpa", "Predictive", "Current"),
+            ("phpa_current", "Current", None),
+            ("native_hpa_60", "Current", None),
+        ):
+            with self.subTest(controller=controller, mode=mode, logged_mode=logged_mode):
+                with tempfile.TemporaryDirectory() as temporary:
+                    directory = Path(temporary)
+                    metadata, _ = controlled_fixture(directory)
+                    metadata["controller"] = controller
+                    if mode is not None:
+                        metadata["decision_mode"] = mode
+                    (directory / "metadata.yaml").write_text(yaml.safe_dump(metadata), encoding="utf-8")
+                    body = {"scaled": False, "currentReplicas": 1, "finalDesired": 1}
+                    if logged_mode is not None:
+                        body["decisionMode"] = logged_mode
+                    (directory / "controller.log").write_text(
+                        f"2026-01-01T00:10:10Z\tINFO\tReconciled\t{json.dumps(body)}\n", encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "decision_mode"):
+                        extractor.extract(directory)
+
+    def test_first_logged_applied_upscale_is_separate_from_sampled_replica_rise(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            metadata, _ = controlled_fixture(directory)
+            metadata.update({"controller": "phpa_hybrid", "decision_mode": "Hybrid"})
+            (directory / "metadata.yaml").write_text(yaml.safe_dump(metadata), encoding="utf-8")
+            lines = []
+            for offset, message, current, final, scaled in (
+                (-5, "Scaled Deployment", 1, 2, True),
+                (1, "Reconciled", 1, 2, True),
+                (3, "Scaled Deployment", 2, 1, True),
+                (7, "Reconciled", 1, 2, False),
+                (11.5, "Scaled Deployment", 1, 2, True),
+                (12, "Reconciled", 1, 2, True),
+            ):
+                timestamp = datetime.fromtimestamp(ONSET + offset, timezone.utc).isoformat()
+                body = {"decisionMode": "Hybrid", "currentReplicas": current,
+                        "previousDesiredReplicas": current, "finalDesired": final, "scaled": scaled}
+                lines.append(f"{timestamp}\tINFO\t{message}\t{json.dumps(body)}\n")
+            (directory / "controller.log").write_text("".join(lines), encoding="utf-8")
+            result = extractor.extract(directory)
+        self.assertEqual("Hybrid", result["decision_mode"])
+        self.assertEqual(11.5, result["phpa"]["first_upscale_decision_after_load_onset_s"])
+        self.assertEqual("Scaled Deployment", result["phpa"]["scale_decision_source"])
+        self.assertEqual(45, result["measurement"]["first_scaleup_after_load_onset_s"])
+        self.assertEqual(3, result["phpa"]["total_reconciles"])
+
     def test_preparation_and_runner_drain_do_not_change_comparable_cost(self) -> None:
         results = []
         legacy_costs = []

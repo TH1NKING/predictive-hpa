@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
+	"github.com/th1nking/predictive-hpa/internal/predictor"
 )
 
 // These specs exercise the full reconcile loop in envtest: a real API server
@@ -88,7 +89,7 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 		}
 	}
 
-	makePHPA := func(namespace, name, deployName string, min *int32, max int32, target int32) *autoscalingv1alpha1.PredictiveHPA {
+	makePHPA := func(namespace, name, deployName string, min *int32) *autoscalingv1alpha1.PredictiveHPA {
 		return &autoscalingv1alpha1.PredictiveHPA{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 			Spec: autoscalingv1alpha1.PredictiveHPASpec{
@@ -98,8 +99,8 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 					Name:       deployName,
 				},
 				MinReplicas:                    min,
-				MaxReplicas:                    max,
-				TargetCPUUtilizationPercentage: target,
+				MaxReplicas:                    10,
+				TargetCPUUtilizationPercentage: 50,
 				Prediction: autoscalingv1alpha1.PredictionConfig{
 					Algorithm:    autoscalingv1alpha1.PredictionAlgorithm("EWMA"),
 					AlphaPercent: 30,
@@ -109,6 +110,80 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 			},
 		}
 	}
+
+	DescribeTable("decision modes at load onset", func(mode autoscalingv1alpha1.DecisionMode, expected int32) {
+		deploy := makeDeployment(testNamespace, "onset-app", 1)
+		Expect(k8sClient.Create(ctx, deploy)).To(Succeed())
+		deploy.Status.Replicas = 1
+		Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
+
+		// A quiet 5m history followed by 98.65% CPU produces about 52.86%
+		// with alpha=0.3 and a 30s horizon. This models the recorded pilot
+		// failure: observed demand needs two replicas, forecast is in 45-55%.
+		now := time.Now()
+		samples := make([]predictor.Sample, 21)
+		for i := range samples {
+			samples[i].Timestamp = now.Add(time.Duration(i-20) * 15 * time.Second)
+		}
+		samples[20].Value = 98.65
+		fakeMetrics.SetSamples(testNamespace, deploy.Name, samples)
+		minR := int32(1)
+		phpa := makePHPA(testNamespace, "onset-phpa", deploy.Name, &minR)
+		phpa.Spec.DecisionMode = mode
+		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			updated := &appsv1.Deployment{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(deploy), updated)).To(Succeed())
+			g.Expect(*updated.Spec.Replicas).To(Equal(expected))
+			status := &autoscalingv1alpha1.PredictiveHPA{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(phpa), status)).To(Succeed())
+			g.Expect(status.Status.PredictedCPUUtilizationPercentage).NotTo(BeNil())
+			g.Expect(*status.Status.PredictedCPUUtilizationPercentage).To(Equal(int32(53)))
+		}, 10*time.Second, 100*time.Millisecond).Should(Succeed())
+	},
+		Entry("Hybrid expands when the onset forecast is inside tolerance", autoscalingv1alpha1.DecisionModeHybrid, int32(2)),
+		Entry("Current expands when the onset forecast is inside tolerance", autoscalingv1alpha1.DecisionModeCurrent, int32(2)),
+		Entry("Predictive preserves the observed delayed expansion", autoscalingv1alpha1.DecisionModePredictive, int32(1)),
+		Entry("omitted mode preserves the existing predictive behavior", autoscalingv1alpha1.DecisionMode(""), int32(1)),
+	)
+
+	DescribeTable("Hybrid directional safeguards", func(previousCPU, currentCPU float64, expected int32) {
+		deploy := makeDeployment(testNamespace, "direction-app", 5)
+		Expect(k8sClient.Create(ctx, deploy)).To(Succeed())
+		deploy.Status.Replicas = 5
+		Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
+		now := time.Now()
+		samples := make([]predictor.Sample, 21)
+		for i := range samples {
+			samples[i] = predictor.Sample{
+				Timestamp: now.Add(time.Duration(i-20) * 15 * time.Second),
+				Value:     previousCPU,
+			}
+		}
+		samples[20].Value = currentCPU
+		fakeMetrics.SetSamples(testNamespace, deploy.Name, samples)
+		minR, window := int32(1), int32(0)
+		phpa := makePHPA(testNamespace, "direction-phpa", deploy.Name, &minR)
+		phpa.Spec.DecisionMode = autoscalingv1alpha1.DecisionModeHybrid
+		phpa.Spec.ScaleDownStabilizationWindowSeconds = &window
+		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+		Eventually(func(g Gomega) {
+			status := &autoscalingv1alpha1.PredictiveHPA{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(phpa), status)).To(Succeed())
+			g.Expect(status.Status.CurrentCPUUtilizationPercentage).NotTo(BeNil())
+			updated := &appsv1.Deployment{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(deploy), updated)).To(Succeed())
+			g.Expect(*updated.Spec.Replicas).To(Equal(expected))
+		}, 10*time.Second, 100*time.Millisecond).Should(Succeed())
+	},
+		Entry("does not expand on a high forecast alone", 100.0, 44.0, int32(5)),
+		Entry("does not shrink below current demand on a low forecast", 0.0, 25.0, int32(3)),
+		Entry("lets a higher forecast retain capacity during falling demand", 100.0, 30.0, int32(4)),
+		Entry("preserves current tolerance when the forecast is low", 0.0, 48.0, int32(5)),
+		Entry("still honors the maximum replica bound", 0.0, 200.0, int32(10)),
+		Entry("still honors the minimum replica bound", 0.0, 0.0, int32(1)),
+	)
 
 	It("scales up when CPU consistently exceeds target", func() {
 		const (
@@ -137,7 +212,7 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 		// 4. Create PHPA. Once created, the controller (running in BeforeSuite)
 		//    will start reconciling it on its watch.
 		minR := int32(1)
-		phpa := makePHPA(testNamespace, phpaName, deployName, &minR, 10, 50)
+		phpa := makePHPA(testNamespace, phpaName, deployName, &minR)
 		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
 
 		// 5. Poll Deployment.spec.replicas until the controller writes >= 4.
@@ -185,7 +260,7 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 		//    window's anti-flap behavior, which is covered by a separate spec.
 		minR := int32(1)
 		stabilizationZero := int32(0)
-		phpa := makePHPA(testNamespace, phpaName, deployName, &minR, 10, 50)
+		phpa := makePHPA(testNamespace, phpaName, deployName, &minR)
 		phpa.Spec.ScaleDownStabilizationWindowSeconds = &stabilizationZero
 		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
 
@@ -206,7 +281,7 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 		}, 60*time.Second, 500*time.Millisecond).Should(Succeed())
 	})
 
-	It("blocks scale-down while inside the stabilization window, then releases after expiry", func() {
+	DescribeTable("blocks scale-down inside the stabilization window, then releases after expiry", func(mode autoscalingv1alpha1.DecisionMode) {
 		const (
 			deployName = "demo-app"
 			phpaName   = "demo-phpa"
@@ -227,8 +302,9 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 		//    burn test time.
 		minR := int32(1)
 		stabSec := int32(30)
-		phpa := makePHPA(testNamespace, phpaName, deployName, &minR, 10, 50)
+		phpa := makePHPA(testNamespace, phpaName, deployName, &minR)
 		phpa.Spec.ScaleDownStabilizationWindowSeconds = &stabSec
+		phpa.Spec.DecisionMode = mode
 		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
 
 		// 4. Wait for upscale to saturate at maxReplicas=10. The formula
@@ -320,6 +396,10 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 				"expected scale-down to release after stabilization window expired; got %d",
 				*d.Spec.Replicas)
 		}, 30*time.Second, 500*time.Millisecond).Should(Succeed())
-	})
+	},
+		Entry("Predictive", autoscalingv1alpha1.DecisionModePredictive),
+		Entry("Current", autoscalingv1alpha1.DecisionModeCurrent),
+		Entry("Hybrid", autoscalingv1alpha1.DecisionModeHybrid),
+	)
 
 })

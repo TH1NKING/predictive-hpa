@@ -31,6 +31,20 @@ const (
 	PredictionAlgorithmEWMA PredictionAlgorithm = "EWMA"
 )
 
+// DecisionMode selects the CPU signal used by the scaling policy.
+// +kubebuilder:validation:Enum=Predictive;Current;Hybrid
+type DecisionMode string
+
+const (
+	// DecisionModePredictive uses the bounded forecast for both directions.
+	DecisionModePredictive DecisionMode = "Predictive"
+	// DecisionModeCurrent uses the latest CPU observation for both directions.
+	DecisionModeCurrent DecisionMode = "Current"
+	// DecisionModeHybrid expands on current CPU and lets the forecast retain
+	// replicas on falling demand, without initiating expansion by itself.
+	DecisionModeHybrid DecisionMode = "Hybrid"
+)
+
 // PredictionConfig configures the time-series prediction behavior.
 type PredictionConfig struct {
 	// algorithm selects the prediction algorithm. Currently only "EWMA" is supported.
@@ -90,6 +104,15 @@ type PredictiveHPASpec struct {
 	// +required
 	Prediction PredictionConfig `json:"prediction"`
 
+	// decisionMode selects the CPU signal for replica decisions. Predictive uses
+	// the bounded EWMA forecast; Current uses observed CPU. Hybrid expands on
+	// current CPU and uses the more conservative signal for shrinking, with
+	// forecast-only expansion disabled. All modes share prediction readiness,
+	// replica bounds, tolerance and stabilization. Defaults to Predictive.
+	// +kubebuilder:default=Predictive
+	// +optional
+	DecisionMode DecisionMode `json:"decisionMode,omitempty"`
+
 	// scaleDownStabilizationWindowSeconds is how long the controller waits before
 	// applying a scale-down decision, to prevent oscillation. Defaults to 60s,
 	// which is more aggressive than the native HPA default (300s) since the
@@ -115,8 +138,8 @@ type PredictiveHPAStatus struct {
 	// +optional
 	CurrentCPUUtilizationPercentage *int32 `json:"currentCPUUtilizationPercentage,omitempty"`
 
-	// predictedCPUUtilizationPercentage is the EWMA-predicted CPU utilization
-	// at horizon, used to drive the scale-up decision.
+	// predictedCPUUtilizationPercentage is the bounded EWMA forecast at horizon.
+	// It is observable in every decision mode, including Current.
 	// +optional
 	PredictedCPUUtilizationPercentage *int32 `json:"predictedCPUUtilizationPercentage,omitempty"`
 

@@ -5,7 +5,7 @@
 #
 # USAGE: hack/run_benchmark.sh <pattern> <controller> <repeat_idx>
 #   pattern    : step | ramp | spike
-#   controller : native_hpa_300 | native_hpa_60 | phpa
+#   controller : native_hpa_300 | native_hpa_60 | phpa | phpa_current | phpa_hybrid
 #   repeat_idx : 1-N (positive integer)
 #
 # Exit codes:
@@ -53,13 +53,13 @@ case "$CONTROLLER" in
     SCALE_DOWN_STABILIZATION_SECONDS=60
     PREDICTION_VARIANT="none"
     ;;
-  phpa)
+  phpa|phpa_current|phpa_hybrid)
     NATIVE_HPA_YAML=""
     SCALE_DOWN_STABILIZATION_SECONDS=60
     PREDICTION_VARIANT="ewma_damped_cap"
     ;;
   *)
-    echo "ERROR: controller must be native_hpa_300|native_hpa_60|phpa, got '$CONTROLLER'" >&2
+    echo "ERROR: controller must be native_hpa_300|native_hpa_60|phpa|phpa_current|phpa_hybrid, got '$CONTROLLER'" >&2
     exit 1
     ;;
 esac
@@ -71,6 +71,7 @@ fi
 # === Configuration ===
 benchmark_config_init
 benchmark_config_fingerprint
+DECISION_MODE=$(benchmark_decision_mode "$CONTROLLER")
 PHPA_SAMPLE="config/samples/autoscaling_v1alpha1_predictivehpa.yaml"
 EXPERIMENTS_ROOT="${EXPERIMENTS_ROOT:-experiments/service-routing-v1}"
 case "$EXPERIMENTS_ROOT" in
@@ -140,6 +141,7 @@ controller: $CONTROLLER
 repeat: $REPEAT_IDX
 scale_down_stabilization_seconds: $SCALE_DOWN_STABILIZATION_SECONDS
 prediction_variant: "$PREDICTION_VARIANT"
+decision_mode: "$DECISION_MODE"
 start_time_utc: "$START_TIME_UTC"
 start_time_unix: $START_TIME_UNIX
 end_time_utc: ""
@@ -262,8 +264,15 @@ done
 
 echo ""
 echo "[5/11] switch controller ($CONTROLLER)"
-if [ "$CONTROLLER" = "phpa" ]; then
-  k6_runner_kubectl apply -f "$PHPA_SAMPLE" >/dev/null
+if [[ "$CONTROLLER" = phpa* ]]; then
+  # Resolve the same fixture for each treatment, changing only its decision
+  # mode before any controller starts. Keep the exact submitted CR as evidence.
+  k6_runner_kubectl create --dry-run=client -f "$PHPA_SAMPLE" -o json |
+    jq --arg mode "$DECISION_MODE" '.spec.decisionMode = $mode' > "$EXP_DIR/phpa-applied.json"
+  k6_runner_kubectl apply -f "$EXP_DIR/phpa-applied.json" >/dev/null
+  k6_runner_kubectl get predictivehpa predictivehpa-sample -o json > "$EXP_DIR/phpa-after-apply.json"
+  jq -e --arg mode "$DECISION_MODE" '.spec.decisionMode == $mode' "$EXP_DIR/phpa-after-apply.json" >/dev/null ||
+    fail_experiment "PHPA decisionMode was not persisted; install the generated CRD before benchmarking" 1
   # The private kubeconfig is kept in /tmp, never in exported run artifacts.
   CONTROLLER_KUBECONFIG=$(mktemp /tmp/phpa-benchmark-kubeconfig.XXXXXX)
   chmod 600 "$CONTROLLER_KUBECONFIG"
@@ -388,7 +397,7 @@ k6_runner_kubectl get events --sort-by='.lastTimestamp' -o yaml > "$EXP_DIR/even
 k6_runner_kubectl get pods -l run=php-apache -o json > "$EXP_DIR/workload-pods-after.json"
 k6_runner_kubectl get endpointslices -l kubernetes.io/service-name=php-apache -o json > "$EXP_DIR/endpoints-after.json"
 
-echo "  collected: k6.json, prom.json, events.yaml$([ "$CONTROLLER" = "phpa" ] && echo ", controller.log")"
+echo "  collected: k6.json, prom.json, events.yaml$([[ "$CONTROLLER" = phpa* ]] && echo ", controller.log")"
 
 # === Step 10: smoke check ===
 echo ""
@@ -408,7 +417,7 @@ if [ "$PROM_REPLICAS_SERIES" -eq 0 ]; then
   fail_experiment "prom replicas series is empty (Prometheus may have lost connection)" 3
 fi
 
-if [ "$CONTROLLER" = phpa ]; then
+if [[ "$CONTROLLER" = phpa* ]]; then
   kill -0 "$CONTROLLER_PID" 2>/dev/null || fail_experiment "controller exited during the experiment"
 fi
 [ "$K6_REQS" -gt 0 ] || fail_experiment "k6 did not record any requests" 3

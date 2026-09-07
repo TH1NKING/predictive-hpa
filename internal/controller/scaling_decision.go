@@ -17,7 +17,7 @@ package controller
 
 import "math"
 
-// tolerance is the relative error allowed between predicted and target CPU
+// tolerance is the relative error allowed between decision and target CPU
 // utilization before a scaling action is taken. Matches the native HPA
 // controller's --horizontal-pod-autoscaler-tolerance default of 0.1 (10%).
 //
@@ -28,13 +28,13 @@ import "math"
 const tolerance = 0.1
 
 // computeDesiredReplicas returns the next replicas count for a Deployment
-// given the predicted CPU utilization and target. The formula matches the
+// given the selected CPU utilization and target. The formula matches the
 // native HPA controller (kubernetes/pkg/controller/podautoscaler/
 // replica_calculator.go::GetResourceReplicas):
 //
-//	desired = ceil(currentReplicas * predicted / target)
+//	desired = ceil(currentReplicas * decisionCPU / target)
 //
-// then clamped to [minReplicas, maxReplicas]. Negative predicted values
+// then clamped to [minReplicas, maxReplicas]. Negative selected values
 // (which can arise from the first-difference forecast on a sharply
 // descending signal) are clamped to 0 before the formula. minReplicas < 1
 // is treated as 1 — v1alpha1 does not support scale-to-zero (see Roadmap).
@@ -43,16 +43,16 @@ const tolerance = 0.1
 // (max-over-window of recent desireds) is applied by the caller, not here.
 func computeDesiredReplicas(
 	currentReplicas int32,
-	predictedCPU float64,
+	decisionCPU float64,
 	targetCPU int32,
 	minReplicas, maxReplicas int32,
 ) int32 {
-	if predictedCPU < 0 {
-		predictedCPU = 0
+	if decisionCPU < 0 {
+		decisionCPU = 0
 	}
 
 	desiredRaw := int32(math.Ceil(
-		float64(currentReplicas) * predictedCPU / float64(targetCPU),
+		float64(currentReplicas) * decisionCPU / float64(targetCPU),
 	))
 
 	if minReplicas < 1 {
@@ -63,18 +63,18 @@ func computeDesiredReplicas(
 	return desired
 }
 
-// withinTolerance reports whether the predicted CPU utilization is within
+// withinTolerance reports whether the selected CPU utilization is within
 // the tolerance band (default ±10%) of the target — in which case the
 // caller should skip scaling to avoid jitter on small fluctuations.
 //
-// The check is performed on the ratio predicted/target rather than on
+// The check is performed on the ratio decisionCPU/target rather than on
 // desiredReplicas, matching the native HPA semantics: the ratio is what
 // the formula scales by, so it is the natural quantity for the dead-zone.
-func withinTolerance(predictedCPU float64, targetCPU int32) bool {
-	if predictedCPU < 0 {
-		predictedCPU = 0
+func withinTolerance(decisionCPU float64, targetCPU int32) bool {
+	if decisionCPU < 0 {
+		decisionCPU = 0
 	}
-	ratio := predictedCPU / float64(targetCPU)
+	ratio := decisionCPU / float64(targetCPU)
 	return math.Abs(ratio-1.0) < tolerance
 }
 

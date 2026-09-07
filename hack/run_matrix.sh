@@ -98,6 +98,8 @@ trap on_interrupt INT
 already_succeeded() {
   local pattern="$1" controller="$2" idx="$3"
   local require_extraction="${4:-true}"
+  local decision_mode
+  decision_mode=$(benchmark_decision_mode "$controller")
   local matches
   if [ ! -d "$EXPERIMENTS_DIR" ]; then
     return 1
@@ -124,6 +126,7 @@ already_succeeded() {
        grep -Fxq "benchmark_config_sha256: \"$BENCHMARK_CONFIG_SHA256\"" "$dir/metadata.yaml" &&
        grep -Fxq "pre_allocated_vus: $BENCHMARK_PRE_ALLOCATED_VUS" "$dir/metadata.yaml" &&
        grep -Fxq "max_vus: $BENCHMARK_MAX_VUS" "$dir/metadata.yaml" &&
+       grep -Fxq "decision_mode: \"$decision_mode\"" "$dir/metadata.yaml" &&
        grep -Fxq 'connection_reuse: false' "$dir/metadata.yaml"; then
       if [ "$require_extraction" = false ] || validate_extraction "$dir"; then
         echo "$dir"

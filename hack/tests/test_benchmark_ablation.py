@@ -159,7 +159,7 @@ class BenchmarkScriptTests(unittest.TestCase):
                 "SCALE_DOWN_STABILIZATION_SECONDS=60",
                 'PREDICTION_VARIANT="none"',
             ),
-            "phpa": (
+            "phpa|phpa_current|phpa_hybrid": (
                 'NATIVE_HPA_YAML=""',
                 "SCALE_DOWN_STABILIZATION_SECONDS=60",
                 'PREDICTION_VARIANT="ewma_damped_cap"',
@@ -167,7 +167,7 @@ class BenchmarkScriptTests(unittest.TestCase):
         }
         branch_pattern = (
             r"  {controller}\)\n(?P<body>.*?)(?=\n  "
-            r"(?:native_hpa_300|native_hpa_60|phpa|\*)\))"
+            r"(?:native_hpa_300|native_hpa_60|phpa\|phpa_current\|phpa_hybrid|\*)\))"
         )
         for controller, expected_lines in expected_variants.items():
             with self.subTest(controller_mapping=controller):
@@ -290,6 +290,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             'pattern: step\ncontroller: phpa\nrepeat: 1\n'
             'scale_down_stabilization_seconds: 60\n'
             'prediction_variant: ewma_damped_cap\n'
+            'decision_mode: "Predictive"\n'
             'git:\n  commit: abcdef0123456789\n'
             'load_start_time_unix: 1700000030\n'
             'offered_load_end_time_unix: 1700000211\n'
@@ -334,6 +335,33 @@ class BenchmarkScriptTests(unittest.TestCase):
                 )
             ], plan)
 
+    def test_decision_modes_rotate_balanced_blocks_with_shared_configuration(self) -> None:
+        with tempfile.TemporaryDirectory(prefix=".decision-mode-plan-", dir=REPO_ROOT) as root:
+            env = {
+                "EXPERIMENTS_ROOT": Path(root).relative_to(REPO_ROOT).as_posix(),
+                "BENCHMARK_PATTERNS": "step",
+                "BENCHMARK_CONTROLLERS": "phpa_current phpa phpa_hybrid",
+                "BENCHMARK_REPEATS": "3", "RPS": "25",
+            }
+            result = self.run_bash("hack/run_matrix.sh", "--dry-run", extra_env=env)
+            self.assertEqual(0, result.returncode, result.stderr)
+            plan = re.findall(r"^\[\s*\d+/9\]\s+step\s+(\w+)\s+r(\d+)\s+PENDING$",
+                              result.stdout, re.MULTILINE)
+            self.assertEqual([
+                ("phpa_current", "1"), ("phpa", "1"), ("phpa_hybrid", "1"),
+                ("phpa", "2"), ("phpa_hybrid", "2"), ("phpa_current", "2"),
+                ("phpa_hybrid", "3"), ("phpa_current", "3"), ("phpa", "3"),
+            ], plan)
+            single = self.run_bash("hack/run_matrix.sh", "--dry-run", extra_env={
+                **env, "BENCHMARK_CONTROLLERS": "phpa_current",
+            })
+            self.assertEqual(0, single.returncode, single.stderr)
+            identity = re.search(r"^Configuration SHA256: (\w+)$", result.stdout, re.MULTILINE)[1]
+            self.assertIn(f"Configuration SHA256: {identity}", single.stdout)
+            for controller in ("phpa_current", "phpa_hybrid"):
+                accepted = self.run_bash("hack/run_benchmark.sh", "step", controller, "0")
+                self.assertIn("repeat_idx must be positive integer", accepted.stderr)
+
     def test_invalid_configuration_is_rejected_before_runtime_checks(self) -> None:
         invalid = {
             "RPS": ("", "0", "01", "1001", "-1", "1.5", "25\n", "25;echo bad"),
@@ -351,6 +379,28 @@ class BenchmarkScriptTests(unittest.TestCase):
                     self.assertIn("ERROR:", result.stderr)
                     self.assertNotIn("Pre-flight", result.stdout)
                     self.assertNotIn("experiments planned", result.stdout)
+
+    def test_resume_rejects_relabelled_decision_mode_even_when_extract_agrees(self) -> None:
+        with tempfile.TemporaryDirectory(prefix=".decision-mode-resume-", dir=REPO_ROOT) as root:
+            exp_root = Path(root)
+            env = {
+                "EXPERIMENTS_ROOT": exp_root.relative_to(REPO_ROOT).as_posix(),
+                "BENCHMARK_PATTERNS": "step", "BENCHMARK_CONTROLLERS": "phpa",
+                "BENCHMARK_REPEATS": "1",
+            }
+            plan = self.run_bash("hack/run_matrix.sh", "--dry-run", extra_env=env)
+            self.assertEqual(0, plan.returncode, plan.stderr)
+            run = exp_root / "20260907_000000_step_phpa_r1"
+            run.mkdir()
+            original = self.success_metadata(plan.stdout)
+            for identity in ('decision_mode: "Hybrid"\n', ''):
+                with self.subTest(identity=identity):
+                    metadata = original.replace('decision_mode: "Predictive"\n', '') + identity
+                    (run / "metadata.yaml").write_text(metadata, encoding="utf-8")
+                    self.write_valid_extract(run)
+                    resumed = self.run_bash("hack/run_matrix.sh", "--dry-run", extra_env=env)
+                    self.assertEqual(0, resumed.returncode, resumed.stderr)
+                    self.assertIn("0 already done, 1 pending", resumed.stdout)
 
     def test_resume_requires_exact_configuration_but_allows_repeat_expansion(self) -> None:
         with tempfile.TemporaryDirectory(prefix=".pilot-resume-", dir=REPO_ROOT) as root:
@@ -487,6 +537,7 @@ pre_allocated_vus: $BENCHMARK_PRE_ALLOCATED_VUS
 max_vus: $BENCHMARK_MAX_VUS
 pattern: $1
 controller: $2
+decision_mode: "$(benchmark_decision_mode "$2")"
 repeat: $3
 start_time_utc: "2026-09-06T00:00:00Z"
 end_time_utc: "2026-09-06T00:10:00Z"

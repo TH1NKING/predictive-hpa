@@ -48,7 +48,7 @@ benchmark_config_init() {
   seen=" "
   for member in "${BENCHMARK_CONTROLLER_VALUES[@]}"; do
     case "$member" in
-      native_hpa_300|native_hpa_60|phpa) ;;
+      native_hpa_300|native_hpa_60|phpa|phpa_current|phpa_hybrid) ;;
       *) echo "ERROR: invalid benchmark controller '$member'" >&2; return 1 ;;
     esac
     if [[ "$seen" = *" $member "* ]]; then
@@ -63,6 +63,18 @@ benchmark_config_init() {
   BENCHMARK_PRE_ALLOCATED_VUS=$(( RPS * 10 > 20 ? RPS * 10 : 20 ))
   BENCHMARK_MAX_VUS=$(( RPS * 12 > 40 ? RPS * 12 : 40 ))
   export RPS BENCHMARK_PATTERNS BENCHMARK_CONTROLLERS BENCHMARK_REPEATS
+}
+
+# The selector is a treatment identity, excluded from the shared configuration
+# hash so same-controller decision policies can be compared within one campaign.
+benchmark_decision_mode() {
+  case "$1" in
+    native_hpa_300|native_hpa_60) printf '%s\n' none ;;
+    phpa) printf '%s\n' Predictive ;;
+    phpa_current) printf '%s\n' Current ;;
+    phpa_hybrid) printf '%s\n' Hybrid ;;
+    *) echo "ERROR: unknown controller '$1'" >&2; return 1 ;;
+  esac
 }
 
 benchmark_config_fingerprint() {

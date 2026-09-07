@@ -21,8 +21,8 @@ Output:
 
 Design notes:
 - This script is idempotent. Re-running overwrites extract.json.
-- It does NOT raise on partial data. Missing/malformed inputs produce null
-  fields plus a warnings entry; aggregate.py is responsible for handling nulls.
+- Partial measurements produce null fields and warnings. Mismatched decision
+  treatments raise ValueError so they cannot silently enter an aggregate.
 - All timestamps in the output are UTC ISO 8601 with 'Z' suffix.
 - Latencies are reported in milliseconds (matching k6's native unit).
 - Historical scaling/resource fields preserve their original definitions.
@@ -61,6 +61,20 @@ PILOT_IDENTITY_FIELDS = (
     "protocol_version", "rps", "pre_allocated_vus", "max_vus",
     "benchmark_source_sha256", "benchmark_config_sha256", "post_load_tail_seconds",
 )
+DECISION_MODES = {
+    "native_hpa_300": "none", "native_hpa_60": "none",
+    "phpa": "Predictive", "phpa_current": "Current", "phpa_hybrid": "Hybrid",
+}
+
+
+def validate_decision_mode(identity: dict) -> None:
+    """Validate explicit treatments while allowing mode-free historical runs."""
+    controller = identity.get("controller")
+    if "decision_mode" not in identity and controller not in ("phpa_current", "phpa_hybrid"):
+        return
+    expected = DECISION_MODES.get(controller)
+    if expected is None or identity.get("decision_mode") != expected:
+        raise ValueError(f"decision_mode mismatch for {controller}: expected {expected}, got {identity.get('decision_mode')}")
 
 
 def parse_iso_to_utc(s: str) -> datetime | None:
@@ -299,7 +313,7 @@ def load_controller_log(path: Path) -> tuple[list[dict], list[str]]:
     """Parse controller.log into a list of reconcile decisions.
 
     Each entry is dict with parsed JSON keys plus 'timestamp_utc' from the log
-    prefix. Only lines containing 'reconciled' are included.
+    prefix. Reconcile summaries and successful Scale updates are included.
     """
     warnings: list[str] = []
     if not path.exists():
@@ -310,7 +324,10 @@ def load_controller_log(path: Path) -> tuple[list[dict], list[str]]:
     try:
         with path.open() as f:
             for line in f:
-                if "reconciled" not in line:
+                message = next((message for message in (
+                    "Scaled Deployment", "Reconciled PredictiveHPA", "Reconciled", "reconciled")
+                                if f"\t{message}\t" in line), None)
+                if message is None:
                     continue
                 # logr format: "<timestamp>\tINFO\treconciled\t<json>"
                 # Extract timestamp (everything up to first whitespace).
@@ -327,6 +344,7 @@ def load_controller_log(path: Path) -> tuple[list[dict], list[str]]:
                 except json.JSONDecodeError:
                     continue
                 body["timestamp_utc"] = ts
+                body["log_message"] = message
                 decisions.append(body)
     except OSError as e:
         warnings.append(f"controller.log read error: {e}")
@@ -466,6 +484,7 @@ def compute_scaling_metrics(
 
 def compute_phpa_metrics(decisions: list[dict]) -> dict:
     """Aggregate PHPA controller log into scalar metrics."""
+    decisions = [decision for decision in decisions if decision.get("log_message") != "Scaled Deployment"]
     if not decisions:
         return {
             "total_reconciles": 0,
@@ -495,6 +514,35 @@ def compute_phpa_metrics(decisions: list[dict]) -> dict:
         "scaled_true_count": sum(1 for d in unique if d.get("scaled") is True),
         "stabilized_true_count": sum(1 for d in unique if d.get("stabilized") is True),
         "skip_reasons": dict(Counter(d.get("skipReason", "") for d in unique)),
+    }
+
+
+def compute_first_upscale_decision(decisions: list[dict], measurement: dict) -> dict:
+    """Time applied upscales independently of the 15s replica status samples."""
+    applied = [decision for decision in decisions if decision.get("log_message") == "Scaled Deployment"]
+    if any(type(decision.get("previousDesiredReplicas")) is not int
+           or decision["previousDesiredReplicas"] < 0 for decision in applied):
+        raise ValueError("Scaled Deployment requires a valid previousDesiredReplicas count")
+    source = "Scaled Deployment" if applied else "Reconciled"
+    candidates = applied if applied else decisions
+    onset = measurement.get("load_onset_time_unix")
+    end = measurement.get("tail_end_time_unix")
+    upscales = []
+    if onset is not None and end is not None:
+        for decision in candidates:
+            timestamp = decision.get("timestamp_utc")
+            previous = decision.get("previousDesiredReplicas") if applied else decision.get("currentReplicas")
+            final = decision.get("finalDesired")
+            if (timestamp is not None and onset <= timestamp.timestamp() <= end
+                    and decision.get("scaled") is True
+                    and isinstance(previous, (int, float)) and isinstance(final, (int, float))
+                    and final > previous):
+                upscales.append(timestamp.timestamp())
+    first = min(upscales) if upscales else None
+    return {
+        "first_upscale_decision_after_load_onset_s": round(first - onset, 6) if first is not None else None,
+        "first_upscale_decision_time_unix": first,
+        "scale_decision_source": source if decisions else None,
     }
 
 
@@ -684,8 +732,11 @@ def extract(exp_dir: Path) -> dict:
     # 1. Metadata
     metadata, w = load_metadata(exp_dir / "metadata.yaml")
     warnings.extend(w)
+    validate_decision_mode(metadata)
     pilot_identity = ({key: metadata.get(key) for key in PILOT_IDENTITY_FIELDS}
                       if metadata.get("protocol_version") else {})
+    if "decision_mode" in metadata:
+        pilot_identity["decision_mode"] = metadata["decision_mode"]
 
     pattern = metadata.get("pattern")
     controller = metadata.get("controller")
@@ -777,12 +828,17 @@ def extract(exp_dir: Path) -> dict:
 
     # 7. PHPA-specific (phpa only)
     phpa_metrics: dict | None = None
-    if controller == "phpa":
+    if controller in ("phpa", "phpa_current", "phpa_hybrid"):
         decisions, w = load_controller_log(exp_dir / "controller.log")
         warnings.extend(w)
         if not decisions:
             warnings.append("controller.log missing or empty for phpa experiment")
+        if "decision_mode" in metadata:
+            if not decisions or any(decision.get("decisionMode") != metadata["decision_mode"]
+                                    for decision in decisions):
+                raise ValueError("decision_mode missing or mismatched in controller.log")
         phpa_metrics = compute_phpa_metrics(decisions)
+        phpa_metrics.update(compute_first_upscale_decision(decisions, controlled.get("measurement", {})))
 
     return {
         **pilot_identity,
@@ -824,7 +880,11 @@ def main() -> int:
         print(f"ERROR: {exp_dir} is not a directory", file=sys.stderr)
         return 1
 
-    result = extract(exp_dir)
+    try:
+        result = extract(exp_dir)
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 2
 
     if args.stdout:
         json.dump(result, sys.stdout, indent=2)
