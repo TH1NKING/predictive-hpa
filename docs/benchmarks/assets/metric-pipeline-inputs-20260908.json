@@ -1233,7 +1233,7 @@
     },
     {
       "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/plot_pipeline.py",
-      "sha256": "5649eea8010bc08588119e81880b017d3b3f6eba31ae0b82f47f38b5e72fac9f"
+      "sha256": "62693a22d4b09f1e9602ed78a3ed75b182b20cbca1b7e0cd3accb011732e1bb5"
     },
     {
       "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/verify_delivery.py",
@@ -1285,11 +1285,11 @@
     },
     {
       "path": "docs/benchmarks/assets/metric-pipeline-20260908.png",
-      "sha256": "0a46201d63997978c7e4fc25e57f065ff58b7dfa0948076396b454545d3db7df"
+      "sha256": "74107abfc338507e2e27364231713256376c457bb78601221ceccf1bd7295e62"
     },
     {
       "path": "docs/benchmarks/assets/metric-pipeline-20260908.svg",
-      "sha256": "8e5242a47fbbf8dde1000cae2ca3d1c67a8e990c062ed2fa776872e95d397234"
+      "sha256": "f54989daeab74cf64d1a8e3ff6dc8a1e1e79d8f2517d09a3c592937f7efb56d9"
     }
   ]
 }

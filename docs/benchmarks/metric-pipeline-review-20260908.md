@@ -74,3 +74,11 @@ proof of service improvement. Final results and caveats are in
 
 Implementation findings: Standards 0 (no outstanding severity); Spec 0
 (three initial P2 findings resolved and independently replayed).
+
+The final report review confirmed the values, scope and delivery. It found one
+P3 figure-label issue: the axis said all scrape reports while the figure displayed
+only times at or after load onset. The label now says post-onset scrape reports,
+and both caption and text state that range; the negative-time reports remain in
+the evidence. The corrected figure was rendered and visually checked, and its
+input hashes and separate analysis-support archive were refreshed. No numeric
+result or sealed experimental input changed.
