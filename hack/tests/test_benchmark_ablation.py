@@ -99,6 +99,33 @@ class BenchmarkScriptTests(unittest.TestCase):
                 result = self.run_bash("-n", script)
                 self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_metric_pipeline_opt_in_rejects_missing_latency_or_source_before_runtime(self) -> None:
+        for env in (
+            {"METRIC_PIPELINE_DIAGNOSTIC": "true", "METRIC_PIPELINE_SOURCE_NODE": "hpa-dev-control-plane"},
+            {"METRIC_PIPELINE_DIAGNOSTIC": "true", "LATENCY_DIAGNOSTIC": "true", "LATENCY_OFFSET_SECONDS": "10"},
+            {"METRIC_PIPELINE_DIAGNOSTIC": "yes"},
+            {"METRIC_PIPELINE_DIAGNOSTIC": "false", "METRIC_PIPELINE_SOURCE_NODE": "hpa-dev-control-plane"},
+            {"METRIC_PIPELINE_DIAGNOSTIC": "true", "LATENCY_DIAGNOSTIC": "true", "LATENCY_OFFSET_SECONDS": "10",
+             "METRIC_PIPELINE_SOURCE_NODE": "node/../../other"},
+        ):
+            with self.subTest(env=env):
+                result = self.run_bash("hack/run_matrix.sh", "--dry-run", extra_env=env)
+                self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+                self.assertIn("METRIC_PIPELINE", result.stderr)
+                self.assertNotIn("experiments planned", result.stdout)
+
+    def test_metric_pipeline_source_node_is_part_of_configuration_identity(self) -> None:
+        env = {"LATENCY_DIAGNOSTIC": "true", "LATENCY_OFFSET_SECONDS": "10"}
+        fingerprints = []
+        for extra in ({}, {"METRIC_PIPELINE_DIAGNOSTIC": "false"},
+                      {"METRIC_PIPELINE_DIAGNOSTIC": "true", "METRIC_PIPELINE_SOURCE_NODE": "first-node"},
+                      {"METRIC_PIPELINE_DIAGNOSTIC": "true", "METRIC_PIPELINE_SOURCE_NODE": "second-node"}):
+            result = self.run_bash("hack/run_matrix.sh", "--dry-run", extra_env={**env, **extra})
+            self.assertEqual(0, result.returncode, result.stderr)
+            fingerprints.append(re.search(r"^Configuration SHA256: (\w+)$", result.stdout, re.MULTILINE)[1])
+        self.assertEqual(fingerprints[0], fingerprints[1])
+        self.assertEqual(3, len(set(fingerprints)))
+
     def test_controller_variants_are_accepted_before_runtime_checks(self) -> None:
         for controller in ("native_hpa_300", "native_hpa_60", "phpa"):
             with self.subTest(controller=controller):

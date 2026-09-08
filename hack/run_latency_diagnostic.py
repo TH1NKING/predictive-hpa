@@ -14,23 +14,34 @@ import math
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
 from urllib.parse import urlencode
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 
 PROTOCOL = "latency-diagnostic-v1"
+METRIC_PIPELINE_PROTOCOL = "metric-pipeline-v1"
 INTERVAL_SECONDS = 2
 REQUEST_TIMEOUT_SECONDS = 12
 GATE_TIMEOUT_SECONDS = 180
 CPU_SELECTOR = 'container_cpu_usage_seconds_total{namespace="default",pod=~"php-apache-.*",container!=""}'
 REQUEST_SELECTOR = 'kube_pod_container_resource_requests{namespace="default",pod=~"php-apache-.*",resource="cpu"}'
 CPU_QUERY = f"(avg(rate({CPU_SELECTOR}[1m]))/avg({REQUEST_SELECTOR}))*100"
+CPU_QUERY_30S = f"(avg(rate({CPU_SELECTOR}[30s]))/avg({REQUEST_SELECTOR}))*100"
 PROMETHEUS_URL = "http://localhost:9090"
+
+
+class PrometheusFailure(RuntimeError):
+    def __init__(self, message: str, response: object, http_status: int) -> None:
+        super().__init__(message)
+        self.response = response
+        self.http_status = http_status
 
 
 def utc() -> str:
@@ -64,12 +75,18 @@ def frozen_plan() -> dict:
 
 
 class Observer:
-    def __init__(self, directory: Path, context: str, offset: int, requeue_seconds: int = 30) -> None:
+    def __init__(self, directory: Path, context: str, offset: int, requeue_seconds: int = 30,
+                 metric_pipeline: bool = False, source_node: str | None = None,
+                 prometheus_url: str = PROMETHEUS_URL) -> None:
         self.directory = directory.resolve()
         self.context = context
         self.offset = offset
         self.requeue_seconds = requeue_seconds
-        self.kube = ["kubectl", "--context", context, "--namespace", "default", "--request-timeout=10s"]
+        self.metric_pipeline = metric_pipeline
+        self.source_node = source_node
+        self.prometheus_url = prometheus_url.rstrip("/")
+        self.kube = [shutil.which("kubectl") or "kubectl", "--context", context,
+                     "--namespace", "default", "--request-timeout=10s"]
         self.stop = threading.Event()
         self.lock = threading.Lock()
         self.errors: list[dict] = []
@@ -83,7 +100,18 @@ class Observer:
         self.plan.update({"requested_offset_seconds": offset, "context": context,
                           "observer_started_at": self.started, "requeue_seconds": requeue_seconds,
                           "anchor_condition": f"Next finished one-replica reconcile after gate readiness, no error, {requeue_seconds}s requeue"})
+        self.plan.update(self.pipeline_identity())
+        if metric_pipeline:
+            self.plan["queries"]["prom_cpu_evaluated_30s"] = CPU_QUERY_30S
+            self.plan["queries"]["prom_scrape_raw"] = (
+                '{__name__=~"up|scrape_duration_seconds|scrape_samples_scraped|scrape_samples_post_metric_relabeling",'
+                f'job="kubernetes-nodes-cadvisor",instance={json.dumps(source_node)}' + '}[90s]')
         self.stream = None
+
+    def pipeline_identity(self) -> dict:
+        return {"metric_pipeline_diagnostic": self.metric_pipeline,
+                "metric_pipeline_source_node": self.source_node,
+                "metric_pipeline_protocol_version": METRIC_PIPELINE_PROTOCOL if self.metric_pipeline else None}
 
     def record(self, row: dict) -> None:
         with self.lock:
@@ -103,6 +131,8 @@ class Observer:
             row = {"kind": kind, "request_started_at": started, "request_finished_at": utc(),
                    "duration_seconds": time.monotonic() - monotonic_start, "status": "error",
                    **details, "error": repr(error)}
+            if isinstance(error, PrometheusFailure):
+                row.update({"response": error.response, "http_status": error.http_status})
         self.record(row)
         return row.get("response")
 
@@ -116,16 +146,98 @@ class Observer:
             raise RuntimeError(f"kubectl {' '.join(arguments[:3])}: {result.stderr.strip()}")
         return result.stdout
 
-    def prom_query(self, kind: str, query: str) -> None:
-        evaluation = time.time()
+    def prom_query(self, kind: str, query: str, evaluation: float, cycle_id: int) -> None:
         def execute() -> dict:
-            url = PROMETHEUS_URL + "/api/v1/query?" + urlencode({"query": query, "time": f"{evaluation:.6f}"})
-            with urlopen(url, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                value = json.load(response)
-            if value.get("status") != "success":
-                raise RuntimeError(f"Prometheus query failed: {value}")
-            return value
-        self.request(kind, execute, query=query, evaluation_time_unix=evaluation)
+            url = self.prometheus_url + "/api/v1/query?" + urlencode({"query": query, "time": f"{evaluation:.6f}"})
+            return self.prom_response(url)
+        self.request(kind, execute, query=query, evaluation_time_unix=evaluation, cycle_id=cycle_id)
+
+    def prom_response(self, url: str) -> dict:
+        try:
+            response = urlopen(url, timeout=REQUEST_TIMEOUT_SECONDS)
+        except HTTPError as error:
+            response = error
+        with response:
+            body = response.read().decode("utf-8", errors="replace")
+            http_status = response.status
+        try:
+            value = json.loads(body)
+        except ValueError as error:
+            raise PrometheusFailure("Prometheus returned invalid JSON", body, http_status) from error
+        if http_status != 200 or not isinstance(value, dict) or value.get("status") != "success":
+            raise PrometheusFailure("Prometheus API request failed", value, http_status)
+        return value
+
+    def metric_requests(self, executor: ThreadPoolExecutor, evaluation: float) -> list:
+        futures = [executor.submit(self.prom_query, kind, query, evaluation, self.cycles)
+                   for kind, query in self.plan["queries"].items()]
+        if self.metric_pipeline:
+            futures.append(executor.submit(self.source_cadvisor, evaluation, self.cycles))
+            futures.append(executor.submit(self.scrape_targets, evaluation, self.cycles))
+        return futures
+
+    def scrape_targets(self, evaluation: float, cycle_id: int) -> None:
+        def execute() -> dict:
+            value = self.prom_response(self.prometheus_url + "/api/v1/targets?state=active")
+            targets = []
+            for target in value.get("data", {}).get("activeTargets", []):
+                labels, discovered = target.get("labels", {}), target.get("discoveredLabels", {})
+                node = discovered.get("__meta_kubernetes_node_name") or labels.get("node") or labels.get("instance")
+                if labels.get("job") != "kubernetes-nodes-cadvisor" or node != self.source_node:
+                    continue
+                # The targets endpoint is observation data, not scrape config.
+                # Keep an explicit public-field allowlist and only node discovery.
+                targets.append({key: target[key] for key in (
+                    "labels", "health", "lastScrape", "lastScrapeDuration", "lastError", "scrapeUrl",
+                    "scrapeInterval", "scrapeTimeout") if key in target}
+                    | {"discoveredLabels": {"__meta_kubernetes_node_name": discovered["__meta_kubernetes_node_name"]}
+                       if "__meta_kubernetes_node_name" in discovered else {}})
+            return {"status": "success", "data": {"activeTargets": targets}}
+        self.request("prom_scrape_targets", execute, source_node=self.source_node,
+                     evaluation_time_unix=evaluation, cycle_id=cycle_id)
+
+    def source_cadvisor(self, evaluation: float, cycle_id: int) -> None:
+        def execute() -> dict:
+            raw = self.kubectl("get", "--raw", f"/api/v1/nodes/{self.source_node}/proxy/metrics/cadvisor")
+            lines = []
+            for line in raw.splitlines():
+                metric = re.match(r"^(container_cpu_usage_seconds_total|container_last_seen)\{(.*)\} ", line)
+                if not metric:
+                    continue
+                labels = {key: json.loads(value) for key, value in
+                          re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)=("(?:[^"\\]|\\.)*")', metric[2])}
+                if (labels.get("namespace") == "default" and labels.get("pod", "").startswith("php-apache-")
+                        and labels.get("container")):
+                    lines.append(line)
+            # Exposition sample timestamps and container_last_seen values remain
+            # intact. The surrounding request interval is not a source timestamp.
+            return {"lines": lines}
+        self.request("source_cadvisor", execute, source_node=self.source_node,
+                     evaluation_time_unix=evaluation, cycle_id=cycle_id)
+
+    def sample(self, output: Path) -> int:
+        # This public preflight collects one cycle without gate or log processes.
+        if output.exists():
+            raise ValueError(f"Observer refuses to overwrite existing {output}")
+        with output.open("x", encoding="utf-8") as self.stream:
+            started, monotonic_start, previous_errors = utc(), time.monotonic(), len(self.errors)
+            self.cycles += 1
+            evaluation = time.time()
+            with ThreadPoolExecutor(max_workers=6, thread_name_prefix="metric-sample") as executor:
+                for future in self.metric_requests(executor, evaluation):
+                    future.result()
+            self.record_cycle(started, monotonic_start, evaluation, previous_errors)
+        return 3 if self.errors else 0
+
+    def record_cycle(self, started: str, monotonic_start: float, evaluation: float, previous_errors: int) -> None:
+        duration = time.monotonic() - monotonic_start
+        self.record({"kind": "observer_cycle", "cycle_id": self.cycles,
+                     "evaluation_time_unix": evaluation, "request_started_at": started,
+                     "request_finished_at": utc(), "duration_seconds": duration,
+                     "status": "success" if len(self.errors) == previous_errors else "error",
+                     "query_count": len(self.plan["queries"]),
+                     "observation_interval_seconds": INTERVAL_SECONDS,
+                     "overrun_seconds": max(0, duration - INTERVAL_SECONDS), **self.pipeline_identity()})
 
     def resource(self, kind: str, arguments: list[str]) -> dict | None:
         return self.request(kind, lambda: json.loads(self.kubectl("get", *arguments, "-o", "json")))
@@ -173,8 +285,10 @@ class Observer:
                              "error": "Container restarted; current log stream may omit previous-container requests"})
 
     def snapshot(self, executor: ThreadPoolExecutor) -> None:
+        started, monotonic_start, previous_errors = utc(), time.monotonic(), len(self.errors)
         self.cycles += 1
-        futures = [executor.submit(self.prom_query, kind, query) for kind, query in self.plan["queries"].items()]
+        evaluation = time.time()
+        futures = self.metric_requests(executor, evaluation)
         pods = executor.submit(self.resource, "pods", ["pods", "-l", "run=php-apache"])
         futures.extend((executor.submit(self.resource, "endpoints", ["endpointslices", "-l", "kubernetes.io/service-name=php-apache"]),
                         executor.submit(self.resource, "deployment", ["deployment", "php-apache"])))
@@ -183,6 +297,7 @@ class Observer:
         for future in futures:
             future.result()
         self.follow_pods(pods.result())
+        self.record_cycle(started, monotonic_start, evaluation, previous_errors)
 
     def gate_operation(self, kind: str, *arguments: str) -> str | None:
         return self.request(kind, lambda: self.kubectl(*arguments))
@@ -340,7 +455,8 @@ class Observer:
             atomic_json(self.directory / "latency-observer-status.json", {"status": "success" if success else "failed",
                 "started_at": self.started, "finished_at": utc(), "snapshot_count": self.cycles,
                 "observation_interval_seconds": INTERVAL_SECONDS, "errors": self.errors,
-                "owned_processes_stopped": cleaned, "gate_released": self.gate_released, "log_streams": follower_status})
+                "owned_processes_stopped": cleaned, "gate_released": self.gate_released, "log_streams": follower_status,
+                **self.pipeline_identity()})
             self.stream.close()
         return 0 if success else 3
 
@@ -354,16 +470,35 @@ def main() -> int:
     observe.add_argument("--context", required=True)
     observe.add_argument("--offset-seconds", type=int, choices=(0, 10, 20), required=True)
     observe.add_argument("--requeue-seconds", type=int, choices=(15, 30), default=30)
+    observe.add_argument("--metric-pipeline-diagnostic", action="store_true",
+                         help="Add source, scrape and paired 30/60-second CPU observation")
+    observe.add_argument("--source-node", help="Explicit cAdvisor node; requires --metric-pipeline-diagnostic")
+    sample = commands.add_parser("sample", help="Collect one read-only metric pipeline preflight cycle")
+    sample.add_argument("--output", type=Path, required=True)
+    sample.add_argument("--context", required=True)
+    sample.add_argument("--source-node", required=True)
+    sample.add_argument("--prometheus-url", default=PROMETHEUS_URL)
     args = parser.parse_args()
     if args.plan and args.command is None:
         print(json.dumps(frozen_plan(), indent=2))
         return 0
-    if args.plan or args.command != "observe":
-        parser.error("Choose --plan or observe")
+    if args.plan or args.command not in ("observe", "sample"):
+        parser.error("Choose --plan, observe, or sample")
     if not re.fullmatch(r"kind-[a-z0-9][a-z0-9-]*", args.context):
         parser.error("Observer requires an explicit dedicated Kind context")
+    metric_pipeline = args.command == "sample" or args.metric_pipeline_diagnostic
+    if metric_pipeline:
+        if (not args.source_node or len(args.source_node) > 253
+                or not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", args.source_node)):
+            parser.error("--source-node must be an explicit Kubernetes node name")
+    elif args.source_node:
+        parser.error("--source-node requires --metric-pipeline-diagnostic")
     try:
-        return Observer(args.run_dir, args.context, args.offset_seconds, args.requeue_seconds).run()
+        if args.command == "sample":
+            return Observer(args.output.parent, args.context, 0, metric_pipeline=True,
+                            source_node=args.source_node, prometheus_url=args.prometheus_url).sample(args.output)
+        return Observer(args.run_dir, args.context, args.offset_seconds, args.requeue_seconds,
+                        metric_pipeline=metric_pipeline, source_node=args.source_node).run()
     except (OSError, ValueError) as error:
         print(f"Latency observer failed: {error}", file=sys.stderr)
         return 3

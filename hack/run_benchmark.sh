@@ -181,6 +181,13 @@ latency_gate_timeout_seconds: $LATENCY_GATE_TIMEOUT_SECONDS
 latency_occupancy_window_reference: "integer_process_start_plus_30_seconds"
 LATENCY_META
 fi
+cat >> "$EXP_DIR/metadata.yaml" <<METRIC_PIPELINE_META
+metric_pipeline_diagnostic: $METRIC_PIPELINE_DIAGNOSTIC
+metric_pipeline_source_node: "$METRIC_PIPELINE_SOURCE_NODE"
+METRIC_PIPELINE_META
+if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
+  printf '%s\n' 'metric_pipeline_protocol_version: "metric-pipeline-v1"' >> "$EXP_DIR/metadata.yaml"
+fi
 echo "  start_time_utc: $START_TIME_UTC"
 
 update_metadata() {
@@ -353,9 +360,13 @@ K6_JSON="$EXP_DIR/k6.json"
 K6_SCRIPT="${PATTERN}.js"
 K6_EXTRA_ARGS=()
 if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+  METRIC_PIPELINE_OBSERVER_ARGS=()
+  if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
+    METRIC_PIPELINE_OBSERVER_ARGS+=(--metric-pipeline-diagnostic --source-node "$METRIC_PIPELINE_SOURCE_NODE")
+  fi
   "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/run_latency_diagnostic.py" observe \
     --run-dir "$EXP_DIR" --context "$BENCHMARK_CONTEXT" --offset-seconds "$LATENCY_OFFSET_SECONDS" \
-    --requeue-seconds "$LATENCY_REQUEUE_SECONDS" \
+    --requeue-seconds "$LATENCY_REQUEUE_SECONDS" "${METRIC_PIPELINE_OBSERVER_ARGS[@]}" \
     > "$EXP_DIR/latency-observer.log" 2>&1 &
   LATENCY_OBSERVER_PID=$!
   OBSERVER_STARTED=false
