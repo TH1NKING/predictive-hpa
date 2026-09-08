@@ -70,6 +70,10 @@ fi
 
 # === Configuration ===
 benchmark_config_init
+if [ "$LATENCY_DIAGNOSTIC" = true ] && { [ "$PATTERN" != step ] || [ "$CONTROLLER" != phpa_current ]; }; then
+  echo "ERROR: LATENCY_DIAGNOSTIC=true only supports step phpa_current" >&2
+  exit 1
+fi
 benchmark_config_fingerprint
 DECISION_MODE=$(benchmark_decision_mode "$CONTROLLER")
 PHPA_SAMPLE="config/samples/autoscaling_v1alpha1_predictivehpa.yaml"
@@ -80,6 +84,7 @@ case "$EXPERIMENTS_ROOT" in
 esac
 CAMPAIGN="${CAMPAIGN:-service-routing-v1}"
 CONTROLLER_PID=""
+LATENCY_OBSERVER_PID=""
 CONTROLLER_KUBECONFIG=""
 CONTROLLER_BINARY=""
 CONTROLLER_STARTUP_TIMEOUT=60
@@ -93,6 +98,14 @@ METRIC_ACCUMULATION_SECONDS=30
 # curve in a step native_hpa_300 dry-run (only first scale decision captured).
 POST_LOAD_TAIL_SECONDS=360
 PROM_URL="http://localhost:9090"
+if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+  if [ -x "$REPO_ROOT/hack/analyze/.venv/bin/python" ]; then
+    BENCHMARK_PYTHON="${BENCHMARK_PYTHON:-$REPO_ROOT/hack/analyze/.venv/bin/python}"
+  else
+    BENCHMARK_PYTHON="${BENCHMARK_PYTHON:-${PYTHON:-python3}}"
+  fi
+  command -v "$BENCHMARK_PYTHON" >/dev/null || { echo "ERROR: diagnostic Python interpreter unavailable" >&2; exit 1; }
+fi
 
 # === Step 1: prerequisites ===
 echo "[1/11] prerequisite check"
@@ -158,6 +171,16 @@ result:
   status: in_progress
   failure_reason: ""
 META
+if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+  cat >> "$EXP_DIR/metadata.yaml" <<LATENCY_META
+latency_diagnostic: true
+latency_protocol_version: "latency-diagnostic-v1"
+latency_offset_seconds: $LATENCY_OFFSET_SECONDS
+latency_requeue_seconds: $LATENCY_REQUEUE_SECONDS
+latency_gate_timeout_seconds: $LATENCY_GATE_TIMEOUT_SECONDS
+latency_occupancy_window_reference: "integer_process_start_plus_30_seconds"
+LATENCY_META
+fi
 echo "  start_time_utc: $START_TIME_UTC"
 
 update_metadata() {
@@ -178,11 +201,31 @@ fail_experiment() {
   exit "$exit_code"
 }
 
+stop_latency_observer() {
+  [ -n "$LATENCY_OBSERVER_PID" ] || return 0
+  local observer_pid="$LATENCY_OBSERVER_PID" observer_result=0 stop_wait
+  LATENCY_OBSERVER_PID=""
+  kill -TERM "$observer_pid" 2>/dev/null || true
+  for ((stop_wait=0; stop_wait<45; stop_wait++)); do
+    kill -0 "$observer_pid" 2>/dev/null || break
+    sleep 1
+  done
+  if kill -0 "$observer_pid" 2>/dev/null; then
+    kill -KILL "$observer_pid" 2>/dev/null || true
+    observer_result=3
+  fi
+  wait "$observer_pid" || observer_result=3
+  jq -e '.status == "success" and .owned_processes_stopped == true and .gate_released == true' \
+    "$EXP_DIR/latency-observer-status.json" >/dev/null 2>> "$EXP_DIR/latency-observer.log" || observer_result=3
+  return "$observer_result"
+}
+
 # Own only the controller process started below. Unexpected shell errors and
 # interrupts mark the run failed while retaining all partial local evidence.
 cleanup_benchmark() {
   local status=$?
   trap - EXIT INT TERM
+  stop_latency_observer || status=3
   if [ -n "$CONTROLLER_PID" ]; then
     kill -TERM "$CONTROLLER_PID" 2>/dev/null || true
     for ((stop_wait=0; stop_wait<15; stop_wait++)); do
@@ -281,7 +324,11 @@ if [[ "$CONTROLLER" = phpa* ]]; then
   if ! go build -o "$CONTROLLER_BINARY" ./cmd; then
     fail_experiment "controller build failed"
   fi
-  KUBECONFIG="$CONTROLLER_KUBECONFIG" "$CONTROLLER_BINARY" > "$CONTROLLER_LOG" 2>&1 &
+  CONTROLLER_EXTRA_ARGS=()
+  if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+    CONTROLLER_EXTRA_ARGS+=("--requeue-interval=${LATENCY_REQUEUE_SECONDS}s")
+  fi
+  KUBECONFIG="$CONTROLLER_KUBECONFIG" "$CONTROLLER_BINARY" "${CONTROLLER_EXTRA_ARGS[@]}" > "$CONTROLLER_LOG" 2>&1 &
   CONTROLLER_PID=$!
   STARTED=false
   for ((i=0; i<CONTROLLER_STARTUP_TIMEOUT; i++)); do
@@ -303,7 +350,25 @@ sleep "$METRIC_ACCUMULATION_SECONDS"
 echo ""
 echo "[7/11] run k6 pattern: $PATTERN"
 K6_JSON="$EXP_DIR/k6.json"
-if ! k6_runner_run "${PATTERN}.js" "$EXP_DIR" "RPS=$RPS" "PROBE_TOKEN=$(basename "$EXP_DIR")"; then
+K6_SCRIPT="${PATTERN}.js"
+K6_EXTRA_ARGS=()
+if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+  "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/run_latency_diagnostic.py" observe \
+    --run-dir "$EXP_DIR" --context "$BENCHMARK_CONTEXT" --offset-seconds "$LATENCY_OFFSET_SECONDS" \
+    --requeue-seconds "$LATENCY_REQUEUE_SECONDS" \
+    > "$EXP_DIR/latency-observer.log" 2>&1 &
+  LATENCY_OBSERVER_PID=$!
+  OBSERVER_STARTED=false
+  for ((observer_wait=0; observer_wait<60; observer_wait++)); do
+    kill -0 "$LATENCY_OBSERVER_PID" 2>/dev/null || fail_experiment "latency observer exited before runner startup" 3
+    if [ -f "$EXP_DIR/latency-observer-ready" ]; then OBSERVER_STARTED=true; break; fi
+    sleep 1
+  done
+  [ "$OBSERVER_STARTED" = true ] || fail_experiment "latency observer startup timed out" 3
+  K6_SCRIPT=latency-step.js
+  K6_EXTRA_ARGS+=("LATENCY_GATE_TIMEOUT_SECONDS=$LATENCY_GATE_TIMEOUT_SECONDS")
+fi
+if ! k6_runner_run "$K6_SCRIPT" "$EXP_DIR" "RPS=$RPS" "PROBE_TOKEN=$(basename "$EXP_DIR")" "${K6_EXTRA_ARGS[@]}"; then
   fail_experiment "in-cluster k6 run failed (see k6-runner.json and retained artifacts)"
 fi
 
@@ -327,12 +392,41 @@ OBSERVATION_END_TIME_UNIX=$((OFFERED_LOAD_END_TIME_UNIX + POST_LOAD_TAIL_SECONDS
 update_metadata load_start_time_unix "$LOAD_START_TIME_UNIX"
 update_metadata offered_load_end_time_unix "$OFFERED_LOAD_END_TIME_UNIX"
 update_metadata observation_end_time_unix "$OBSERVATION_END_TIME_UNIX"
+TAIL_OBSERVATION_END_TIME_UNIX="$OBSERVATION_END_TIME_UNIX"
+if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+  # Preserve the original extractor's process-start window while collecting the
+  # entire diagnostic window even when k6 initialization takes over 15 seconds.
+  if ! "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/analyze/latency.py" "$EXP_DIR" \
+      --schedule-only --output "$EXP_DIR/latency-schedule.json" \
+      > "$EXP_DIR/latency-schedule.log" 2>&1; then
+    fail_experiment "could not determine actual diagnostic workload schedule" 3
+  fi
+  if ! LATENCY_OBSERVATION_END_CEILING=$(jq -ers '
+      if length != 1 then error("expected one schedule") else .[0] end |
+      [.load_onset_unix, .offered_load_end_unix, .observation_end_unix] as $times |
+      if all($times[]; type == "number" and . > 0 and . < 1000000000000) and
+          .offered_load_end_unix - .load_onset_unix == 181 and
+          .observation_end_unix - .offered_load_end_unix == 360
+      then .observation_end_unix | ceil else error("invalid diagnostic schedule") end
+      ' "$EXP_DIR/latency-schedule.json" 2>> "$EXP_DIR/latency-schedule.log"); then
+    fail_experiment "actual diagnostic workload schedule is missing or invalid" 3
+  fi
+  if (( LATENCY_OBSERVATION_END_CEILING > TAIL_OBSERVATION_END_TIME_UNIX )); then
+    TAIL_OBSERVATION_END_TIME_UNIX="$LATENCY_OBSERVATION_END_CEILING"
+  fi
+  printf 'latency_collection_not_before_unix: %s\n' "$((TAIL_OBSERVATION_END_TIME_UNIX + 15))" \
+    >> "$EXP_DIR/metadata.yaml"
+fi
 # Collect one more scrape after the fixed boundary so analysis can interpolate
 # at that boundary without extrapolating a stale replica value.
-TAIL_WAIT_SECONDS=$((OBSERVATION_END_TIME_UNIX + 15 - $(date +%s)))
+TAIL_WAIT_SECONDS=$((TAIL_OBSERVATION_END_TIME_UNIX + 15 - $(date +%s)))
 if (( TAIL_WAIT_SECONDS > 0 )); then
   echo "  Observing fixed post-load tail; ${TAIL_WAIT_SECONDS}s remaining including final scrape"
   sleep "$TAIL_WAIT_SECONDS"
+fi
+if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+  kill -0 "$LATENCY_OBSERVER_PID" 2>/dev/null || fail_experiment "latency observer exited during experiment" 3
+  stop_latency_observer || fail_experiment "latency observer collection or cleanup failed" 3
 fi
 
 # === Step 8: record end time ===

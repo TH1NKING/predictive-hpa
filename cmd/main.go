@@ -19,7 +19,9 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -63,6 +65,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var prometheusURL string
+	var requeueInterval time.Duration
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -83,6 +86,8 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&prometheusURL, "prometheus-url", "http://localhost:9090",
 		"URL of the Prometheus server used as the metrics source.")
+	flag.DurationVar(&requeueInterval, "requeue-interval", controller.DefaultRequeueInterval,
+		"Interval between normal reconciliations (at least 1s).")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -90,6 +95,10 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	if requeueInterval < time.Second {
+		setupLog.Error(fmt.Errorf("expected at least 1s, got %s", requeueInterval), "Invalid requeue interval")
+		os.Exit(1)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -192,6 +201,7 @@ func main() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		MetricsProvider: metricsProvider,
+		RequeueInterval: requeueInterval,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "PredictiveHPA")
 		os.Exit(1)

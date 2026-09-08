@@ -71,6 +71,10 @@ k6_runner_render() {
     echo "ERROR: expected an existing script filename under hack/k6" >&2
     return 1
   fi
+  if [ "$script" = latency-step.js ] && [ "${LATENCY_DIAGNOSTIC:-false}" != true ]; then
+    echo "ERROR: latency-step.js requires LATENCY_DIAGNOSTIC=true" >&2
+    return 1
+  fi
   command -v jq >/dev/null || { echo "ERROR: jq is required to render runner manifests" >&2; return 1; }
   mkdir -p "$output_dir" || return 1
   local name="${K6_RUNNER_NAME:-phpa-k6-$(date -u +%Y%m%d%H%M%S)-$$-$RANDOM}"
@@ -78,7 +82,7 @@ k6_runner_render() {
     echo "ERROR: invalid runner resource name" >&2
     return 1
   fi
-  local data='{}' items='[]' entry key path env_json
+  local data='{}' items='[]' entry key path env_json gate_enabled=false
   # ConfigMap keys cannot contain '/', while volume item paths can. Preserve
   # the script import tree explicitly rather than relying on an image's tar.
   while IFS= read -r path; do
@@ -95,7 +99,10 @@ k6_runner_render() {
   for entry in "$@"; do
     # Only workload parameters are accepted; endpoint and k6 execution options
     # are fixed so an inherited shell variable cannot redirect benchmark load.
-    if ! [[ "$entry" =~ ^(RPS|PROBE_RPS|PROBE_DURATION_SECONDS|PROBE_REPLICAS|CALIBRATION_RPS|CALIBRATION_DURATION_SECONDS)=[1-9][0-9]*$ ]] && \
+    if [ "$entry" = LATENCY_GATE_TIMEOUT_SECONDS=180 ] && \
+        [ "$script" = latency-step.js ] && [ "${LATENCY_DIAGNOSTIC:-false}" = true ]; then
+      gate_enabled=true
+    elif ! [[ "$entry" =~ ^(RPS|PROBE_RPS|PROBE_DURATION_SECONDS|PROBE_REPLICAS|CALIBRATION_RPS|CALIBRATION_DURATION_SECONDS)=[1-9][0-9]*$ ]] && \
        ! [[ "$entry" =~ ^PROBE_TOKEN=[A-Za-z0-9_-]+$ ]]; then
       echo "ERROR: unsupported runner environment argument '$entry'" >&2
       return 1
@@ -103,6 +110,10 @@ k6_runner_render() {
     env_json=$(jq --arg name "${entry%%=*}" --arg value "${entry#*=}" \
       '. + [{name:$name,value:$value}]' <<<"$env_json") || return 1
   done
+  if [ "$script" = latency-step.js ] && [ "$gate_enabled" != true ]; then
+    echo "ERROR: latency-step.js requires its bounded 180-second launch gate" >&2
+    return 1
+  fi
   jq -n --arg name "$name" --argjson data "$data" '{
     apiVersion:"v1",kind:"ConfigMap",
     metadata:{name:$name,namespace:"default",labels:{"app.kubernetes.io/name":"phpa-k6","benchmark-run":$name}},
@@ -114,12 +125,59 @@ k6_runner_render() {
 set -u
 touch /results/k6.json /results/k6-warnings.log /results/k6-stdout.log
 k6 version > /results/k6-version.txt 2>&1
+if [ "${LATENCY_GATE_TIMEOUT_SECONDS:-0}" != 0 ]; then
+  latency_wait_for_launch() {
+    gate_started=$(date +%s)
+    gate_deadline=$((gate_started + LATENCY_GATE_TIMEOUT_SECONDS))
+    printf '%s\n' waiting > /results/latency-gate-status
+    printf '%s\n' "$gate_started" > /results/latency-gate-ready
+    launch_at=""
+    while [ "$(date +%s)" -lt "$gate_deadline" ]; do
+      if [ -f /results/latency-gate-cancelled ]; then
+        printf '%s\n' cancelled > /results/latency-gate-status
+        return 125
+      fi
+      if [ -z "$launch_at" ] && [ -f /results/latency-launch-at-unix ]; then
+        launch_at=$(cat /results/latency-launch-at-unix)
+        case "$launch_at" in
+          ''|*[!0-9]*|0*)
+            printf '%s\n' invalid_launch > /results/latency-gate-status
+            return 125
+            ;;
+        esac
+        if [ "${#launch_at}" -gt 12 ]; then
+          printf '%s\n' invalid_launch > /results/latency-gate-status
+          return 125
+        fi
+      fi
+      if [ -n "$launch_at" ] && [ "$(date +%s)" -ge "$launch_at" ]; then
+        date +%s > /results/latency-gate-release-unix
+        printf '%s\n' released > /results/latency-gate-status
+        return 0
+      fi
+      sleep 0.1
+    done
+    printf '%s\n' timed_out > /results/latency-gate-status
+    return 124
+  }
+  latency_wait_for_launch
+  gate_code=$?
+  if [ "$gate_code" -ne 0 ]; then
+    printf '%s\n' "$gate_code" > /results/k6-exit-code
+    # Retain the gate failure receipts without starting the workload.
+    while [ ! -f /results/collected ]; do sleep 2; done
+    exit "$gate_code"
+  fi
+fi
 date -u +%Y-%m-%dT%H:%M:%SZ > /results/k6-start-time-utc
 date +%s > /results/k6-start-time-unix
 k6 run --out json=/results/k6.json --summary-export=/results/k6-summary.json --log-output=file=/results/k6-warnings.log "$1" > /results/k6-stdout.log 2>&1 &
 load_pid=$!
 printf '%s\n' "$load_pid" > /results/k6-pid
 trap 'kill -TERM "$load_pid" 2>/dev/null || true; wait "$load_pid" 2>/dev/null || true; exit 143' TERM INT
+# Close the race where host cancellation arrived between gate release and PID
+# publication. The unchanged workload still begins with its 30-second quiet stage.
+if [ -f /results/latency-gate-cancelled ]; then kill -TERM "$load_pid" 2>/dev/null || true; fi
 wait "$load_pid"
 code=$?
 date -u +%Y-%m-%dT%H:%M:%SZ > /results/k6-end-time-utc
@@ -151,11 +209,14 @@ RUNNER
   }' > "$output_dir/k6-pod.json" || return 1
   jq -n --arg context "${BENCHMARK_CONTEXT:-unset-offline-plan}" --arg name "$name" \
     --arg endpoint "$K6_BASE_URL" --arg mode "$K6_EXECUTION_MODE" --arg path "$K6_TRAFFIC_PATH" \
-    --arg image "$K6_IMAGE" --arg script "$script" --argjson env "$env_json" '{
+    --arg image "$K6_IMAGE" --arg script "$script" --argjson env "$env_json" \
+    --argjson gate_enabled "$gate_enabled" '{
     context:$context,namespace:"default",pod:$name,configmap:$name,
     endpoint:$endpoint,execution_mode:$mode,traffic_path:$path,image:$image,script:$script,
     connection_reuse:false,environment:$env,status:"planned"
-  }' > "$output_dir/k6-runner.json" || return 1
+  } + (if $gate_enabled then {latency_gate:{timeout_seconds:180,
+    clock_precision_seconds:1,launch_epoch_unit:"integer_unix_seconds",
+    launch_rounding:"ceil",poll_interval_seconds:0.1}} else {} end)' > "$output_dir/k6-runner.json" || return 1
 }
 
 k6_runner_validate_artifacts() {
@@ -235,7 +296,11 @@ k6_runner_run() (
       k6_runner_kubectl logs "$name" -c k6 > "$output_dir/k6-container.log" 2>> "$output_dir/k6-collection-errors.log" || true
       # A timeout/interruption must stop actual load before copying partial files.
       if [ "$finished" = false ]; then
-        k6_runner_kubectl exec "$name" -c k6 -- sh -c 'if [ -f /results/k6-pid ]; then kill -TERM "$(cat /results/k6-pid)" 2>/dev/null || true; fi' \
+        local stop_command='if [ -f /results/k6-pid ]; then kill -TERM "$(cat /results/k6-pid)" 2>/dev/null || true; fi'
+        if [ "$script" = latency-step.js ]; then
+          stop_command="touch /results/latency-gate-cancelled; $stop_command"
+        fi
+        k6_runner_kubectl exec "$name" -c k6 -- sh -c "$stop_command" \
           >> "$output_dir/k6-collection-errors.log" 2>&1 || true
       fi
       for file in k6.json k6-stdout.log k6-warnings.log k6-version.txt k6-summary.json \
@@ -247,6 +312,23 @@ k6_runner_run() (
           copy_failed=true
         fi
       done
+      if [ "$script" = latency-step.js ]; then
+        for file in latency-gate-ready latency-launch-at-unix latency-gate-release-unix latency-gate-status; do
+          if k6_runner_kubectl exec "$name" -c k6 -- cat "/results/$file" \
+              > "$output_dir/$file.partial" 2>> "$output_dir/k6-collection-errors.log"; then
+            mv "$output_dir/$file.partial" "$output_dir/$file"
+          else
+            copy_failed=true
+          fi
+        done
+        if [ "$finished" = false ]; then
+          k6_runner_kubectl exec "$name" -c k6 -- cat /results/latency-gate-cancelled \
+            > "$output_dir/latency-gate-cancelled" 2>> "$output_dir/k6-collection-errors.log" || true
+        fi
+        if ! grep -Fxq released "$output_dir/latency-gate-status" 2>/dev/null; then
+          copy_failed=true
+        fi
+      fi
       if [ "$copy_failed" = false ] && \
           k6_runner_validate_artifacts "$output_dir" 2>> "$output_dir/k6-collection-errors.log"; then
         collected=true

@@ -1,0 +1,609 @@
+{
+  "source_commit": "32568c1cd6a2543bcc525b75abd41365bff5d6d2",
+  "binary_sha256": "e6bb645479cd79948e981322b25cc9bb8f24d58ff0655ec6c3b069c820bf4771",
+  "integrity": {
+    "verified": true,
+    "coverage_complete": true,
+    "verified_files": 443,
+    "manifest_sha256": "acd2ed042045a0d48b6935a318d256f17e89b1ef14bf89ebd7da69fa4aeeb445"
+  },
+  "delivery": {
+    "verified": true,
+    "source_commit": "32568c1cd6a2543bcc525b75abd41365bff5d6d2",
+    "files": 487,
+    "archive_hashes": {
+      "delivery-manifest.json": "2dc67ead60f87f42b059eb820f14df4c31c3f29b33edf100c1d64d622615d2ad",
+      "pilot-evidence.tar.gz": "afb3b34836f1e57d1595df67b6ab8ee5445070a30687d2acbf6e87457977e9ae",
+      "verification-support-evidence.tar.gz": "bf30274333a399287d54c679791ad4d1d46adcd7236e838e969a0d2f71b733db"
+    },
+    "live_verified_at": "2026-09-07T13:52:24.459951+00:00"
+  },
+  "configuration_sha256_by_requeue_seconds": {
+    "30": "57134cd97c6c9f5ea3763c11f9ea4b5c54b67d895f499d871e9fea11aefbde5f",
+    "15": "e80348d4be94e5f575aaae89f0d10fd2a0105f3ea7802ed1919fa9d32a1f1505"
+  },
+  "per_run": [
+    {
+      "slot": 1,
+      "block": 1,
+      "offset_seconds": 10,
+      "requeue_seconds": 30,
+      "directory": "20260907_210233_step_phpa_current_r1",
+      "status": "completed",
+      "metrics": {
+        "phase_requested_seconds": 10,
+        "phase_actual_gap_seconds": 10.596559047698975,
+        "first_source_sample_seconds": 9.986999988555908,
+        "observer_above_55_response_seconds": 38.16136884689331,
+        "first_controller_above_55_query_seconds": 49.418359994888306,
+        "first_scale_write_seconds": 49.422765016555786,
+        "first_new_pod_ready_seconds": 49.95799994468689,
+        "first_new_pod_request_seconds": 49.95799994468689,
+        "first_new_pod_log_output_seconds": 50.499650955200195,
+        "observer_to_controller_wait_seconds": 11.256991147994995,
+        "controller_query_to_scale_seconds": 0.004405021667480469,
+        "scale_to_ready_seconds": 0.5352349281311035,
+        "ready_to_first_request_seconds": 0.0,
+        "http_requests": 4498,
+        "http_200_requests": 3260,
+        "http_200_percent": 72.48,
+        "all_request_p95_ms": 10000.65,
+        "dropped_iterations": 1,
+        "pod_seconds_exact_541s": 2251.0,
+        "pod_seconds_post_load_360s": 1175.621999502182,
+        "requeue_seconds": 30,
+        "first_above_55_query_start_seconds": 49.41600799560547,
+        "first_above_55_query_return_seconds": 49.418359994888306,
+        "observer_response_to_query_start_seconds": 11.254639148712158,
+        "observer_response_to_query_return_seconds": 11.256991147994995,
+        "query_start_to_scale_response_seconds": 0.006757020950317383,
+        "query_return_to_scale_response_seconds": 0.004405021667480469,
+        "reconcile_starts_total": 41,
+        "reconcile_finishes_total": 41,
+        "queries_total": 41,
+        "reconcile_starts_in_541s": 33,
+        "queries_started_in_541s": 33,
+        "nominal_window_divided_by_cadence": 18.033333333333335,
+        "http_200_percent_unrounded": 72.47665629168519
+      },
+      "phase": {
+        "requested_offset_seconds": 10,
+        "requeue_seconds": 30,
+        "actual_reconcile_gap_seconds": 10.596559047698975,
+        "phase_error_seconds": 0.5965590476989746,
+        "within_tolerance": true,
+        "tolerance_seconds": 2,
+        "planned_load_onset_unix": 1788786287,
+        "actual_onset_error_seconds": 0.04200005531311035,
+        "gate_rounding_seconds": 0.5675311088562012
+      },
+      "timing": {
+        "load_onset_unix": 1788786287.042,
+        "first_request_attempt_seconds": 0.28576183319091797,
+        "first_scale_write_seconds": 49.422765016555786,
+        "first_expansion_decision_seconds": 49.418402910232544,
+        "first_controller_above_threshold_query_seconds": 49.418359994888306,
+        "first_new_pod_ready_seconds": 49.95799994468689,
+        "first_new_pod_request_seconds": 49.95799994468689,
+        "first_new_pod_created_seconds": 48.95799994468689,
+        "first_new_pod_access_log_emitted_seconds": 50.499650955200195
+      },
+      "scenario_window_occupancy": {
+        "window_valid": true,
+        "window_reference": "k6 scenario.startTime + 30 seconds",
+        "start_time_unix": 1788786287.042,
+        "end_time_unix": 1788786828.042,
+        "duration_seconds": 541,
+        "sampling_precision_seconds": 15,
+        "pod_seconds": 2251.0,
+        "post_load_pod_seconds": 1175.621999502182,
+        "onset_offset_from_legacy_window_seconds": 0.04200005531311035,
+        "legacy_window_reference": "integer process start + 30 seconds; original extract.json unchanged",
+        "first_sampled_replica_increase_seconds": 74.95799994468689
+      },
+      "timestamp_precision_bounds": {
+        "ready_interval_seconds": [
+          49.95799994468689,
+          50.95799994468689
+        ],
+        "request_received_interval_seconds": [
+          49.95799994468689,
+          50.95799994468689
+        ],
+        "scale_to_ready_difference_interval_seconds": [
+          0.5352349281311035,
+          1.5352349281311035
+        ],
+        "interpretation": "Intervals describe one-second timestamp bins, not confidence intervals; original lower-bound timestamps are retained"
+      },
+      "quality": {
+        "flags": [],
+        "observation_error_count": 0,
+        "observation_errors": []
+      },
+      "cadence_validation": {
+        "assigned_requeue_seconds": 30,
+        "logged_successful_decision_finishes": 37,
+        "all_logged_intervals_match": true,
+        "nominal_reference_is_exact_count": false,
+        "window_start_unix": 1788786287.042,
+        "window_end_unix": 1788786828.042
+      },
+      "lineage": {
+        "frozen_analyzer_replay_matches": true,
+        "raw_hashes": {
+          "k6.json": "c54431824019e166064ea7a5e62544757ca5fb00b54607ebacb611a9f999656e",
+          "controller.log": "80dd2088c63e0264223931917abc327b2801d1a5d4056a496148dd63f13b9d13",
+          "prom.json": "7d7535eafd30001c23d6a639d89450182b46645507217ac8f9221c5ebd1387d1",
+          "latency-observations.ndjson": "5c976332a63e3b16c5d77118ea8797d09bd56968f523dadc14c8c8ae8204bdfd"
+        },
+        "derived_hashes": {
+          "latency.json": "25a554a30be5071478dbf8f8711077ea45801579b264bb87e17a42edfedef012",
+          "extract.json": "d46f584cc76124a28eab5e1169b5faf7b265d7a039ccdb86dac389f3661db1db"
+        }
+      }
+    },
+    {
+      "slot": 2,
+      "block": 1,
+      "offset_seconds": 10,
+      "requeue_seconds": 15,
+      "directory": "20260907_211430_step_phpa_current_r2",
+      "status": "completed",
+      "metrics": {
+        "phase_requested_seconds": 10,
+        "phase_actual_gap_seconds": 10.76017689704895,
+        "first_source_sample_seconds": 16.644999980926514,
+        "observer_above_55_response_seconds": 24.97384786605835,
+        "first_controller_above_55_query_seconds": 34.26364302635193,
+        "first_scale_write_seconds": 34.26800608634949,
+        "first_new_pod_ready_seconds": 33.94099998474121,
+        "first_new_pod_request_seconds": 33.94099998474121,
+        "first_new_pod_log_output_seconds": 34.93998599052429,
+        "observer_to_controller_wait_seconds": 9.289795160293579,
+        "controller_query_to_scale_seconds": 0.004363059997558594,
+        "scale_to_ready_seconds": -0.32700610160827637,
+        "ready_to_first_request_seconds": 0.0,
+        "http_requests": 4498,
+        "http_200_requests": 3569,
+        "http_200_percent": 79.35,
+        "all_request_p95_ms": 10000.52,
+        "dropped_iterations": 1,
+        "pod_seconds_exact_541s": 2356.0,
+        "pod_seconds_post_load_360s": 1190.468999862671,
+        "requeue_seconds": 15,
+        "first_above_55_query_start_seconds": 34.26197290420532,
+        "first_above_55_query_return_seconds": 34.26364302635193,
+        "observer_response_to_query_start_seconds": 9.288125038146973,
+        "observer_response_to_query_return_seconds": 9.289795160293579,
+        "query_start_to_scale_response_seconds": 0.006033182144165039,
+        "query_return_to_scale_response_seconds": 0.004363059997558594,
+        "reconcile_starts_total": 65,
+        "reconcile_finishes_total": 65,
+        "queries_total": 65,
+        "reconcile_starts_in_541s": 55,
+        "queries_started_in_541s": 55,
+        "nominal_window_divided_by_cadence": 36.06666666666667,
+        "http_200_percent_unrounded": 79.34637616718541
+      },
+      "phase": {
+        "requested_offset_seconds": 10,
+        "requeue_seconds": 15,
+        "actual_reconcile_gap_seconds": 10.76017689704895,
+        "phase_error_seconds": 0.7601768970489502,
+        "within_tolerance": true,
+        "tolerance_seconds": 2,
+        "planned_load_onset_unix": 1788786989,
+        "actual_onset_error_seconds": 0.05900001525878906,
+        "gate_rounding_seconds": 0.7248139381408691
+      },
+      "timing": {
+        "load_onset_unix": 1788786989.059,
+        "first_request_attempt_seconds": 0.2866950035095215,
+        "first_scale_write_seconds": 34.26800608634949,
+        "first_expansion_decision_seconds": 34.26368594169617,
+        "first_controller_above_threshold_query_seconds": 34.26364302635193,
+        "first_new_pod_ready_seconds": 33.94099998474121,
+        "first_new_pod_request_seconds": 33.94099998474121,
+        "first_new_pod_created_seconds": 33.94099998474121,
+        "first_new_pod_access_log_emitted_seconds": 34.93998599052429
+      },
+      "scenario_window_occupancy": {
+        "window_valid": true,
+        "window_reference": "k6 scenario.startTime + 30 seconds",
+        "start_time_unix": 1788786989.059,
+        "end_time_unix": 1788787530.059,
+        "duration_seconds": 541,
+        "sampling_precision_seconds": 15,
+        "pod_seconds": 2356.0,
+        "post_load_pod_seconds": 1190.468999862671,
+        "onset_offset_from_legacy_window_seconds": 0.05900001525878906,
+        "legacy_window_reference": "integer process start + 30 seconds; original extract.json unchanged",
+        "first_sampled_replica_increase_seconds": 59.94099998474121
+      },
+      "timestamp_precision_bounds": {
+        "ready_interval_seconds": [
+          33.94099998474121,
+          34.94099998474121
+        ],
+        "request_received_interval_seconds": [
+          33.94099998474121,
+          34.94099998474121
+        ],
+        "scale_to_ready_difference_interval_seconds": [
+          -0.32700610160827637,
+          0.6729938983917236
+        ],
+        "interpretation": "Intervals describe one-second timestamp bins, not confidence intervals; original lower-bound timestamps are retained"
+      },
+      "quality": {
+        "flags": [],
+        "observation_error_count": 0,
+        "observation_errors": []
+      },
+      "cadence_validation": {
+        "assigned_requeue_seconds": 15,
+        "logged_successful_decision_finishes": 64,
+        "all_logged_intervals_match": true,
+        "nominal_reference_is_exact_count": false,
+        "window_start_unix": 1788786989.059,
+        "window_end_unix": 1788787530.059
+      },
+      "lineage": {
+        "frozen_analyzer_replay_matches": true,
+        "raw_hashes": {
+          "k6.json": "91843c33ee45c818f542119c1f591262e2a2f860d9bd4dda457359241e15558a",
+          "controller.log": "55dd3f048b8c6786cd5b15544e9ae9d4a5e9b12bc297397f0f76d33b0577d638",
+          "prom.json": "342aa37f6c9abeb3dc1cffe948957880eaa07dc87a274eaa9fa7c38c024d5295",
+          "latency-observations.ndjson": "2f8cd331286cc9f536246849b44b58db1b12de223b904c2d74dbae7cca4a9685"
+        },
+        "derived_hashes": {
+          "latency.json": "b7cd247307b7784e351304f5c86ce25d05c7a43bbf11a0a040b071b9ff8da5d7",
+          "extract.json": "48d07f15db582ee46108d6573ceeef72a5e2757a30fec3681f7c60f00e98af67"
+        }
+      }
+    },
+    {
+      "slot": 3,
+      "block": 2,
+      "offset_seconds": 10,
+      "requeue_seconds": 15,
+      "directory": "20260907_212612_step_phpa_current_r3",
+      "status": "completed",
+      "metrics": {
+        "phase_requested_seconds": 10,
+        "phase_actual_gap_seconds": 10.919607877731323,
+        "first_source_sample_seconds": 8.348000049591064,
+        "observer_above_55_response_seconds": 28.82016110420227,
+        "first_controller_above_55_query_seconds": 34.10595703125,
+        "first_scale_write_seconds": 34.11014008522034,
+        "first_new_pod_ready_seconds": 34.93600010871887,
+        "first_new_pod_request_seconds": 34.93600010871887,
+        "first_new_pod_log_output_seconds": 35.50110602378845,
+        "observer_to_controller_wait_seconds": 5.2857959270477295,
+        "controller_query_to_scale_seconds": 0.004183053970336914,
+        "scale_to_ready_seconds": 0.8258600234985352,
+        "ready_to_first_request_seconds": 0.0,
+        "http_requests": 4498,
+        "http_200_requests": 3544,
+        "http_200_percent": 78.79,
+        "all_request_p95_ms": 10000.73,
+        "dropped_iterations": 1,
+        "pod_seconds_exact_541s": 2401.0,
+        "pod_seconds_post_load_360s": 1100.4240009784698,
+        "requeue_seconds": 15,
+        "first_above_55_query_start_seconds": 34.104109048843384,
+        "first_above_55_query_return_seconds": 34.10595703125,
+        "observer_response_to_query_start_seconds": 5.283947944641113,
+        "observer_response_to_query_return_seconds": 5.2857959270477295,
+        "query_start_to_scale_response_seconds": 0.006031036376953125,
+        "query_return_to_scale_response_seconds": 0.004183053970336914,
+        "reconcile_starts_total": 66,
+        "reconcile_finishes_total": 66,
+        "queries_total": 66,
+        "reconcile_starts_in_541s": 56,
+        "queries_started_in_541s": 56,
+        "nominal_window_divided_by_cadence": 36.06666666666667,
+        "http_200_percent_unrounded": 78.79057358826145
+      },
+      "phase": {
+        "requested_offset_seconds": 10,
+        "requeue_seconds": 15,
+        "actual_reconcile_gap_seconds": 10.919607877731323,
+        "phase_error_seconds": 0.9196078777313232,
+        "within_tolerance": true,
+        "tolerance_seconds": 2,
+        "planned_load_onset_unix": 1788787691,
+        "actual_onset_error_seconds": 0.06399989128112793,
+        "gate_rounding_seconds": 0.8802790641784668
+      },
+      "timing": {
+        "load_onset_unix": 1788787691.064,
+        "first_request_attempt_seconds": 0.28647422790527344,
+        "first_scale_write_seconds": 34.11014008522034,
+        "first_expansion_decision_seconds": 34.105993032455444,
+        "first_controller_above_threshold_query_seconds": 34.10595703125,
+        "first_new_pod_ready_seconds": 34.93600010871887,
+        "first_new_pod_request_seconds": 34.93600010871887,
+        "first_new_pod_created_seconds": 33.93600010871887,
+        "first_new_pod_access_log_emitted_seconds": 35.50110602378845
+      },
+      "scenario_window_occupancy": {
+        "window_valid": true,
+        "window_reference": "k6 scenario.startTime + 30 seconds",
+        "start_time_unix": 1788787691.064,
+        "end_time_unix": 1788788232.064,
+        "duration_seconds": 541,
+        "sampling_precision_seconds": 15,
+        "pod_seconds": 2401.0,
+        "post_load_pod_seconds": 1100.4240009784698,
+        "onset_offset_from_legacy_window_seconds": 0.06399989128112793,
+        "legacy_window_reference": "integer process start + 30 seconds; original extract.json unchanged",
+        "first_sampled_replica_increase_seconds": 44.93600010871887
+      },
+      "timestamp_precision_bounds": {
+        "ready_interval_seconds": [
+          34.93600010871887,
+          35.93600010871887
+        ],
+        "request_received_interval_seconds": [
+          34.93600010871887,
+          35.93600010871887
+        ],
+        "scale_to_ready_difference_interval_seconds": [
+          0.8258600234985352,
+          1.8258600234985352
+        ],
+        "interpretation": "Intervals describe one-second timestamp bins, not confidence intervals; original lower-bound timestamps are retained"
+      },
+      "quality": {
+        "flags": [],
+        "observation_error_count": 0,
+        "observation_errors": []
+      },
+      "cadence_validation": {
+        "assigned_requeue_seconds": 15,
+        "logged_successful_decision_finishes": 65,
+        "all_logged_intervals_match": true,
+        "nominal_reference_is_exact_count": false,
+        "window_start_unix": 1788787691.064,
+        "window_end_unix": 1788788232.064
+      },
+      "lineage": {
+        "frozen_analyzer_replay_matches": true,
+        "raw_hashes": {
+          "k6.json": "3c315b8d73c91f2873abe9afce57acf8de550e0fe94f1a6d0c11745819469957",
+          "controller.log": "c8e35baea5cd01f7c09f6bf0e1480a8785b0c390a0d4a019ac9e67499d3652ec",
+          "prom.json": "52e11d78b8b0e7cd28c92bcc4374fc77a39dee5f76ce66694ac0c3fafa60541d",
+          "latency-observations.ndjson": "5afccc75daeb1b4965adbd379c0661d404bab5e0143959a94beaaebb5d8cd48d"
+        },
+        "derived_hashes": {
+          "latency.json": "6a75aada7d2d4e76f6e58120032694e472de2dc88a46fab03f6ca0b1b61d0cf5",
+          "extract.json": "8b50d407e071bb6d29403047420f8266568ad861bc287951a290d176186e1e4f"
+        }
+      }
+    },
+    {
+      "slot": 4,
+      "block": 2,
+      "offset_seconds": 10,
+      "requeue_seconds": 30,
+      "directory": "20260907_213754_step_phpa_current_r4",
+      "status": "completed",
+      "metrics": {
+        "phase_requested_seconds": 10,
+        "phase_actual_gap_seconds": 10.109454870223999,
+        "first_source_sample_seconds": 0.996999979019165,
+        "observer_above_55_response_seconds": 32.64500403404236,
+        "first_controller_above_55_query_seconds": 49.903719902038574,
+        "first_scale_write_seconds": 49.90846610069275,
+        "first_new_pod_ready_seconds": 50.93400001525879,
+        "first_new_pod_request_seconds": 50.93400001525879,
+        "first_new_pod_log_output_seconds": 51.26523494720459,
+        "observer_to_controller_wait_seconds": 17.258715867996216,
+        "controller_query_to_scale_seconds": 0.004746198654174805,
+        "scale_to_ready_seconds": 1.02553391456604,
+        "ready_to_first_request_seconds": 0.0,
+        "http_requests": 4498,
+        "http_200_requests": 3164,
+        "http_200_percent": 70.34,
+        "all_request_p95_ms": 10000.77,
+        "dropped_iterations": 1,
+        "pod_seconds_exact_541s": 2161.0,
+        "pod_seconds_post_load_360s": 1070.406000137329,
+        "requeue_seconds": 30,
+        "first_above_55_query_start_seconds": 49.90192103385925,
+        "first_above_55_query_return_seconds": 49.903719902038574,
+        "observer_response_to_query_start_seconds": 17.256916999816895,
+        "observer_response_to_query_return_seconds": 17.258715867996216,
+        "query_start_to_scale_response_seconds": 0.006545066833496094,
+        "query_return_to_scale_response_seconds": 0.004746198654174805,
+        "reconcile_starts_total": 37,
+        "reconcile_finishes_total": 37,
+        "queries_total": 37,
+        "reconcile_starts_in_541s": 31,
+        "queries_started_in_541s": 31,
+        "nominal_window_divided_by_cadence": 18.033333333333335,
+        "http_200_percent_unrounded": 70.34237438861716
+      },
+      "phase": {
+        "requested_offset_seconds": 10,
+        "requeue_seconds": 30,
+        "actual_reconcile_gap_seconds": 10.109454870223999,
+        "phase_error_seconds": 0.10945487022399902,
+        "within_tolerance": true,
+        "tolerance_seconds": 2,
+        "planned_load_onset_unix": 1788788407,
+        "actual_onset_error_seconds": 0.06599998474121094,
+        "gate_rounding_seconds": 0.05375099182128906
+      },
+      "timing": {
+        "load_onset_unix": 1788788407.066,
+        "first_request_attempt_seconds": 0.2877230644226074,
+        "first_scale_write_seconds": 49.90846610069275,
+        "first_expansion_decision_seconds": 49.90375995635986,
+        "first_controller_above_threshold_query_seconds": 49.903719902038574,
+        "first_new_pod_ready_seconds": 50.93400001525879,
+        "first_new_pod_request_seconds": 50.93400001525879,
+        "first_new_pod_created_seconds": 48.93400001525879,
+        "first_new_pod_access_log_emitted_seconds": 51.26523494720459
+      },
+      "scenario_window_occupancy": {
+        "window_valid": true,
+        "window_reference": "k6 scenario.startTime + 30 seconds",
+        "start_time_unix": 1788788407.066,
+        "end_time_unix": 1788788948.066,
+        "duration_seconds": 541,
+        "sampling_precision_seconds": 15,
+        "pod_seconds": 2161.0,
+        "post_load_pod_seconds": 1070.406000137329,
+        "onset_offset_from_legacy_window_seconds": 0.06599998474121094,
+        "legacy_window_reference": "integer process start + 30 seconds; original extract.json unchanged",
+        "first_sampled_replica_increase_seconds": 59.93400001525879
+      },
+      "timestamp_precision_bounds": {
+        "ready_interval_seconds": [
+          50.93400001525879,
+          51.93400001525879
+        ],
+        "request_received_interval_seconds": [
+          50.93400001525879,
+          51.93400001525879
+        ],
+        "scale_to_ready_difference_interval_seconds": [
+          1.02553391456604,
+          2.02553391456604
+        ],
+        "interpretation": "Intervals describe one-second timestamp bins, not confidence intervals; original lower-bound timestamps are retained"
+      },
+      "quality": {
+        "flags": [],
+        "observation_error_count": 0,
+        "observation_errors": []
+      },
+      "cadence_validation": {
+        "assigned_requeue_seconds": 30,
+        "logged_successful_decision_finishes": 35,
+        "all_logged_intervals_match": true,
+        "nominal_reference_is_exact_count": false,
+        "window_start_unix": 1788788407.066,
+        "window_end_unix": 1788788948.066
+      },
+      "lineage": {
+        "frozen_analyzer_replay_matches": true,
+        "raw_hashes": {
+          "k6.json": "72080c08e45c22637f66940a2c52053eb23ba708fa2e9b66f24dad5b9bee96e3",
+          "controller.log": "bc0a9c7f7e955c57249bd60ea42bf0ce0fcd5401234e0d6a9d402693b5778761",
+          "prom.json": "18237080a40440a60565a42d14ba8999311ac1ee7f19af31f16e447a67620ffb",
+          "latency-observations.ndjson": "56ebb02f2e6290b0e7dbb4b8b4d30039671f225d61630b314e8ae45388cb09de"
+        },
+        "derived_hashes": {
+          "latency.json": "4ee4ab6d14744acc1fb6d11f725a7ad51881bf06fd6230e698d3afb77d671d8a",
+          "extract.json": "97341c8d1c055b6c028ccb00fbab88da456cb57131664a287afaaf783ee89f22"
+        }
+      }
+    }
+  ],
+  "paired_15s_minus_30s": [
+    {
+      "block": 1,
+      "control_30s_slot": 1,
+      "candidate_15s_slot": 2,
+      "definition": "15-second cadence minus adjacent 30-second cadence",
+      "differences": {
+        "phase_requested_seconds": 0,
+        "phase_actual_gap_seconds": 0.16361784934997559,
+        "first_source_sample_seconds": 6.6579999923706055,
+        "observer_above_55_response_seconds": -13.187520980834961,
+        "first_controller_above_55_query_seconds": -15.154716968536377,
+        "first_scale_write_seconds": -15.154758930206299,
+        "first_new_pod_ready_seconds": -16.01699995994568,
+        "first_new_pod_request_seconds": -16.01699995994568,
+        "first_new_pod_log_output_seconds": -15.559664964675903,
+        "observer_to_controller_wait_seconds": -1.967195987701416,
+        "controller_query_to_scale_seconds": -4.1961669921875e-05,
+        "scale_to_ready_seconds": -0.8622410297393799,
+        "ready_to_first_request_seconds": 0.0,
+        "http_requests": 0,
+        "http_200_requests": 309,
+        "http_200_percent": 6.86999999999999,
+        "all_request_p95_ms": -0.12999999999919964,
+        "dropped_iterations": 0,
+        "pod_seconds_exact_541s": 105.0,
+        "pod_seconds_post_load_360s": 14.847000360488892,
+        "requeue_seconds": -15,
+        "first_above_55_query_start_seconds": -15.154035091400146,
+        "first_above_55_query_return_seconds": -15.154716968536377,
+        "observer_response_to_query_start_seconds": -1.9665141105651855,
+        "observer_response_to_query_return_seconds": -1.967195987701416,
+        "query_start_to_scale_response_seconds": -0.0007238388061523438,
+        "query_return_to_scale_response_seconds": -4.1961669921875e-05,
+        "reconcile_starts_total": 24,
+        "reconcile_finishes_total": 24,
+        "queries_total": 24,
+        "reconcile_starts_in_541s": 22,
+        "queries_started_in_541s": 22,
+        "nominal_window_divided_by_cadence": 18.033333333333335,
+        "http_200_percent_unrounded": 6.869719875500223
+      }
+    },
+    {
+      "block": 2,
+      "control_30s_slot": 4,
+      "candidate_15s_slot": 3,
+      "definition": "15-second cadence minus adjacent 30-second cadence",
+      "differences": {
+        "phase_requested_seconds": 0,
+        "phase_actual_gap_seconds": 0.8101530075073242,
+        "first_source_sample_seconds": 7.351000070571899,
+        "observer_above_55_response_seconds": -3.824842929840088,
+        "first_controller_above_55_query_seconds": -15.797762870788574,
+        "first_scale_write_seconds": -15.798326015472412,
+        "first_new_pod_ready_seconds": -15.997999906539917,
+        "first_new_pod_request_seconds": -15.997999906539917,
+        "first_new_pod_log_output_seconds": -15.764128923416138,
+        "observer_to_controller_wait_seconds": -11.972919940948486,
+        "controller_query_to_scale_seconds": -0.0005631446838378906,
+        "scale_to_ready_seconds": -0.19967389106750488,
+        "ready_to_first_request_seconds": 0.0,
+        "http_requests": 0,
+        "http_200_requests": 380,
+        "http_200_percent": 8.450000000000003,
+        "all_request_p95_ms": -0.040000000000873115,
+        "dropped_iterations": 0,
+        "pod_seconds_exact_541s": 240.0,
+        "pod_seconds_post_load_360s": 30.018000841140747,
+        "requeue_seconds": -15,
+        "first_above_55_query_start_seconds": -15.79781198501587,
+        "first_above_55_query_return_seconds": -15.797762870788574,
+        "observer_response_to_query_start_seconds": -11.972969055175781,
+        "observer_response_to_query_return_seconds": -11.972919940948486,
+        "query_start_to_scale_response_seconds": -0.0005140304565429688,
+        "query_return_to_scale_response_seconds": -0.0005631446838378906,
+        "reconcile_starts_total": 29,
+        "reconcile_finishes_total": 29,
+        "queries_total": 29,
+        "reconcile_starts_in_541s": 25,
+        "queries_started_in_541s": 25,
+        "nominal_window_divided_by_cadence": 18.033333333333335,
+        "http_200_percent_unrounded": 8.448199199644293
+      }
+    }
+  ],
+  "methods_and_limits": [
+    "Four Current runs follow fixed ABBA order 30/15/15/30 seconds, all with requested onset offset 10 seconds.",
+    "Paired deltas are candidate 15s minus adjacent control 30s: slot 2 minus 1, then slot 3 minus 4. Every run remains included.",
+    "The 10s phase was selected from the preceding diagnostic; this follow-up does not estimate an unbiased average across all onset phases.",
+    "Only the configured reconciliation interval changes; code, binary, Current policy, metrics expression, workload, observer and image identities are checked.",
+    "Actual phase comes from observed idle reconciliation timing and is assessed against each assigned 15s or 30s interval with the frozen 2s tolerance.",
+    "Observer CPU >55% and controller query timestamps come from separate query calls. Signed observer-to-query gaps are measured observations, not exact causal delay.",
+    "Query-start-to-Scale-response and query-return-to-Scale-response are named separately. First successful Scale response uses the actual upward target write.",
+    "Ready and Apache request-received timestamps have 1s precision; plots use [t,t+1) bins. Apparent subsecond inversions do not imply negative startup.",
+    "Apache server status is not client success. HTTP 200 counts, all-request p95, timeouts and dropped iterations retain the full request population, including drain.",
+    "Replica occupancy uses the actual 541s scenario window and 360s post-load tail, integrating 15s replica samples without extrapolating missing coverage.",
+    "Reconcile/query counts cover both the whole recorded run and the same actual 541s window. Window/cadence is a reference rate, not an exact expected count; resource events can add reconciliations.",
+    "Observer I/O request and round elapsed durations do not quantify CPU overhead or the causal cost of instrumentation.",
+    "Frozen analyzer replay validates lineage; the separate independent audit checks calculations without sharing these analyzers.",
+    "There are only two runs per cadence at one selected phase. Descriptive paired differences do not establish a global default, superiority, equivalence or production effect."
+  ]
+}

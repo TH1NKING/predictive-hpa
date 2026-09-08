@@ -24,7 +24,28 @@ desiredReplicas = ceil(currentReplicas × cpu% / targetCPU%)
 
 ## 2. 实测数据
 
-最新的[同控制器决策消融](docs/benchmarks/decision-mode-ablation-20260907.md)比较了 Current、Predictive、Hybrid 各三次匹配的 25 RPS step 运行：
+最新的[指标可见性诊断](docs/benchmarks/metric-visibility-20260908.md)复算了十次已封存
+Current 运行：三次明显 CPU 增量可见后，一分钟表达式约再过 12／16／16 秒才首次
+观测到超阈值，仍不能把这些观察差全部归因于平均窗口。200 个扩容前 raw 快照中，
+30 秒窗口有 142 个不足两个源样本，60 秒窗口只有 2 个；这不是修改窗口后的实测
+失败率，因此保留一分钟 CPU 窗口。本轮也修复了长期不缩容时稳定历史持续累积的
+问题，方法与取舍见[中文讲解](docs/benchmarks/history-metrics-guide.zh-CN.md)。
+
+此前的[协调周期匹配对照](docs/benchmarks/latency-cadence-followup-20260907.md)在同一
+程序、10 秒启动偏移下比较 30／15 秒间隔，各两次。15 秒组观察到平均首次扩容
+早 15.48 秒、HTTP 200 高 7.66 个百分点，同时副本占用增加 7.82%、查询增加
+73.44%，全请求 p95 仍约 10 秒。其 CPU 超阈值信息也平均早了 8.51 秒，不能把
+全部提前量归因于协调周期；默认保留 30 秒。
+
+此前的[扩容时序诊断](docs/benchmarks/latency-diagnostic-20260907.md)完成了六次 Current 运行，
+每种启动偏移两次。首次独立观测到足够 CPU 平均在负载后 26.283 秒，随后至扩容
+查询开始又平均等待 12.923 秒；查询开始至 Scale 成功响应只有 5.5–8.4ms。
+这缩小了延迟来源，没有证明服务或预测优势。完整时间语义与方法取舍见
+[中文讲解](docs/benchmarks/latency-diagnostic-guide.zh-CN.md)。
+
+### 2026-09-07：同控制器决策消融
+
+[同控制器决策消融](docs/benchmarks/decision-mode-ablation-20260907.md)比较了 Current、Predictive、Hybrid 各三次匹配的 25 RPS step 运行：
 
 | 描述性均值（每组 n=3） | Current | Predictive（默认） | Hybrid |
 |---|---:|---:|---:|
@@ -139,10 +160,18 @@ GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
 
 非法配置（如 `algorithm: ARIMA`、`alphaPercent: 200`）由 OpenAPI v3 schema 在 admission 阶段直接拒绝，控制器代码不重复校验。字段详情：`kubectl explain phpa.spec.prediction`。
 
-三种决策模式共享指标源、预测计算、30s 重排队配置、容差和稳定窗口；资源事件也可能触发协调。`Hybrid` 的决策信号为
+三种决策模式共享指标源、预测计算、默认 30s 重排队配置、容差和稳定窗口；资源事件也可能触发协调。`Hybrid` 的决策信号为
 `max(当前 CPU, min(限幅预测 CPU, 目标 CPU))`：预测不能单独触发扩容，也不能让缩容低于当前需求。
 `Current` 仍计算预测供观察，保留共同的样本就绪要求。省略 `decisionMode` 保持原有行为。
 模式对照的方法与验收标准见[同控制器消融方案](docs/benchmarks/decision-mode-ablation.md)；新增模式本身不代表已证明性能收益。
+
+manager 支持 `--requeue-interval=15s` 等不少于 1 秒的正常重排队间隔，省略时保持
+30 秒。该启动参数适用于正常完成以及目标尚未出现、暂时缺指标／样本的重试；
+不支持的目标类型仍使用 60 秒重试。它不修改 Prometheus 采集间隔、查询步长或
+CPU rate 窗口，也不增加 CRD 字段。具体诊断与匹配对照见
+[时序诊断](docs/benchmarks/latency-diagnostic-20260907.md)和
+[协调周期协议](docs/benchmarks/latency-cadence-followup.md)；实际取舍见
+[四次对照结果](docs/benchmarks/latency-cadence-followup-20260907.md)。
 
 ## 6. 设计决策摘要
 

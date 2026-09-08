@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,10 +42,9 @@ import (
 )
 
 const (
-	// requeueDefault is the interval between reconciliations under normal
-	// conditions. Keep the existing 30s interval in every decision mode so
-	// the ablation does not also change polling cadence.
-	requeueDefault = 30 * time.Second
+	// DefaultRequeueInterval is the normal polling interval when no override
+	// is supplied. Every decision mode retains the same 30-second default.
+	DefaultRequeueInterval = 30 * time.Second
 
 	// requeueOnConfigError is used when the user has configured something
 	// unsupported (e.g. scaleTargetRef.Kind != Deployment). Slow polling
@@ -61,6 +61,10 @@ type PredictiveHPAReconciler struct {
 	client.Client
 	Scheme          *runtime.Scheme
 	MetricsProvider metricsprovider.Provider
+
+	// RequeueInterval controls normal and transient-data polling. Zero uses
+	// the default 30-second interval; explicit intervals must be at least 1s.
+	RequeueInterval time.Duration
 
 	// Clock is an injectable time source. Production code leaves it nil
 	// and SetupWithManager defaults it to clock.RealClock{}; envtest specs
@@ -98,9 +102,28 @@ type PredictiveHPAReconciler struct {
 // observed within the past spec.scaleDownStabilizationWindowSeconds.
 // History is kept in-memory and lost on controller restart; restart-safe
 // persistence is on the v1beta1 roadmap.
-func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
+func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
+	// Diagnostic wall time is independent of the injectable policy clock. Carry
+	// this boundary into the metrics provider so its query shares the same trace.
+	reconcileStarted := time.Now()
+	log := logf.FromContext(ctx).WithValues("reconcileStartedAt", reconcileStarted.UTC().Format(time.RFC3339Nano))
+	ctx = logf.IntoContext(ctx, log)
+	defer func() {
+		logReconciliationCompletion(log, reconcileStarted, result, reconcileErr)
+	}()
+	requeueInterval, err := r.requeueInterval()
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	return r.reconcileTarget(ctx, req, requeueInterval)
+}
 
+// Request-level validation and timing stay at the public boundary, including
+// early returns; target reconciliation retains the common scaling policy.
+func (r *PredictiveHPAReconciler) reconcileTarget(
+	ctx context.Context, req ctrl.Request, requeueInterval time.Duration,
+) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
 	// 1. Fetch PredictiveHPA. On NotFound, drop the in-memory history for
 	//    this key to prevent map leaks (controller-runtime invokes Reconcile
 	//    on delete events).
@@ -131,7 +154,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := r.Get(ctx, deployKey, &deploy); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Target Deployment not found", "deployment", deployKey)
-			return ctrl.Result{RequeueAfter: requeueDefault}, nil
+			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get Deployment: %w", err)
 	}
@@ -145,7 +168,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if errors.Is(err, metricsprovider.ErrNoData) {
 			log.Info("Metrics not yet available, will retry",
 				"deployment", deploy.Name)
-			return ctrl.Result{RequeueAfter: requeueDefault}, nil
+			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("fetch metrics: %w", err)
 	}
@@ -161,7 +184,7 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if errors.Is(err, predictor.ErrInsufficientData) {
 			log.Info("Insufficient samples for prediction, will retry",
 				"samples", len(samples))
-			return ctrl.Result{RequeueAfter: requeueDefault}, nil
+			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("predict: %w", err)
 	}
@@ -239,12 +262,15 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		r.history[req.NamespacedName] = hist
 	}
 	hist.record(now, desiredReplicas)
+	// Maintain the rolling window even while holding steady or scaling up.
+	// Otherwise those paths retain every recommendation until a scale-down.
+	maxDesired := hist.maxInWindow(now, stabilizationWindow)
 
 	finalDesired := desiredReplicas
 	stabilized := false
 	coldStart := false
 	if desiredReplicas < currentReplicas {
-		finalDesired = hist.maxInWindow(now, stabilizationWindow)
+		finalDesired = maxDesired
 		if finalDesired > desiredReplicas {
 			stabilized = true
 		}
@@ -252,6 +278,8 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			coldStart = true
 		}
 	}
+	historyEntries := hist.len()
+	historyOldestAt := hist.entries[0].timestamp
 	r.mu.Unlock()
 
 	if coldStart {
@@ -267,22 +295,39 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		skipReason = "DesiredEqualsCurrent"
 	case withinTolerance(decisionCPU, phpa.Spec.TargetCPUUtilizationPercentage):
 		skipReason = "WithinToleranceBand"
-	default:
+	}
+	// Persist the policy outcome before Scale/status writes: either can fail,
+	// and a later status conflict must not erase evidence of an earlier decision.
+	log.Info("Evaluated PredictiveHPA scaling decision",
+		"decisionAt", time.Now().UTC().Format(time.RFC3339Nano),
+		"stabilizationEvaluatedAt", now.UTC().Format(time.RFC3339Nano),
+		"stabilizationHistoryEntries", historyEntries,
+		"stabilizationHistoryOldestAt", historyOldestAt.UTC().Format(time.RFC3339Nano),
+		"decisionMode", mode, "decisionCPU%", decisionCPU,
+		"rawPredictedCPU%", rawPredicted, "currentCPU%", currentCPU, "predictedCPU%", predicted,
+		"currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "finalDesired", finalDesired,
+		"stabilized", stabilized, "skipReason", skipReason, "samples", len(samples),
+		"latestEvaluationAt", samples[len(samples)-1].Timestamp.UTC().Format(time.RFC3339Nano))
+	if skipReason == "" {
 		scale := &autoscalingv1.Scale{}
 		if err := r.SubResource("scale").Get(ctx, &deploy, scale); err != nil {
 			return ctrl.Result{}, fmt.Errorf("get Deployment scale: %w", err)
 		}
 		previousDesiredReplicas := scale.Spec.Replicas
 		scale.Spec.Replicas = finalDesired
+		scaleWriteStarted := time.Now()
 		if err := r.SubResource("scale").Update(
 			ctx, &deploy, client.WithSubResourceBody(scale),
 		); err != nil {
 			return ctrl.Result{}, fmt.Errorf("update Deployment scale: %w", err)
 		}
+		scaleWriteFinished := time.Now()
 		scaled = true
 		// Log at the successful write boundary, before a possibly failing status
 		// update. Replica sampling can observe this action on a later scrape.
 		log.Info("Scaled Deployment", "deployment", deploy.Name,
+			"scaleWriteStartedAt", scaleWriteStarted.UTC().Format(time.RFC3339Nano),
+			"scaleWriteFinishedAt", scaleWriteFinished.UTC().Format(time.RFC3339Nano),
 			"decisionMode", mode, "decisionCPU%", decisionCPU,
 			"currentReplicas", currentReplicas, "previousDesiredReplicas", previousDesiredReplicas,
 			"finalDesired", finalDesired, "scaled", true)
@@ -340,11 +385,37 @@ func (r *PredictiveHPAReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		"samples", len(samples),
 	)
 
-	return ctrl.Result{RequeueAfter: requeueDefault}, nil
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+func (r *PredictiveHPAReconciler) requeueInterval() (time.Duration, error) {
+	interval := r.RequeueInterval
+	if interval == 0 {
+		interval = DefaultRequeueInterval
+	}
+	if interval < time.Second {
+		return 0, fmt.Errorf("requeue interval must be at least 1s, got %s", interval)
+	}
+	return interval, nil
+}
+
+func logReconciliationCompletion(log logr.Logger, started time.Time, result ctrl.Result, err error) {
+	finished := time.Now()
+	errorMessage := ""
+	if err != nil {
+		errorMessage = err.Error()
+	}
+	log.Info("Finished PredictiveHPA reconciliation",
+		"reconcileFinishedAt", finished.UTC().Format(time.RFC3339Nano),
+		"reconcileDurationSeconds", finished.Sub(started).Seconds(),
+		"reconcileError", errorMessage, "requeueAfterSeconds", result.RequeueAfter.Seconds())
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PredictiveHPAReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if _, err := r.requeueInterval(); err != nil {
+		return err
+	}
 	r.history = make(map[types.NamespacedName]*scaleHistory)
 	if r.Clock == nil {
 		r.Clock = clock.RealClock{}

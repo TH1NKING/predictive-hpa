@@ -17,6 +17,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	ctrl "sigs.k8s.io/controller-runtime"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
 	"github.com/th1nking/predictive-hpa/internal/predictor"
@@ -110,6 +113,144 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 			},
 		}
 	}
+
+	DescribeTable("expires stabilization history even without a scale-down recommendation", func(replicas int32) {
+		deploy := makeDeployment(testNamespace, "retention-app", replicas)
+		Expect(k8sClient.Create(ctx, deploy)).To(Succeed())
+		deploy.Status.Replicas = replicas
+		Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
+		fakeMetrics.SetConstantCPU(testNamespace, deploy.Name, 100, 5, 30*time.Second)
+		phpa := makePHPA(testNamespace, "retention-phpa", deploy.Name, nil)
+		phpa.Spec.DecisionMode = autoscalingv1alpha1.DecisionModeCurrent
+		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, phpa)).To(Succeed()) })
+
+		// Observe the public decision log, not the reconciler's history storage.
+		decisionAt := func(stamp time.Time) map[string]any {
+			var decision map[string]any
+			Eventually(func(g Gomega) {
+				for _, record := range controllerDiagnosticLog.records(testNamespace) {
+					if record["msg"] == decisionDiagnosticMessage &&
+						diagnosticTime(record, "stabilizationEvaluatedAt").Equal(stamp) {
+						decision = record
+						break
+					}
+				}
+				g.Expect(decision).NotTo(BeNil())
+			}, 5*time.Second, 20*time.Millisecond).Should(Succeed())
+			return decision
+		}
+		nudge := func() {
+			updated := &autoscalingv1alpha1.PredictiveHPA{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(phpa), updated)).To(Succeed())
+			patch := client.MergeFrom(updated.DeepCopy())
+			updated.Annotations = map[string]string{"phpa.test/tick": fakeClock.Now().Format(time.RFC3339Nano)}
+			Expect(k8sClient.Patch(ctx, updated, patch)).To(Succeed())
+		}
+		decisionAt(fakeClock.Now())
+		for range 12 {
+			fakeClock.Step(15 * time.Second)
+			nudge()
+			decision := decisionAt(fakeClock.Now())
+			Expect(diagnosticTime(decision, "stabilizationHistoryOldestAt")).To(
+				BeTemporally(">=", fakeClock.Now().Add(-time.Minute)))
+			Expect(decision["desiredReplicas"]).To(BeNumerically(">=", replicas))
+		}
+
+		// After a gap spanning two windows the first new decision must retain
+		// only its own recommendation, even if no scale-down is attempted.
+		fakeClock.Step(2 * time.Minute)
+		nudge()
+		Expect(decisionAt(fakeClock.Now())["stabilizationHistoryEntries"]).To(Equal(float64(1)))
+	},
+		Entry("while staying at the replica ceiling", int32(10)),
+		Entry("while continuing to recommend scale-up", int32(1)),
+	)
+
+	It("uses the configured requeue interval while waiting for a missing Deployment", func() {
+		phpa := makePHPA(testNamespace, "cadence-phpa", "not-created", nil)
+		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+		var diagnostics diagnosticLogBuffer
+		logger := zap.New(zap.WriteTo(&diagnostics), zap.UseDevMode(false)).WithValues("namespace", testNamespace)
+		reconciler := &PredictiveHPAReconciler{
+			Client:          k8sClient,
+			RequeueInterval: 15 * time.Second,
+		}
+
+		result, err := reconciler.Reconcile(logf.IntoContext(ctx, logger), ctrl.Request{
+			NamespacedName: client.ObjectKeyFromObject(phpa),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.RequeueAfter).To(Equal(15 * time.Second))
+		var finished map[string]any
+		for _, record := range diagnostics.records(testNamespace) {
+			if record["msg"] == "Finished PredictiveHPA reconciliation" {
+				finished = record
+			}
+		}
+		Expect(finished).NotTo(BeNil())
+		Expect(finished["requeueAfterSeconds"]).To(Equal(float64(15)))
+		Expect(finished["reconcileError"]).To(Equal(""))
+	})
+
+	It("records a correlated decision and successful Scale boundary before finishing reconciliation", func() {
+		deploy := makeDeployment(testNamespace, "timing-app", 1)
+		Expect(k8sClient.Create(ctx, deploy)).To(Succeed())
+		deploy.Status.Replicas = 1
+		Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
+		fakeMetrics.SetConstantCPU(testNamespace, deploy.Name, 100, 5, 30*time.Second)
+		minR := int32(1)
+		phpa := makePHPA(testNamespace, "timing-phpa", deploy.Name, &minR)
+		phpa.Spec.DecisionMode = autoscalingv1alpha1.DecisionModeCurrent
+		Expect(k8sClient.Create(ctx, phpa)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			updated := &appsv1.Deployment{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(deploy), updated)).To(Succeed())
+			g.Expect(*updated.Spec.Replicas).To(Equal(int32(2)))
+			records := controllerDiagnosticLog.records(testNamespace)
+			var decision, scale, finished map[string]any
+			for _, record := range records {
+				if record["msg"] == "Scaled Deployment" && record["previousDesiredReplicas"] == float64(1) {
+					scale = record
+					break
+				}
+			}
+			g.Expect(scale).NotTo(BeNil())
+			cycle := scale["reconcileStartedAt"]
+			g.Expect(cycle).NotTo(BeNil())
+			for _, record := range records {
+				if record["reconcileStartedAt"] != cycle {
+					continue
+				}
+				switch record["msg"] {
+				case decisionDiagnosticMessage:
+					decision = record
+				case "Finished PredictiveHPA reconciliation":
+					finished = record
+				}
+			}
+			g.Expect(decision).NotTo(BeNil())
+			g.Expect(finished).NotTo(BeNil())
+			g.Expect(decision["decisionMode"]).To(Equal("Current"))
+			g.Expect(decision["decisionCPU%"]).To(Equal(float64(100)))
+			g.Expect(decision["finalDesired"]).To(Equal(float64(2)))
+			g.Expect(decision["skipReason"]).To(Equal(""))
+			g.Expect(finished["requeueAfterSeconds"]).To(Equal(float64(30)))
+			g.Expect(finished["reconcileError"]).To(Equal(""))
+			stamps := []time.Time{
+				diagnosticTime(scale, "reconcileStartedAt"), diagnosticTime(decision, "decisionAt"),
+				diagnosticTime(scale, "scaleWriteStartedAt"), diagnosticTime(scale, "scaleWriteFinishedAt"),
+				diagnosticTime(finished, "reconcileFinishedAt"),
+			}
+			for i, stamp := range stamps {
+				g.Expect(stamp.IsZero()).To(BeFalse())
+				if i > 0 {
+					g.Expect(stamp.Before(stamps[i-1])).To(BeFalse())
+				}
+			}
+		}, 10*time.Second, 100*time.Millisecond).Should(Succeed())
+	})
 
 	DescribeTable("decision modes at load onset", func(mode autoscalingv1alpha1.DecisionMode, expected int32) {
 		deploy := makeDeployment(testNamespace, "onset-app", 1)
@@ -378,13 +519,28 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 				upscaled, *d.Spec.Replicas)
 		}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
 
-		// 7. Advance fake clock past the window. The 'now' Reconcile sees
-		//    on its next invocation will be far enough ahead that
-		//    history.maxInWindow prunes the high-desired entry.
-		fakeClock.Step(31 * time.Second)
+		// 7. The old high recommendation remains effective exactly at the
+		//    inclusive cutoff, even after pruning on every earlier decision.
+		fakeClock.Step(30 * time.Second)
+		nudge()
+		Eventually(func(g Gomega) {
+			var boundary map[string]any
+			for _, record := range controllerDiagnosticLog.records(testNamespace) {
+				if record["msg"] == decisionDiagnosticMessage &&
+					diagnosticTime(record, "stabilizationEvaluatedAt").Equal(fakeClock.Now()) {
+					boundary = record
+				}
+			}
+			g.Expect(boundary).NotTo(BeNil())
+			g.Expect(boundary["stabilized"]).To(BeTrue())
+			g.Expect(boundary["finalDesired"]).To(Equal(float64(10)))
+		}, 5*time.Second, 20*time.Millisecond).Should(Succeed())
+
+		// 8. One second beyond the cutoff the high recommendation expires.
+		fakeClock.Step(time.Second)
 		nudge()
 
-		// 8. Now the window allows scale-down. Replicas should drop toward
+		// 9. Now the window allows scale-down. Replicas should drop toward
 		//    minReplicas=1.
 		Eventually(func(g Gomega) {
 			d := &appsv1.Deployment{}

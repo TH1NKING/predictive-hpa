@@ -1,0 +1,1162 @@
+{
+  "protocol_version": "metric-visibility-evidence-v1",
+  "analysis_date": "2026-09-08",
+  "review_reference_baseline": "18a3abc8f68ef21f1a91ca100fefd1189fe0325c",
+  "protocol": {
+    "path": "docs/benchmarks/metric-visibility-diagnostic.md",
+    "sha256": "b8faa5c145660201beb4c27d7d20f11d3e90efa79cacd6df5ba4016ddeb889fe"
+  },
+  "summary": {
+    "units": "Seconds relative to scheduled onset unless the field names a difference; cores are raw adjacent counter slope, not PromQL rate.",
+    "clear_increment_rule": "First post-onset adjacent CPU counter difference whose slope / observed 0.2-core CPU request exceeds 55 percent.",
+    "window_scope": "Each successful raw response finishing before scale-write start, with its own evaluation_time_unix > onset; full labels retained for calculation; source times in (evaluation-window, evaluation]. Counts describe visible source-sample availability, not a measured 30-second PromQL rate failure probability.",
+    "window_sample_counts": {
+      "offsets": {
+        "30": {
+          "series_snapshots": 116,
+          "fewer_than_two_samples": 88
+        },
+        "60": {
+          "series_snapshots": 116,
+          "fewer_than_two_samples": 0
+        }
+      },
+      "cadence": {
+        "30": {
+          "series_snapshots": 84,
+          "fewer_than_two_samples": 54
+        },
+        "60": {
+          "series_snapshots": 84,
+          "fewer_than_two_samples": 2
+        }
+      },
+      "total": {
+        "30": {
+          "series_snapshots": 200,
+          "fewer_than_two_samples": 142
+        },
+        "60": {
+          "series_snapshots": 200,
+          "fewer_than_two_samples": 2
+        }
+      }
+    },
+    "primary_output_files": [
+      {
+        "path": "benchmark-runs\\history-metrics-20260908\\results-final\\offsets.json",
+        "sha256": "557dee0d2d8b9116dd778bd3f91e13a46fb002bc5419d2cd963d7281b618057a"
+      },
+      {
+        "path": "benchmark-runs\\history-metrics-20260908\\results-final\\cadence.json",
+        "sha256": "f14161821498583a751b590622258b6dd228d15a557bf05e4f9bf192783b8172"
+      }
+    ],
+    "runs": [
+      {
+        "batch": "offsets",
+        "run": "20260907_185359_step_phpa_current_r1",
+        "cadence_seconds": 30,
+        "offset_seconds": 0,
+        "first_source_seconds": 11.282000064849854,
+        "first_source_visible_interval_seconds": [
+          20.201422929763794,
+          22.20665693283081
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          8.91942286491394,
+          10.924656867980957
+        ],
+        "first_source_absence_ndjson_line": 367,
+        "first_source_present_ndjson_line": 372,
+        "first_clear_increment_left_source_seconds": -5.504999876022339,
+        "first_clear_increment_right_source_seconds": 11.282000064849854,
+        "first_clear_increment_delta_cpu_seconds": 5.516967,
+        "first_clear_increment_elapsed_seconds": 16.786999940872192,
+        "first_clear_increment_average_cores": 0.328645202801696,
+        "first_clear_increment_visible_interval_seconds": [
+          20.201422929763794,
+          22.20665693283081
+        ],
+        "first_clear_increment_present_ndjson_line": 372,
+        "first_clear_increment_absence_ndjson_line": 367,
+        "same_poll_one_minute_cpu_percent": 61.57085295177106,
+        "same_poll_one_minute_response_seconds": 22.207875967025757,
+        "same_poll_one_minute_ndjson_line": 373,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.00045990943908691406,
+        "first_one_minute_above_55_response_seconds": 22.207875967025757,
+        "first_one_minute_above_55_cpu_percent": 61.57085295177106,
+        "first_one_minute_above_55_ndjson_line": 373,
+        "first_above_minus_clear_raw_response_seconds": 0.001219034194946289,
+        "first_above_minus_same_poll_evaluated_response_seconds": 0.0,
+        "max_source_gap_seconds": 16.786999940872192,
+        "evaluated_counts_postload_prescale": {
+          "total": 15,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 15
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 324,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 324
+        },
+        "scale_write_start_seconds": 29.484927892684937,
+        "scale_write_response_seconds": 29.489294052124023,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 15,
+            "fewer_than_two_samples": 12
+          },
+          "60": {
+            "series_snapshots": 15,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "offsets",
+        "run": "20260907_190546_step_phpa_current_r2",
+        "cadence_seconds": 30,
+        "offset_seconds": 10,
+        "first_source_seconds": 12.55400013923645,
+        "first_source_visible_interval_seconds": [
+          21.822487115859985,
+          23.82805895805359
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          9.268486976623535,
+          11.274058818817139
+        ],
+        "first_source_absence_ndjson_line": 411,
+        "first_source_present_ndjson_line": 416,
+        "first_clear_increment_left_source_seconds": -1.8580000400543213,
+        "first_clear_increment_right_source_seconds": 12.55400013923645,
+        "first_clear_increment_delta_cpu_seconds": 6.131506999999999,
+        "first_clear_increment_elapsed_seconds": 14.412000179290771,
+        "first_clear_increment_average_cores": 0.4254445547961224,
+        "first_clear_increment_visible_interval_seconds": [
+          21.822487115859985,
+          23.82805895805359
+        ],
+        "first_clear_increment_present_ndjson_line": 416,
+        "first_clear_increment_absence_ndjson_line": 411,
+        "same_poll_one_minute_cpu_percent": 64.91809751656682,
+        "same_poll_one_minute_response_seconds": 23.82864212989807,
+        "same_poll_one_minute_ndjson_line": 418,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.00032401084899902344,
+        "first_one_minute_above_55_response_seconds": 23.82864212989807,
+        "first_one_minute_above_55_cpu_percent": 64.91809751656682,
+        "first_one_minute_above_55_ndjson_line": 418,
+        "first_above_minus_clear_raw_response_seconds": 0.0005831718444824219,
+        "first_above_minus_same_poll_evaluated_response_seconds": 0.0,
+        "max_source_gap_seconds": 24.914000034332275,
+        "evaluated_counts_postload_prescale": {
+          "total": 24,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 24
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 329,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 329
+        },
+        "scale_write_start_seconds": 49.07555913925171,
+        "scale_write_response_seconds": 49.07880997657776,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 24,
+            "fewer_than_two_samples": 17
+          },
+          "60": {
+            "series_snapshots": 24,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "offsets",
+        "run": "20260907_191743_step_phpa_current_r3",
+        "cadence_seconds": 30,
+        "offset_seconds": 20,
+        "first_source_seconds": 17.819999933242798,
+        "first_source_visible_interval_seconds": [
+          29.717010021209717,
+          31.72470998764038
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          11.897010087966919,
+          13.904710054397583
+        ],
+        "first_source_absence_ndjson_line": 476,
+        "first_source_present_ndjson_line": 481,
+        "first_clear_increment_left_source_seconds": -0.7220001220703125,
+        "first_clear_increment_right_source_seconds": 17.819999933242798,
+        "first_clear_increment_delta_cpu_seconds": 8.731390000000005,
+        "first_clear_increment_elapsed_seconds": 18.54200005531311,
+        "first_clear_increment_average_cores": 0.4708979599802165,
+        "first_clear_increment_visible_interval_seconds": [
+          29.717010021209717,
+          31.72470998764038
+        ],
+        "first_clear_increment_present_ndjson_line": 481,
+        "first_clear_increment_absence_ndjson_line": 476,
+        "same_poll_one_minute_cpu_percent": 130.43075015684292,
+        "same_poll_one_minute_response_seconds": 31.723603010177612,
+        "same_poll_one_minute_ndjson_line": 480,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.0003249645233154297,
+        "first_one_minute_above_55_response_seconds": 31.723603010177612,
+        "first_one_minute_above_55_cpu_percent": 130.43075015684292,
+        "first_one_minute_above_55_ndjson_line": 480,
+        "first_above_minus_clear_raw_response_seconds": -0.0011069774627685547,
+        "first_above_minus_same_poll_evaluated_response_seconds": 0.0,
+        "max_source_gap_seconds": 18.54200005531311,
+        "evaluated_counts_postload_prescale": {
+          "total": 19,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 19
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 334,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 334
+        },
+        "scale_write_start_seconds": 38.99048590660095,
+        "scale_write_response_seconds": 38.993170976638794,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 19,
+            "fewer_than_two_samples": 12
+          },
+          "60": {
+            "series_snapshots": 19,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "offsets",
+        "run": "20260907_192950_step_phpa_current_r4",
+        "cadence_seconds": 30,
+        "offset_seconds": 20,
+        "first_source_seconds": 11.014999866485596,
+        "first_source_visible_interval_seconds": [
+          24.509176015853882,
+          26.51277184486389
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          13.494176149368286,
+          15.497771978378296
+        ],
+        "first_source_absence_ndjson_line": 455,
+        "first_source_present_ndjson_line": 461,
+        "first_clear_increment_left_source_seconds": -4.2870001792907715,
+        "first_clear_increment_right_source_seconds": 11.014999866485596,
+        "first_clear_increment_delta_cpu_seconds": 5.345168000000001,
+        "first_clear_increment_elapsed_seconds": 15.302000045776367,
+        "first_clear_increment_average_cores": 0.34931172291267676,
+        "first_clear_increment_visible_interval_seconds": [
+          24.509176015853882,
+          26.51277184486389
+        ],
+        "first_clear_increment_present_ndjson_line": 461,
+        "first_clear_increment_absence_ndjson_line": 455,
+        "same_poll_one_minute_cpu_percent": 83.06373920069578,
+        "same_poll_one_minute_response_seconds": 26.513213872909546,
+        "same_poll_one_minute_ndjson_line": 462,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.00035190582275390625,
+        "first_one_minute_above_55_response_seconds": 26.513213872909546,
+        "first_one_minute_above_55_cpu_percent": 83.06373920069578,
+        "first_one_minute_above_55_ndjson_line": 462,
+        "first_above_minus_clear_raw_response_seconds": 0.0004420280456542969,
+        "first_above_minus_same_poll_evaluated_response_seconds": 0.0,
+        "max_source_gap_seconds": 15.302000045776367,
+        "evaluated_counts_postload_prescale": {
+          "total": 20,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 20
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 334,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 334
+        },
+        "scale_write_start_seconds": 39.76527690887451,
+        "scale_write_response_seconds": 39.76793694496155,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 20,
+            "fewer_than_two_samples": 20
+          },
+          "60": {
+            "series_snapshots": 20,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "offsets",
+        "run": "20260907_194156_step_phpa_current_r5",
+        "cadence_seconds": 30,
+        "offset_seconds": 10,
+        "first_source_seconds": 2.3970000743865967,
+        "first_source_visible_interval_seconds": [
+          11.650635004043579,
+          13.655802965164185
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          9.253634929656982,
+          11.258802890777588
+        ],
+        "first_source_absence_ndjson_line": 381,
+        "first_source_present_ndjson_line": 387,
+        "first_clear_increment_left_source_seconds": 2.3970000743865967,
+        "first_clear_increment_right_source_seconds": 21.551000118255615,
+        "first_clear_increment_delta_cpu_seconds": 9.578563000000031,
+        "first_clear_increment_elapsed_seconds": 19.15400004386902,
+        "first_clear_increment_average_cores": 0.5000816006088515,
+        "first_clear_increment_visible_interval_seconds": [
+          27.65194606781006,
+          29.6566059589386
+        ],
+        "first_clear_increment_present_ndjson_line": 434,
+        "first_clear_increment_absence_ndjson_line": 430,
+        "same_poll_one_minute_cpu_percent": 114.84522830556203,
+        "same_poll_one_minute_response_seconds": 29.657169103622437,
+        "same_poll_one_minute_ndjson_line": 435,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.0004241466522216797,
+        "first_one_minute_above_55_response_seconds": 29.657169103622437,
+        "first_one_minute_above_55_cpu_percent": 114.84522830556203,
+        "first_one_minute_above_55_ndjson_line": 435,
+        "first_above_minus_clear_raw_response_seconds": 0.0005631446838378906,
+        "first_above_minus_same_poll_evaluated_response_seconds": 0.0,
+        "max_source_gap_seconds": 19.15400004386902,
+        "evaluated_counts_postload_prescale": {
+          "total": 24,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 24
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 329,
+          "error": 0,
+          "empty": 1,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 328
+        },
+        "scale_write_start_seconds": 48.928772926330566,
+        "scale_write_response_seconds": 48.93093514442444,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 24,
+            "fewer_than_two_samples": 13
+          },
+          "60": {
+            "series_snapshots": 24,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "offsets",
+        "run": "20260907_195424_step_phpa_current_r6",
+        "cadence_seconds": 30,
+        "offset_seconds": 0,
+        "first_source_seconds": 10.041000127792358,
+        "first_source_visible_interval_seconds": [
+          null,
+          11.767672061920166
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          null,
+          1.7266719341278076
+        ],
+        "first_source_absence_ndjson_line": null,
+        "first_source_present_ndjson_line": 343,
+        "first_clear_increment_left_source_seconds": -20.043999910354614,
+        "first_clear_increment_right_source_seconds": 10.041000127792358,
+        "first_clear_increment_delta_cpu_seconds": 4.86859800000002,
+        "first_clear_increment_elapsed_seconds": 30.085000038146973,
+        "first_clear_increment_average_cores": 0.161828086881395,
+        "first_clear_increment_visible_interval_seconds": [
+          null,
+          11.767672061920166
+        ],
+        "first_clear_increment_present_ndjson_line": 343,
+        "first_clear_increment_absence_ndjson_line": null,
+        "same_poll_one_minute_cpu_percent": 50.90173325806489,
+        "same_poll_one_minute_response_seconds": 11.766062021255493,
+        "same_poll_one_minute_ndjson_line": 342,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.0003600120544433594,
+        "first_one_minute_above_55_response_seconds": 23.767606019973755,
+        "first_one_minute_above_55_cpu_percent": 80.91404354329433,
+        "first_one_minute_above_55_ndjson_line": 377,
+        "first_above_minus_clear_raw_response_seconds": 11.999933958053589,
+        "first_above_minus_same_poll_evaluated_response_seconds": 12.001543998718262,
+        "max_source_gap_seconds": 30.085000038146973,
+        "evaluated_counts_postload_prescale": {
+          "total": 14,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 14
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 324,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 324
+        },
+        "scale_write_start_seconds": 29.012307167053223,
+        "scale_write_response_seconds": 29.014479160308838,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 14,
+            "fewer_than_two_samples": 14
+          },
+          "60": {
+            "series_snapshots": 14,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "cadence",
+        "run": "20260907_210233_step_phpa_current_r1",
+        "cadence_seconds": 30,
+        "offset_seconds": 10,
+        "first_source_seconds": 9.986999988555908,
+        "first_source_visible_interval_seconds": [
+          20.15509295463562,
+          22.158954858779907
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          10.168092966079712,
+          12.171954870223999
+        ],
+        "first_source_absence_ndjson_line": 405,
+        "first_source_present_ndjson_line": 410,
+        "first_clear_increment_left_source_seconds": -0.7209999561309814,
+        "first_clear_increment_right_source_seconds": 9.986999988555908,
+        "first_clear_increment_delta_cpu_seconds": 4.830324,
+        "first_clear_increment_elapsed_seconds": 10.70799994468689,
+        "first_clear_increment_average_cores": 0.45109488466113756,
+        "first_clear_increment_visible_interval_seconds": [
+          20.15509295463562,
+          22.158954858779907
+        ],
+        "first_clear_increment_present_ndjson_line": 410,
+        "first_clear_increment_absence_ndjson_line": 405,
+        "same_poll_one_minute_cpu_percent": 54.13523499283572,
+        "same_poll_one_minute_response_seconds": 22.159464836120605,
+        "same_poll_one_minute_ndjson_line": 411,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.00030994415283203125,
+        "first_one_minute_above_55_response_seconds": 38.16136884689331,
+        "first_one_minute_above_55_cpu_percent": 142.46306413807133,
+        "first_one_minute_above_55_ndjson_line": 460,
+        "first_above_minus_clear_raw_response_seconds": 16.002413988113403,
+        "first_above_minus_same_poll_evaluated_response_seconds": 16.001904010772705,
+        "max_source_gap_seconds": 17.437000036239624,
+        "evaluated_counts_postload_prescale": {
+          "total": 25,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 25
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 329,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 329
+        },
+        "scale_write_start_seconds": 49.42024302482605,
+        "scale_write_response_seconds": 49.422765016555786,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 25,
+            "fewer_than_two_samples": 14
+          },
+          "60": {
+            "series_snapshots": 25,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "cadence",
+        "run": "20260907_211430_step_phpa_current_r2",
+        "cadence_seconds": 15,
+        "offset_seconds": 10,
+        "first_source_seconds": 16.644999980926514,
+        "first_source_visible_interval_seconds": [
+          22.968061923980713,
+          24.972611904144287
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          6.323061943054199,
+          8.327611923217773
+        ],
+        "first_source_absence_ndjson_line": 369,
+        "first_source_present_ndjson_line": 375,
+        "first_clear_increment_left_source_seconds": -1.9240000247955322,
+        "first_clear_increment_right_source_seconds": 16.644999980926514,
+        "first_clear_increment_delta_cpu_seconds": 8.166430000000005,
+        "first_clear_increment_elapsed_seconds": 18.569000005722046,
+        "first_clear_increment_average_cores": 0.4397883568034636,
+        "first_clear_increment_visible_interval_seconds": [
+          22.968061923980713,
+          24.972611904144287
+        ],
+        "first_clear_increment_present_ndjson_line": 375,
+        "first_clear_increment_absence_ndjson_line": 369,
+        "same_poll_one_minute_cpu_percent": 93.92327153962923,
+        "same_poll_one_minute_response_seconds": 24.97384786605835,
+        "same_poll_one_minute_ndjson_line": 377,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.0002980232238769531,
+        "first_one_minute_above_55_response_seconds": 24.97384786605835,
+        "first_one_minute_above_55_cpu_percent": 93.92327153962923,
+        "first_one_minute_above_55_ndjson_line": 377,
+        "first_above_minus_clear_raw_response_seconds": 0.0012359619140625,
+        "first_above_minus_same_poll_evaluated_response_seconds": 0.0,
+        "max_source_gap_seconds": 18.569000005722046,
+        "evaluated_counts_postload_prescale": {
+          "total": 17,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 17
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 321,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 321
+        },
+        "scale_write_start_seconds": 34.26561188697815,
+        "scale_write_response_seconds": 34.26800608634949,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 17,
+            "fewer_than_two_samples": 11
+          },
+          "60": {
+            "series_snapshots": 17,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "cadence",
+        "run": "20260907_212612_step_phpa_current_r3",
+        "cadence_seconds": 15,
+        "offset_seconds": 10,
+        "first_source_seconds": 8.348000049591064,
+        "first_source_visible_interval_seconds": [
+          10.814037084579468,
+          12.818693161010742
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          2.4660370349884033,
+          4.470693111419678
+        ],
+        "first_source_absence_ndjson_line": 334,
+        "first_source_present_ndjson_line": 339,
+        "first_clear_increment_left_source_seconds": -7.389999866485596,
+        "first_clear_increment_right_source_seconds": 8.348000049591064,
+        "first_clear_increment_delta_cpu_seconds": 4.023165000000006,
+        "first_clear_increment_elapsed_seconds": 15.73799991607666,
+        "first_clear_increment_average_cores": 0.2556338176041206,
+        "first_clear_increment_visible_interval_seconds": [
+          10.814037084579468,
+          12.818693161010742
+        ],
+        "first_clear_increment_present_ndjson_line": 339,
+        "first_clear_increment_absence_ndjson_line": 334,
+        "same_poll_one_minute_cpu_percent": 47.02031969339356,
+        "same_poll_one_minute_response_seconds": 12.819260120391846,
+        "same_poll_one_minute_ndjson_line": 341,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.00032901763916015625,
+        "first_one_minute_above_55_response_seconds": 28.82016110420227,
+        "first_one_minute_above_55_cpu_percent": 122.60808473843487,
+        "first_one_minute_above_55_ndjson_line": 387,
+        "first_above_minus_clear_raw_response_seconds": 16.00146794319153,
+        "first_above_minus_same_poll_evaluated_response_seconds": 16.000900983810425,
+        "max_source_gap_seconds": 15.824000120162964,
+        "evaluated_counts_postload_prescale": {
+          "total": 17,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 17
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 322,
+          "error": 0,
+          "empty": 0,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 322
+        },
+        "scale_write_start_seconds": 34.10762000083923,
+        "scale_write_response_seconds": 34.11014008522034,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 17,
+            "fewer_than_two_samples": 6
+          },
+          "60": {
+            "series_snapshots": 17,
+            "fewer_than_two_samples": 0
+          }
+        },
+        "empty_raw_observations": []
+      },
+      {
+        "batch": "cadence",
+        "run": "20260907_213754_step_phpa_current_r4",
+        "cadence_seconds": 30,
+        "offset_seconds": 10,
+        "first_source_seconds": 0.996999979019165,
+        "first_source_visible_interval_seconds": [
+          null,
+          2.6406850814819336
+        ],
+        "first_source_publication_lag_interval_seconds": [
+          null,
+          1.6436851024627686
+        ],
+        "first_source_absence_ndjson_line": null,
+        "first_source_present_ndjson_line": 350,
+        "first_clear_increment_left_source_seconds": 0.996999979019165,
+        "first_clear_increment_right_source_seconds": 30.449000120162964,
+        "first_clear_increment_delta_cpu_seconds": 14.68473800000001,
+        "first_clear_increment_elapsed_seconds": 29.4520001411438,
+        "first_clear_increment_average_cores": 0.4985990061668427,
+        "first_clear_increment_visible_interval_seconds": [
+          30.63904595375061,
+          32.64690804481506
+        ],
+        "first_clear_increment_present_ndjson_line": 442,
+        "first_clear_increment_absence_ndjson_line": 434,
+        "same_poll_one_minute_cpu_percent": 249.29950427814762,
+        "same_poll_one_minute_response_seconds": 32.64500403404236,
+        "same_poll_one_minute_ndjson_line": 441,
+        "same_poll_evaluation_minus_raw_request_start_seconds": 0.0003299713134765625,
+        "first_one_minute_above_55_response_seconds": 32.64500403404236,
+        "first_one_minute_above_55_cpu_percent": 249.29950427814762,
+        "first_one_minute_above_55_ndjson_line": 441,
+        "first_above_minus_clear_raw_response_seconds": -0.0019040107727050781,
+        "first_above_minus_same_poll_evaluated_response_seconds": 0.0,
+        "max_source_gap_seconds": 32.151999950408936,
+        "evaluated_counts_postload_prescale": {
+          "total": 25,
+          "error": 0,
+          "empty": 2,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 23
+        },
+        "evaluated_counts_entire_capture": {
+          "total": 329,
+          "error": 0,
+          "empty": 2,
+          "non_finite_or_malformed": 0,
+          "nonempty_finite": 327
+        },
+        "scale_write_start_seconds": 49.90557098388672,
+        "scale_write_response_seconds": 49.90846610069275,
+        "raw_request_values_cores": [
+          0.2
+        ],
+        "window_sample_counts": {
+          "30": {
+            "series_snapshots": 25,
+            "fewer_than_two_samples": 23
+          },
+          "60": {
+            "series_snapshots": 25,
+            "fewer_than_two_samples": 2
+          }
+        },
+        "empty_raw_observations": []
+      }
+    ]
+  },
+  "analysis_code": [
+    {
+      "path": "hack/analyze/metric_visibility.py",
+      "sha256": "c6165612fb085711e58304cc60a879c4bc0ed73d67a123963220be39a6c0b3d3"
+    },
+    {
+      "path": "hack/analyze/latency.py",
+      "sha256": "e0f83afe440e5a2c5496b6f2f94713e32f10491f32462601337fa743be28e998"
+    },
+    {
+      "path": "hack/analyze/test_metric_visibility.py",
+      "sha256": "eb7250f5b0cb76e64ec7a5e01eae5f7b683cc15c07a182f17cb646aa2f966356"
+    },
+    {
+      "path": "benchmark-runs/history-metrics-20260908/independent-audit/audit_raw.py",
+      "sha256": "e64af8947a36ad5cdb64c7e99892f487b11a6e7a4a30c6eaa3c7af1ad0c52880"
+    },
+    {
+      "path": "benchmark-runs/history-metrics-20260908/independent-audit/compare_outputs.py",
+      "sha256": "355913fa049687be17ca80f538b2e25f46a2dd7655b80d9f8c082f3f4711a9d3"
+    },
+    {
+      "path": "benchmark-runs/history-metrics-20260908/build_metric_assets.py",
+      "sha256": "c5dd1062d22d50b43f8e21f53904a776db7d28e9949c3786bb642dc23b640d55"
+    }
+  ],
+  "primary_outputs": [
+    {
+      "path": "benchmark-runs/history-metrics-20260908/results-final/offsets.json",
+      "sha256": "557dee0d2d8b9116dd778bd3f91e13a46fb002bc5419d2cd963d7281b618057a"
+    },
+    {
+      "path": "benchmark-runs/history-metrics-20260908/results-final/cadence.json",
+      "sha256": "f14161821498583a751b590622258b6dd228d15a557bf05e4f9bf192783b8172"
+    }
+  ],
+  "independent_evidence": [
+    {
+      "path": "benchmark-runs/history-metrics-20260908/independent-audit/audit-results.json",
+      "sha256": "e12c3b6ed51a3a3dffe73e1ba56b4d85806d92425e58298102ec71cdc2fb8a30"
+    },
+    {
+      "path": "benchmark-runs/history-metrics-20260908/independent-audit/comparison.json",
+      "sha256": "2c45fb83f8c565f4f768915a73eb67d8d3600e5526fd20866b40e97d334dd6af"
+    },
+    {
+      "path": "benchmark-runs/history-metrics-20260908/independent-audit/summary.json",
+      "sha256": "b635f2ffa4457273f75112893d35aed71384d5d5d7136b3f583061fa2ff0cdbb"
+    }
+  ],
+  "independent_comparison": {
+    "method": "Independent audit JSON and raw NDJSON compared with primary JSON output only; no primary analyzer implementation read or imported.",
+    "numeric_tolerance": "math.isclose with rel_tol=1e-12, abs_tol=1e-6; identity/timestamp key sets compare exact float values.",
+    "checks_total": 1626,
+    "checks_matched": 1626,
+    "checks_differed": 0,
+    "compared_objects": {
+      "samples": 130,
+      "pairs": 17,
+      "evaluations": 200,
+      "window_series_snapshots": 200
+    }
+  },
+  "raw_inputs": [
+    {
+      "run": "20260907_185359_step_phpa_current_r1",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_185359_step_phpa_current_r1",
+      "scale_write_controller_log_line": 41,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_185359_step_phpa_current_r1/k6.json",
+          "sha256": "db3db98cb65305f232a314531057a9a9219bcd30fc3783dd065a587073229b9c"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_185359_step_phpa_current_r1/controller.log",
+          "sha256": "47cae7defd24f63d97dcbee6bda67808fa05b42191ae4ee5fd362a4c8f263cba"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_185359_step_phpa_current_r1/latency-plan.json",
+          "sha256": "2622966a9d6e7477ab6967b08e2ecb32d425b5ccd3bb898e7ce7232b8ec898fc"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_185359_step_phpa_current_r1/latency-observations.ndjson",
+          "sha256": "e0226cefb11e7ac71bc6a6515a421aa05361af677187f9ecf822d670ca3a7e25"
+        }
+      ]
+    },
+    {
+      "run": "20260907_190546_step_phpa_current_r2",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_190546_step_phpa_current_r2",
+      "scale_write_controller_log_line": 37,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_190546_step_phpa_current_r2/k6.json",
+          "sha256": "95503019c474ef777cc35452ca1b447c134a94ae800c1b23abe7695dc0c618bd"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_190546_step_phpa_current_r2/controller.log",
+          "sha256": "26fbedeaacfaa79e91b0b89fa20e7189af2c3f5b2d06b216cb8d2431be637463"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_190546_step_phpa_current_r2/latency-plan.json",
+          "sha256": "cde1ac7a89b2d255e5b822fc92afa1ff9f97831d219ba3579599e7d9ed9acde2"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_190546_step_phpa_current_r2/latency-observations.ndjson",
+          "sha256": "a292cc5789862192c2e61c7928fe4b46d9860219373b2ab6ac1fc28f0fc5b895"
+        }
+      ]
+    },
+    {
+      "run": "20260907_191743_step_phpa_current_r3",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_191743_step_phpa_current_r3",
+      "scale_write_controller_log_line": 38,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_191743_step_phpa_current_r3/k6.json",
+          "sha256": "7f33f6d4fe4bdae4bd5c50603df35fe72b70d3bdd86448b0aea393b05c4bee15"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_191743_step_phpa_current_r3/controller.log",
+          "sha256": "f488e15d9687966fdd12029c228de5907a6c8977041dfc70339f79c565e215ee"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_191743_step_phpa_current_r3/latency-plan.json",
+          "sha256": "d1c36b8761798449489bac2316f2dfd37e5c4ae6d8adb843e5fab6f10f444507"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_191743_step_phpa_current_r3/latency-observations.ndjson",
+          "sha256": "157ae235f27e0af00aeed4b8f97a9875059e803426e71b6adc1aaf48b1c3bc8c"
+        }
+      ]
+    },
+    {
+      "run": "20260907_192950_step_phpa_current_r4",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_192950_step_phpa_current_r4",
+      "scale_write_controller_log_line": 37,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_192950_step_phpa_current_r4/k6.json",
+          "sha256": "8261f573aedccfa83ab0d8370e5f380af3f8828fb874f9ef66cc4b6b91e312dd"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_192950_step_phpa_current_r4/controller.log",
+          "sha256": "115299e82c06fdd1d14bb4c03d846febdaba7ee6e2e5946722a35c70c017ab2a"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_192950_step_phpa_current_r4/latency-plan.json",
+          "sha256": "dd971f98f08455fa970aa8b7f8b9ac07b7e3481ac43c57c3c6ef669de652e553"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_192950_step_phpa_current_r4/latency-observations.ndjson",
+          "sha256": "32cbea9f7a390fc3ff7a39bbdb64d7f3a204e9173a6420e96637a94fabbffd2e"
+        }
+      ]
+    },
+    {
+      "run": "20260907_194156_step_phpa_current_r5",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_194156_step_phpa_current_r5",
+      "scale_write_controller_log_line": 41,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_194156_step_phpa_current_r5/k6.json",
+          "sha256": "74c39311cdc7b2a74ffdd869ef67ce274652eae14774e28ed1269a19b31303cb"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_194156_step_phpa_current_r5/controller.log",
+          "sha256": "bfb1f4839317780aeb7c1b69044dc67117990d5862ec7fd7187ff685fcea5c81"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_194156_step_phpa_current_r5/latency-plan.json",
+          "sha256": "71d1782cb6bc21b0009bcf47c4947b55656681ca244d58da0cf17d6a61b57e8e"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_194156_step_phpa_current_r5/latency-observations.ndjson",
+          "sha256": "6dda39d908bf417aba1ca872993fe5a5900a6142ba86d2499c859d27597a3f82"
+        }
+      ]
+    },
+    {
+      "run": "20260907_195424_step_phpa_current_r6",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_195424_step_phpa_current_r6",
+      "scale_write_controller_log_line": 32,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_195424_step_phpa_current_r6/k6.json",
+          "sha256": "5e1433f93e8196972c60444e0c4e46747289aea068d7924b3b2b910e34c38f50"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_195424_step_phpa_current_r6/controller.log",
+          "sha256": "d68a6bf38807f0b14a44a55b086c9b6a5b620cf716799b64770c1831d9cb0b73"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_195424_step_phpa_current_r6/latency-plan.json",
+          "sha256": "84a44fe6a982e7638e75aa13eade0bae2ef5d591ef8f75d24909c1ba9da768af"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/runs/20260907_195424_step_phpa_current_r6/latency-observations.ndjson",
+          "sha256": "0bddd95a4d3f80e5c4762c7c7ed7447132979f23b5f538f112683ff0937391ce"
+        }
+      ]
+    },
+    {
+      "run": "20260907_210233_step_phpa_current_r1",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_210233_step_phpa_current_r1",
+      "scale_write_controller_log_line": 46,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_210233_step_phpa_current_r1/k6.json",
+          "sha256": "c54431824019e166064ea7a5e62544757ca5fb00b54607ebacb611a9f999656e"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_210233_step_phpa_current_r1/controller.log",
+          "sha256": "80dd2088c63e0264223931917abc327b2801d1a5d4056a496148dd63f13b9d13"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_210233_step_phpa_current_r1/latency-plan.json",
+          "sha256": "5f2fb5b9302a5aa6555025a2fb76e65f2927120cd15d5466c2c424bb23259cb1"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_210233_step_phpa_current_r1/latency-observations.ndjson",
+          "sha256": "5c976332a63e3b16c5d77118ea8797d09bd56968f523dadc14c8c8ae8204bdfd"
+        }
+      ]
+    },
+    {
+      "run": "20260907_211430_step_phpa_current_r2",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_211430_step_phpa_current_r2",
+      "scale_write_controller_log_line": 52,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_211430_step_phpa_current_r2/k6.json",
+          "sha256": "91843c33ee45c818f542119c1f591262e2a2f860d9bd4dda457359241e15558a"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_211430_step_phpa_current_r2/controller.log",
+          "sha256": "55dd3f048b8c6786cd5b15544e9ae9d4a5e9b12bc297397f0f76d33b0577d638"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_211430_step_phpa_current_r2/latency-plan.json",
+          "sha256": "cf600221a2953ff761fefcc4b6cf4a33fd700d6b2fa5679cd173b8ba0c798de9"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_211430_step_phpa_current_r2/latency-observations.ndjson",
+          "sha256": "2f8cd331286cc9f536246849b44b58db1b12de223b904c2d74dbae7cca4a9685"
+        }
+      ]
+    },
+    {
+      "run": "20260907_212612_step_phpa_current_r3",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_212612_step_phpa_current_r3",
+      "scale_write_controller_log_line": 56,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_212612_step_phpa_current_r3/k6.json",
+          "sha256": "3c315b8d73c91f2873abe9afce57acf8de550e0fe94f1a6d0c11745819469957"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_212612_step_phpa_current_r3/controller.log",
+          "sha256": "c8e35baea5cd01f7c09f6bf0e1480a8785b0c390a0d4a019ac9e67499d3652ec"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_212612_step_phpa_current_r3/latency-plan.json",
+          "sha256": "cf61b67476b19ca046a5bb5e73421277594090df7d03351831aa3f2935f74757"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_212612_step_phpa_current_r3/latency-observations.ndjson",
+          "sha256": "5afccc75daeb1b4965adbd379c0661d404bab5e0143959a94beaaebb5d8cd48d"
+        }
+      ]
+    },
+    {
+      "run": "20260907_213754_step_phpa_current_r4",
+      "directory": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_213754_step_phpa_current_r4",
+      "scale_write_controller_log_line": 40,
+      "files": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_213754_step_phpa_current_r4/k6.json",
+          "sha256": "72080c08e45c22637f66940a2c52053eb23ba708fa2e9b66f24dad5b9bee96e3"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_213754_step_phpa_current_r4/controller.log",
+          "sha256": "bc0a9c7f7e955c57249bd60ea42bf0ce0fcd5401234e0d6a9d402693b5778761"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_213754_step_phpa_current_r4/latency-plan.json",
+          "sha256": "fc1b81cea802ef1dcf47027c95b0e1de727968cfbf84bdc21d6b175b44e387af"
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/runs/20260907_213754_step_phpa_current_r4/latency-observations.ndjson",
+          "sha256": "56ebb02f2e6290b0e7dbb4b8b4d30039671f225d61630b314e8ae45388cb09de"
+        }
+      ]
+    }
+  ],
+  "archive_verification": {
+    "sha256_manifests": {
+      "manifest_count": 9,
+      "matched_entries": 1117,
+      "counting_unit": "Verification entries, including repeated files across manifests; not unique files or independent runs.",
+      "manifests": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/SUPPORT-SHA256SUMS",
+          "sha256": "7505592f66ba364a74f9ba636e404bdeb748709304a8c7aec06b7d818193cb73",
+          "matched_entries": 8
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/final-verification/SHA256SUMS",
+          "sha256": "11d59d8e315e16cbea3bbf5c03ad8a8081409038abf98a446daf53661a9024fd",
+          "matched_entries": 16
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/pilot-current-cadence/SHA256SUMS",
+          "sha256": "acd2ed042045a0d48b6935a318d256f17e89b1ef14bf89ebd7da69fa4aeeb445",
+          "matched_entries": 443
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/verified/SUPPORT-SHA256SUMS",
+          "sha256": "7505592f66ba364a74f9ba636e404bdeb748709304a8c7aec06b7d818193cb73",
+          "matched_entries": 8
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/FINALIZATION-SHA256SUMS",
+          "sha256": "b5d71e4c570770650a3b6148565189eb311b0d07fa5bde61185bc928ba5c4ebb",
+          "matched_entries": 2
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/SUPPORT-SHA256SUMS",
+          "sha256": "c5b409e2b863992afde760ab236a1d25daab3b00be905458d23623bb37b10063",
+          "matched_entries": 7
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/final-verification/SHA256SUMS",
+          "sha256": "6eca5037da662d1fa13f8f09eb77a38b657d61ed2e568475141a676e39323840",
+          "matched_entries": 15
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/pilot-current-offsets/SHA256SUMS",
+          "sha256": "7ef04a2e663aedcb426c8cfdb6b89c0ecc13a03788dce76f2edca3006e1a747a",
+          "matched_entries": 611
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/verified/SUPPORT-SHA256SUMS",
+          "sha256": "c5b409e2b863992afde760ab236a1d25daab3b00be905458d23623bb37b10063",
+          "matched_entries": 7
+        }
+      ]
+    },
+    "delivery_manifests": {
+      "manifest_count": 2,
+      "matched_entries": 1160,
+      "counting_unit": "Verification entries, including repeated files across manifests; not unique files or independent runs.",
+      "manifests": [
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/cadence-followup/delivery/delivery-manifest.json",
+          "sha256": "2dc67ead60f87f42b059eb820f14df4c31c3f29b33edf100c1d64d622615d2ad",
+          "matched_entries": 489
+        },
+        {
+          "path": "benchmark-runs/latency-diagnostic-20260907/delivery/delivery-manifest.json",
+          "sha256": "1d75d74fa686b1b94754b2d25ac37aab7a788604b0204074aff42262b2724cda",
+          "matched_entries": 671
+        }
+      ]
+    }
+  },
+  "validation": {
+    "go": {
+      "make_lint_fix": "passed",
+      "make_test_unit_and_envtest": "passed",
+      "tested_source_files_matched": 54,
+      "source_archive_sha256": "c1b86ac0547e5809b06cb2a3a1c1155a8617770bce0be5094b7c1423f17f77e3"
+    },
+    "analysis": {
+      "tests_passed": 57
+    },
+    "harness": {
+      "tests_discovered": 38,
+      "linux_passed": 36,
+      "linux_skipped_for_missing_node": 2,
+      "node_tests_passed_separately": 2,
+      "combined_unique_tests_passed": 38
+    },
+    "evidence": [
+      {
+        "path": "benchmark-runs/history-metrics-20260908/validation/source-equivalence.json",
+        "sha256": "133de04b38f8de5bbcae0f562ca98a3b7b96150f0a37a9d6ed0b492b1ae18f8f"
+      },
+      {
+        "path": "benchmark-runs/history-metrics-20260908/validation/analysis-final.log",
+        "sha256": "d0452b1f33c2178e27a5af2465ed07c298aea378f49b169e41af8287e2ddb895"
+      },
+      {
+        "path": "benchmark-runs/history-metrics-20260908/validation/workload-node.log",
+        "sha256": "4260bde63c2feb0708c4276d707c7c9c955cbb92b33a0ba5867f6cef236b4b5f"
+      },
+      {
+        "path": "benchmark-runs/history-metrics-20260908/remote/validation/go-all.log",
+        "sha256": "8a85574130461251dd5cfa1dc90fd7553f4137e6b2de5a09225571050b5ed862"
+      },
+      {
+        "path": "benchmark-runs/history-metrics-20260908/remote/validation/lint-fix-final.log",
+        "sha256": "75077b6966d6f9af003b0ab64a6ec012ee9cd3bc704997a47561f01e7dd96383"
+      },
+      {
+        "path": "benchmark-runs/history-metrics-20260908/remote/validation/harness-all.log",
+        "sha256": "741f7d2695314faaeaf6dd19f6d4f9486ac6888a304199a5587d0c8e1a3c7fbf"
+      },
+      {
+        "path": "benchmark-runs/history-metrics-20260908/remote/validation/tested-source.sha256",
+        "sha256": "123302df6a4b974c2646fd9486d5adf925dec42bc962ae62a95173965e61eaea"
+      }
+    ]
+  },
+  "interpretation_limits": [
+    "All ten retained runs are included in their original separate cohorts: six offsets and four cadence runs.",
+    "Only source observations completed strictly before the first successful upward Scale write started are used for pre-scale metric analysis.",
+    "Clear increment means the first adjacent raw counter slope / observed 0.2-core request > 55%; it is not a short-window PromQL rate.",
+    "Unknown visibility lower bounds remain null. Arrows in the figure indicate unknown extent, not a zero lower bound.",
+    "Raw counter, one-minute expression and controller queries are separate non-atomic observations. Their signed response-time differences are descriptive, not causal contributions.",
+    "Millisecond negative differences from concurrent queries are retained in the summary; plot rounding and vertical marker offsets do not imply negative latency.",
+    "Thirty/sixty-second window counts describe visible raw sample availability, not measured short-window query failure probabilities or service benefits.",
+    "No new load experiment was performed. cAdvisor, scrape, ingestion components and short-window closed-loop service outcomes remain unisolated."
+  ]
+}
