@@ -24,7 +24,14 @@ desiredReplicas = ceil(currentReplicas × cpu% / targetCPU%)
 
 ## 2. 实测数据
 
-最新的[协调周期匹配对照](docs/benchmarks/latency-cadence-followup-20260907.md)在同一
+最新的[指标可见性诊断](docs/benchmarks/metric-visibility-20260908.md)复算了十次已封存
+Current 运行：三次明显 CPU 增量可见后，一分钟表达式约再过 12／16／16 秒才首次
+观测到超阈值，仍不能把这些观察差全部归因于平均窗口。200 个扩容前 raw 快照中，
+30 秒窗口有 142 个不足两个源样本，60 秒窗口只有 2 个；这不是修改窗口后的实测
+失败率，因此保留一分钟 CPU 窗口。本轮也修复了长期不缩容时稳定历史持续累积的
+问题，方法与取舍见[中文讲解](docs/benchmarks/history-metrics-guide.zh-CN.md)。
+
+此前的[协调周期匹配对照](docs/benchmarks/latency-cadence-followup-20260907.md)在同一
 程序、10 秒启动偏移下比较 30／15 秒间隔，各两次。15 秒组观察到平均首次扩容
 早 15.48 秒、HTTP 200 高 7.66 个百分点，同时副本占用增加 7.82%、查询增加
 73.44%，全请求 p95 仍约 10 秒。其 CPU 超阈值信息也平均早了 8.51 秒，不能把
