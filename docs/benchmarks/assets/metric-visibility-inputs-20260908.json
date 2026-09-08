@@ -4,7 +4,7 @@
   "review_reference_baseline": "18a3abc8f68ef21f1a91ca100fefd1189fe0325c",
   "protocol": {
     "path": "docs/benchmarks/metric-visibility-diagnostic.md",
-    "sha256": "ed4f467f3a38729555db068ca6481197ba914caa729e5555adce4649ead7ee86"
+    "sha256": "b8faa5c145660201beb4c27d7d20f11d3e90efa79cacd6df5ba4016ddeb889fe"
   },
   "summary": {
     "units": "Seconds relative to scheduled onset unless the field names a difference; cores are raw adjacent counter slope, not PromQL rate.",
@@ -42,6 +42,16 @@
         }
       }
     },
+    "primary_output_files": [
+      {
+        "path": "benchmark-runs\\history-metrics-20260908\\results-final\\offsets.json",
+        "sha256": "557dee0d2d8b9116dd778bd3f91e13a46fb002bc5419d2cd963d7281b618057a"
+      },
+      {
+        "path": "benchmark-runs\\history-metrics-20260908\\results-final\\cadence.json",
+        "sha256": "f14161821498583a751b590622258b6dd228d15a557bf05e4f9bf192783b8172"
+      }
+    ],
     "runs": [
       {
         "batch": "offsets",
@@ -108,7 +118,8 @@
             "series_snapshots": 15,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "offsets",
@@ -175,7 +186,8 @@
             "series_snapshots": 24,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "offsets",
@@ -242,7 +254,8 @@
             "series_snapshots": 19,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "offsets",
@@ -309,7 +322,8 @@
             "series_snapshots": 20,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "offsets",
@@ -376,7 +390,8 @@
             "series_snapshots": 24,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "offsets",
@@ -443,7 +458,8 @@
             "series_snapshots": 14,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "cadence",
@@ -510,7 +526,8 @@
             "series_snapshots": 25,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "cadence",
@@ -577,7 +594,8 @@
             "series_snapshots": 17,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "cadence",
@@ -644,7 +662,8 @@
             "series_snapshots": 17,
             "fewer_than_two_samples": 0
           }
-        }
+        },
+        "empty_raw_observations": []
       },
       {
         "batch": "cadence",
@@ -711,14 +730,15 @@
             "series_snapshots": 25,
             "fewer_than_two_samples": 2
           }
-        }
+        },
+        "empty_raw_observations": []
       }
     ]
   },
   "analysis_code": [
     {
       "path": "hack/analyze/metric_visibility.py",
-      "sha256": "253087dc520f1e2f06ce6c4af1e7a1394a2b7d89c665a96b30453793df057a11"
+      "sha256": "c6165612fb085711e58304cc60a879c4bc0ed73d67a123963220be39a6c0b3d3"
     },
     {
       "path": "hack/analyze/latency.py",
@@ -726,7 +746,7 @@
     },
     {
       "path": "hack/analyze/test_metric_visibility.py",
-      "sha256": "fa274820a578b08351fb4218d2fa9985ea2509a86bb041826ba70c7c3d4e97aa"
+      "sha256": "eb7250f5b0cb76e64ec7a5e01eae5f7b683cc15c07a182f17cb646aa2f966356"
     },
     {
       "path": "benchmark-runs/history-metrics-20260908/independent-audit/audit_raw.py",
@@ -734,21 +754,21 @@
     },
     {
       "path": "benchmark-runs/history-metrics-20260908/independent-audit/compare_outputs.py",
-      "sha256": "3db509176df4c4b8d7e9967e73e8e9b3daea7f4839759496da31c0bd529aeaee"
+      "sha256": "355913fa049687be17ca80f538b2e25f46a2dd7655b80d9f8c082f3f4711a9d3"
     },
     {
       "path": "benchmark-runs/history-metrics-20260908/build_metric_assets.py",
-      "sha256": "d21a2148f4826e5079f0a1e3a945f02cfdebcea168efac16eed95567379346a2"
+      "sha256": "c5dd1062d22d50b43f8e21f53904a776db7d28e9949c3786bb642dc23b640d55"
     }
   ],
   "primary_outputs": [
     {
-      "path": "benchmark-runs/history-metrics-20260908/results/offsets.json",
-      "sha256": "e363c5fbe4ec84a5bd9c14c9eefc2adcc5e1cc99cfc6434a22d500ce08740883"
+      "path": "benchmark-runs/history-metrics-20260908/results-final/offsets.json",
+      "sha256": "557dee0d2d8b9116dd778bd3f91e13a46fb002bc5419d2cd963d7281b618057a"
     },
     {
-      "path": "benchmark-runs/history-metrics-20260908/results/cadence.json",
-      "sha256": "32d24524964b652ecdf8b52556b2b8f7850ac13404a853053db49f858e108d9c"
+      "path": "benchmark-runs/history-metrics-20260908/results-final/cadence.json",
+      "sha256": "f14161821498583a751b590622258b6dd228d15a557bf05e4f9bf192783b8172"
     }
   ],
   "independent_evidence": [
@@ -758,18 +778,18 @@
     },
     {
       "path": "benchmark-runs/history-metrics-20260908/independent-audit/comparison.json",
-      "sha256": "fd8f332c688020f9eaecf74b362bd63c552343a88ca327917e4cf6b9cf4a03b1"
+      "sha256": "2c45fb83f8c565f4f768915a73eb67d8d3600e5526fd20866b40e97d334dd6af"
     },
     {
       "path": "benchmark-runs/history-metrics-20260908/independent-audit/summary.json",
-      "sha256": "40fb9ee728d44f3d7d78e19760baf7b5bc57a3ab64f72a5fd6167396a99e6b2a"
+      "sha256": "b635f2ffa4457273f75112893d35aed71384d5d5d7136b3f583061fa2ff0cdbb"
     }
   ],
   "independent_comparison": {
     "method": "Independent audit JSON and raw NDJSON compared with primary JSON output only; no primary analyzer implementation read or imported.",
     "numeric_tolerance": "math.isclose with rel_tol=1e-12, abs_tol=1e-6; identity/timestamp key sets compare exact float values.",
-    "checks_total": 1616,
-    "checks_matched": 1616,
+    "checks_total": 1626,
+    "checks_matched": 1626,
     "checks_differed": 0,
     "compared_objects": {
       "samples": 130,
@@ -1089,7 +1109,7 @@
       "source_archive_sha256": "c1b86ac0547e5809b06cb2a3a1c1155a8617770bce0be5094b7c1423f17f77e3"
     },
     "analysis": {
-      "tests_passed": 55
+      "tests_passed": 57
     },
     "harness": {
       "tests_discovered": 38,
@@ -1104,8 +1124,8 @@
         "sha256": "133de04b38f8de5bbcae0f562ca98a3b7b96150f0a37a9d6ed0b492b1ae18f8f"
       },
       {
-        "path": "benchmark-runs/history-metrics-20260908/validation/analysis-all.log",
-        "sha256": "82a514c0bcaad7b21aa4581a63e869a30cc90e946384f74a6378cd919ff570af"
+        "path": "benchmark-runs/history-metrics-20260908/validation/analysis-final.log",
+        "sha256": "d0452b1f33c2178e27a5af2465ed07c298aea378f49b169e41af8287e2ddb895"
       },
       {
         "path": "benchmark-runs/history-metrics-20260908/validation/workload-node.log",

@@ -95,6 +95,9 @@ python -m unittest hack.analyze.test_metric_visibility -v
 - `samples`：完整标签、相对样本时间、counter 值、冲突标记、可见区间。
 - `pairs`：右端在负载后的相邻样本对、间隔、增量、cores 斜率和有效性状态。
 - `window_samples`：每个 raw 快照、每个返回序列的 30s/60s 左开右闭窗口样本数。
+- `empty_raw_observations`：成功但空的 CPU/request 原始查询及其请求区间，另加
+  `prom_cpu_raw_empty`／`prom_requests_raw_empty` 标记；没有返回序列时不虚构
+  某个序列的窗口计数，也不把空查询当成 CPU 为零。
 - `request_values_cores`：合格 request 矩阵的有限值集合。
 - `evaluations` / `first_above_threshold`：一分钟表达式的观察区间、状态、值与首次 >55%。
 - `controller_queries`：独立控制器查询起止边界、对应决策 CPU 值与查询错误。

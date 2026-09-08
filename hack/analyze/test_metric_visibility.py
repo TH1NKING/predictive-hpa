@@ -25,6 +25,23 @@ def cpu(samples, pod="old"):
 
 
 class MetricVisibilityCLI(unittest.TestCase):
+
+    def test_missing_expansion_does_not_hide_unreadable_or_corrupt_inputs(self):
+        for broken_input in ("missing_plan", "invalid_observations"):
+            with self.subTest(broken_input=broken_input), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary) / "input"
+                directory.mkdir()
+                self.fixture(directory, [])
+                (directory / "controller.log").write_text("", encoding="utf-8")
+                if broken_input == "missing_plan":
+                    (directory / "latency-plan.json").unlink()
+                else:
+                    (directory / "latency-observations.ndjson").write_text("broken JSON", encoding="utf-8")
+                output = directory.parent / "must-not-exist.json"
+                result = self.invoke(directory, "--output", str(output))
+                self.assertEqual(2, result.returncode)
+                self.assertFalse(output.exists())
+
     def fixture(self, directory, rows):
         (directory / "k6.json").write_text(json.dumps({"type": "Point", "metric": "latency_request_attempt",
             "data": {"time": ONSET + 0.25, "value": (ONSET - 30) * 1000}}), encoding="utf-8")
@@ -185,6 +202,21 @@ class MetricVisibilityCLI(unittest.TestCase):
             report = self.report(directory)
             self.assertEqual("conflicting_sample_values", report["pairs"][0]["status"])
             self.assertIsNone(report["pairs"][0]["slope_cores"])
+
+    def test_successful_empty_raw_queries_remain_explicit_missing_observations(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            self.fixture(directory, [
+                observation("prom_cpu_raw", 4, 4.2, []),
+                observation("prom_requests_raw", 4.1, 4.3, []),
+            ])
+            report = self.report(directory)
+            self.assertEqual(["prom_cpu_raw_empty", "prom_requests_raw_empty"], report["quality_flags"])
+            self.assertEqual(["prom_cpu_raw", "prom_requests_raw"],
+                             [row["kind"] for row in report["empty_raw_observations"]])
+            self.assertEqual([4, 4.2], [round(value, 1) for value in
+                             report["empty_raw_observations"][0]["observation_interval_seconds"]])
+            self.assertEqual([], report["window_samples"])
 
 
 if __name__ == "__main__":

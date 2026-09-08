@@ -32,6 +32,10 @@ def analyze(directory: Path, batch: str) -> dict:
     flags = set()
     onset = scenario_schedule(directory)["load_onset_unix"]
     cycles = controller_cycles(directory / "controller.log")
+    # An absent expansion is a valid outcome; unreadable evidence is not.
+    plan = json.loads((directory / "latency-plan.json").read_text(encoding="utf-8"))
+    window = plan["source_range_seconds"]
+    observations = records(directory / "latency-observations.ndjson")
     expansion = min((cycle["scale"] for cycle in cycles if cycle.get("scale")
                      and cycle["scale"]["finalDesired"] > cycle["scale"]["previousDesiredReplicas"]
                      and epoch(cycle["scale"]["scaleWriteStartedAt"]) >= onset),
@@ -40,15 +44,20 @@ def analyze(directory: Path, batch: str) -> dict:
         return {"batch": batch, "run": directory.name, "input_directory": str(directory.resolve()),
                 "load_onset_unix": onset, "cutoff_seconds": None, "scale_response_seconds": None,
                 "samples": [], "pairs": [], "request_values_cores": [], "evaluations": [], "window_samples": [],
+                "empty_raw_observations": [],
                 "first_above_threshold": None, "controller_queries": [], "quality_flags": ["missing_successful_expansion"]}
     cutoff = epoch(expansion["scaleWriteStartedAt"])
-    plan = json.loads((directory / "latency-plan.json").read_text(encoding="utf-8"))
-    window = plan["source_range_seconds"]
-    observed = [row for row in records(directory / "latency-observations.ndjson")
+    observed = [row for row in observations
                 if row["kind"] in ("prom_cpu_raw", "prom_requests_raw", "prom_cpu_evaluated")
                 and epoch(row["request_finished_at"]) < cutoff]
     flags.update(f'{row["kind"]}_error' for row in observed
                  if row["kind"] != "prom_cpu_evaluated" and row["status"] != "success")
+    empty_raw = [{"kind": row["kind"], "evaluation_seconds": row["evaluation_time_unix"] - onset,
+                  "observation_interval_seconds": [epoch(row["request_started_at"]) - onset,
+                                                   epoch(row["request_finished_at"]) - onset]}
+                 for row in observed if row["kind"] != "prom_cpu_evaluated"
+                 and row["status"] == "success" and not result_rows(row)]
+    flags.update(f'{row["kind"]}_empty' for row in empty_raw)
     raw = sorted((row for row in observed if row["kind"] == "prom_cpu_raw" and row["status"] == "success"),
                  key=lambda row: epoch(row["request_finished_at"]))
     conflicts = set()
@@ -138,6 +147,7 @@ def analyze(directory: Path, batch: str) -> dict:
             "scale_response_seconds": epoch(expansion["scaleWriteFinishedAt"]) - onset,
             "samples": sorted(samples.values(), key=lambda row: row["sample_seconds"]), "pairs": pairs,
             "request_values_cores": requests, "evaluations": evaluations, "window_samples": window_samples,
+            "empty_raw_observations": empty_raw,
             "first_above_threshold": next((row for row in evaluations if row["status"] == "valid" and row["cpu_percent"] > 55), None),
             "controller_queries": queries, "quality_flags": sorted(flags)}
 
