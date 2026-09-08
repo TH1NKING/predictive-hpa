@@ -11,6 +11,8 @@ import (
 // Writes and snapshots can occur concurrently with a reconciliation.
 var controllerDiagnosticLog diagnosticLogBuffer
 
+const decisionDiagnosticMessage = "Evaluated PredictiveHPA scaling decision"
+
 type diagnosticLogBuffer struct {
 	sync.Mutex
 	buffer bytes.Buffer

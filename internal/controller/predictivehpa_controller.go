@@ -262,12 +262,15 @@ func (r *PredictiveHPAReconciler) reconcileTarget(
 		r.history[req.NamespacedName] = hist
 	}
 	hist.record(now, desiredReplicas)
+	// Maintain the rolling window even while holding steady or scaling up.
+	// Otherwise those paths retain every recommendation until a scale-down.
+	maxDesired := hist.maxInWindow(now, stabilizationWindow)
 
 	finalDesired := desiredReplicas
 	stabilized := false
 	coldStart := false
 	if desiredReplicas < currentReplicas {
-		finalDesired = hist.maxInWindow(now, stabilizationWindow)
+		finalDesired = maxDesired
 		if finalDesired > desiredReplicas {
 			stabilized = true
 		}
@@ -275,6 +278,8 @@ func (r *PredictiveHPAReconciler) reconcileTarget(
 			coldStart = true
 		}
 	}
+	historyEntries := hist.len()
+	historyOldestAt := hist.entries[0].timestamp
 	r.mu.Unlock()
 
 	if coldStart {
@@ -295,6 +300,9 @@ func (r *PredictiveHPAReconciler) reconcileTarget(
 	// and a later status conflict must not erase evidence of an earlier decision.
 	log.Info("Evaluated PredictiveHPA scaling decision",
 		"decisionAt", time.Now().UTC().Format(time.RFC3339Nano),
+		"stabilizationEvaluatedAt", now.UTC().Format(time.RFC3339Nano),
+		"stabilizationHistoryEntries", historyEntries,
+		"stabilizationHistoryOldestAt", historyOldestAt.UTC().Format(time.RFC3339Nano),
 		"decisionMode", mode, "decisionCPU%", decisionCPU,
 		"rawPredictedCPU%", rawPredicted, "currentCPU%", currentCPU, "predictedCPU%", predicted,
 		"currentReplicas", currentReplicas, "desiredReplicas", desiredReplicas, "finalDesired", finalDesired,
