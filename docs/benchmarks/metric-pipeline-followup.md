@@ -108,3 +108,17 @@ why real paired queries and source evidence help, how the tests constrain bugs,
 and the drawbacks of immediate tuning, counter-difference substitutes and
 historical queries. Include actual results, reproducible commands, review
 outcomes and restoration verification.
+
+## Recorded preflight amendment
+
+The first preflight exited before load or fixture mutation because the existing
+node had also upgraded from `7.0.0-30-generic` to `7.0.0-31-generic`. Its sealed
+failed attempt was preserved. Before any kernel31 probe, a separate campaign
+directory recorded the exact previous/current node snapshots and difference
+list. A dedicated verifier accepts only that kernel transition, the recorded
+memory change (`8078776Ki` to `8078760Ki`) and the recorded boot/machine identity
+changes; it still rejects other configuration/runtime drift and requires the
+fresh node to match the initial snapshot. Workload, policies, RPS, durations,
+images, three-run order and decision criteria were not selected from probe
+outcomes. This amendment documents the retained pre-load decision, committed
+with the results; the original source/protocol snapshot remains archived.

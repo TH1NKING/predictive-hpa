@@ -1,0 +1,1295 @@
+{
+  "protocol": "metric-pipeline-report-inputs-v1",
+  "source_commit": "e41e52e4fa4a1036dd27b31f4e03f136ba355862",
+  "batch": "kernel31",
+  "decision": "Retain production 60-second CPU rate and 30-second reconciliation; short-window availability does not justify a closed-loop parameter change",
+  "summary": {
+    "independent_runs": 3,
+    "pre_scale_cycles": 59,
+    "empty_30s": 39,
+    "empty_60s": 0,
+    "observed_cycles_all_phases": 987,
+    "promql_query_count": 4935,
+    "metric_request_count": 6909,
+    "failed_metric_request_count": 0,
+    "overrun_cycles": 0,
+    "cycle_duration_mean_seconds": 0.0737783739098262,
+    "cycle_duration_max_seconds": 0.43887885699950857
+  },
+  "runs": [
+    {
+      "run": "20260908_195850_step_phpa_current_r1",
+      "raw_directory": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1",
+      "load_onset_unix": 1788868864.091,
+      "cutoff_seconds": 18.971128940582275,
+      "controller_first_scale_cpu_percent": 63.4807601874958,
+      "controller_first_scale_target": 2,
+      "phase": {
+        "requested_offset_seconds": 10,
+        "requeue_seconds": 30,
+        "actual_reconcile_gap_seconds": 11.036009073257446,
+        "phase_error_seconds": 1.0360090732574463,
+        "within_tolerance": true,
+        "tolerance_seconds": 2,
+        "planned_load_onset_unix": 1788868864,
+        "actual_onset_error_seconds": 0.09100008010864258,
+        "gate_rounding_seconds": 0.9587860107421875
+      },
+      "comparison_cycle_count": 9,
+      "window_result_counts": {
+        "30": {
+          "empty": 4,
+          "valid": 5
+        },
+        "60": {
+          "valid": 9
+        }
+      },
+      "insufficient_raw_sample_counts": {
+        "30": 4,
+        "60": 0
+      },
+      "first_above_threshold": {
+        "30": null,
+        "60": null
+      },
+      "first_crossing_60_minus_30_seconds": null,
+      "cpu_requests_cores": [
+        0.2
+      ],
+      "source_statistics": {
+        "source_snapshot_count": 9,
+        "unique_source_timestamp_count": 3,
+        "source_unique_timestamp_gap_seconds": {
+          "count": 2,
+          "min": 11.044000148773193,
+          "median": 15.286500096321106,
+          "max": 19.52900004386902
+        },
+        "source_sample_age_at_response_end_seconds": {
+          "count": 9,
+          "min": 0.8401930332183838,
+          "median": 4.845597982406616,
+          "max": 18.365491151809692
+        },
+        "matched_source_snapshot_count": 7,
+        "unmatched_source_snapshot_count": 2,
+        "matched_unique_source_count": 2,
+        "unmatched_unique_source_count": 1
+      },
+      "representative_source_raw_gap": {
+        "source": {
+          "labels": {
+            "container": "php-apache",
+            "cpu": "total",
+            "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+            "image": "registry.k8s.io/hpa-example:latest",
+            "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+            "namespace": "default",
+            "pod": "php-apache-7c4bc6fc97-7ptcv"
+          },
+          "source_node": "hpa-dev-control-plane",
+          "timestamp_unix": 1788868878.127,
+          "sample_seconds": 14.03600001335144,
+          "counter_value": 6.937294,
+          "ndjson_line": 691,
+          "request_interval_seconds": [
+            15.76764988899231,
+            15.83150601387024
+          ],
+          "request_started_at": "2026-09-08T12:01:19.858650+00:00",
+          "request_finished_at": "2026-09-08T12:01:19.922506+00:00",
+          "evaluation_seconds": 15.765990018844604,
+          "source_text": "container_cpu_usage_seconds_total{container=\"php-apache\",cpu=\"total\",id=\"/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope\",image=\"registry.k8s.io/hpa-example:latest\",name=\"da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55\",namespace=\"default\",pod=\"php-apache-7c4bc6fc97-7ptcv\"} 6.937294 1788868878127"
+        },
+        "later_raw_absence": {
+          "ndjson_line": 697,
+          "request_interval_seconds": [
+            17.76622200012207,
+            17.7761549949646
+          ],
+          "request_started_at": "2026-09-08T12:01:21.857222+00:00",
+          "request_finished_at": "2026-09-08T12:01:21.867155+00:00",
+          "evaluation_seconds": 17.766096353530884,
+          "same_series_retained_samples": [
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788868794.507,
+              "sample_seconds": -69.58400011062622,
+              "counter_value": 0.079816
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788868813.17,
+              "sample_seconds": -50.9210000038147,
+              "counter_value": 0.080368
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788868828.437,
+              "sample_seconds": -35.65400004386902,
+              "counter_value": 0.080888
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788868847.554,
+              "sample_seconds": -16.53700017929077,
+              "counter_value": 0.081409
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788868867.083,
+              "sample_seconds": 2.991999864578247,
+              "counter_value": 1.435711
+            }
+          ]
+        },
+        "observed_separation_seconds": 1.934715986251831
+      },
+      "scrape_statistics": {
+        "unique_reported_scrapes": 2,
+        "reported_scrape_gap_seconds": {
+          "count": 1,
+          "min": 15.0,
+          "median": 15.0,
+          "max": 15.0
+        },
+        "reported_scrape_duration_seconds": {
+          "count": 2,
+          "min": 0.022278243,
+          "median": 0.0226011045,
+          "max": 0.022923966
+        },
+        "health_report_counts": {
+          "up": 2
+        },
+        "last_error_nonempty_count": 0,
+        "inconsistent_report_count": 0,
+        "unique_up_samples": 7,
+        "up_zero_count": 0,
+        "post_onset_up_samples": 1,
+        "post_onset_up_zero_count": 0,
+        "request_errors": {}
+      },
+      "overhead": {
+        "scope": "All retained observer cycles, including outside the pre-expansion comparison",
+        "metric_request_count": 2303,
+        "prometheus_query_count": 1645,
+        "failed_metric_request_count": 0,
+        "total_metric_request_duration_seconds": 37.10323276303825,
+        "total_cycle_duration_seconds": 24.277995208014545,
+        "overrun_cycle_count": 0,
+        "cycles": 329,
+        "mean_cycle_seconds": 0.07379329850460348,
+        "max_cycle_seconds": 0.11616479200165486
+      },
+      "service_and_occupancy": {
+        "total_requests": 4499,
+        "http_200": 3820,
+        "http_200_pct": 84.90775727939543,
+        "all_request_p95_ms_unrounded": "10000.53779210",
+        "reported_p95_ms": 10000.54,
+        "dropped_iterations": 0,
+        "sampled_pod_seconds": "2161.000",
+        "sampled_post_load_pod_seconds": "981.272",
+        "replica_sampling_seconds": 15
+      },
+      "quality_flags": [
+        "evaluated_30_empty",
+        "source_raw_no_matching_raw_sample"
+      ]
+    },
+    {
+      "run": "20260908_201047_step_phpa_current_r2",
+      "raw_directory": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2",
+      "load_onset_unix": 1788869581.128,
+      "cutoff_seconds": 49.69059896469116,
+      "controller_first_scale_cpu_percent": 234.43789427887748,
+      "controller_first_scale_target": 5,
+      "phase": {
+        "requested_offset_seconds": 10,
+        "requeue_seconds": 30,
+        "actual_reconcile_gap_seconds": 10.319992065429688,
+        "phase_error_seconds": 0.3199920654296875,
+        "within_tolerance": true,
+        "tolerance_seconds": 2,
+        "planned_load_onset_unix": 1788869581,
+        "actual_onset_error_seconds": 0.12800002098083496,
+        "gate_rounding_seconds": 0.20412802696228027
+      },
+      "comparison_cycle_count": 25,
+      "window_result_counts": {
+        "30": {
+          "empty": 17,
+          "valid": 8
+        },
+        "60": {
+          "valid": 25
+        }
+      },
+      "insufficient_raw_sample_counts": {
+        "30": 17,
+        "60": 0
+      },
+      "first_above_threshold": {
+        "30": {
+          "status": "valid",
+          "cpu_percent": 210.0184103512016,
+          "evaluation_seconds": 22.508793354034424,
+          "observation_interval_seconds": [
+            22.509867906570435,
+            22.515650033950806
+          ],
+          "error": null
+        },
+        "60": {
+          "status": "valid",
+          "cpu_percent": 66.88845855013776,
+          "evaluation_seconds": 22.508793354034424,
+          "observation_interval_seconds": [
+            22.509392976760864,
+            22.51530694961548
+          ],
+          "error": null
+        }
+      },
+      "first_crossing_60_minus_30_seconds": 0.0,
+      "cpu_requests_cores": [
+        0.2
+      ],
+      "source_statistics": {
+        "source_snapshot_count": 25,
+        "unique_source_timestamp_count": 4,
+        "source_unique_timestamp_gap_seconds": {
+          "count": 3,
+          "min": 10.082000017166138,
+          "median": 13.168999910354614,
+          "max": 13.525000095367432
+        },
+        "source_sample_age_at_response_end_seconds": {
+          "count": 25,
+          "min": 0.9130380153656006,
+          "median": 6.915025949478149,
+          "max": 13.67480993270874
+        },
+        "matched_source_snapshot_count": 20,
+        "unmatched_source_snapshot_count": 5,
+        "matched_unique_source_count": 3,
+        "unmatched_unique_source_count": 1
+      },
+      "representative_source_raw_gap": {
+        "source": {
+          "labels": {
+            "container": "php-apache",
+            "cpu": "total",
+            "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+            "image": "registry.k8s.io/hpa-example:latest",
+            "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+            "namespace": "default",
+            "pod": "php-apache-7c4bc6fc97-7ptcv"
+          },
+          "source_node": "hpa-dev-control-plane",
+          "timestamp_unix": 1788869592.799,
+          "sample_seconds": 11.671000003814697,
+          "counter_value": 50.602755,
+          "ndjson_line": 669,
+          "request_interval_seconds": [
+            12.509603023529053,
+            12.584038019180298
+          ],
+          "request_started_at": "2026-09-08T12:13:13.637603+00:00",
+          "request_finished_at": "2026-09-08T12:13:13.712038+00:00",
+          "evaluation_seconds": 12.50738525390625,
+          "source_text": "container_cpu_usage_seconds_total{container=\"php-apache\",cpu=\"total\",id=\"/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope\",image=\"registry.k8s.io/hpa-example:latest\",name=\"da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55\",namespace=\"default\",pod=\"php-apache-7c4bc6fc97-7ptcv\"} 50.602755 1788869592799"
+        },
+        "later_raw_absence": {
+          "ndjson_line": 704,
+          "request_interval_seconds": [
+            20.508786916732788,
+            20.51279091835022
+          ],
+          "request_started_at": "2026-09-08T12:13:21.636787+00:00",
+          "request_finished_at": "2026-09-08T12:13:21.640791+00:00",
+          "evaluation_seconds": 20.50867509841919,
+          "same_series_retained_samples": [
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788869516.735,
+              "sample_seconds": -64.39300012588501,
+              "counter_value": 44.919767
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788869535.602,
+              "sample_seconds": -45.526000022888184,
+              "counter_value": 44.920386
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788869550.326,
+              "sample_seconds": -30.802000045776367,
+              "counter_value": 44.920848
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788869561.513,
+              "sample_seconds": -19.615000009536743,
+              "counter_value": 44.921142
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788869579.274,
+              "sample_seconds": -1.8540000915527344,
+              "counter_value": 44.921757
+            }
+          ]
+        },
+        "observed_separation_seconds": 7.92474889755249
+      },
+      "scrape_statistics": {
+        "unique_reported_scrapes": 4,
+        "reported_scrape_gap_seconds": {
+          "count": 3,
+          "min": 15.0,
+          "median": 15.0,
+          "max": 15.0
+        },
+        "reported_scrape_duration_seconds": {
+          "count": 4,
+          "min": 0.023068902,
+          "median": 0.024131963,
+          "max": 0.038723457
+        },
+        "health_report_counts": {
+          "up": 4
+        },
+        "last_error_nonempty_count": 0,
+        "inconsistent_report_count": 0,
+        "unique_up_samples": 9,
+        "up_zero_count": 0,
+        "post_onset_up_samples": 3,
+        "post_onset_up_zero_count": 0,
+        "request_errors": {}
+      },
+      "overhead": {
+        "scope": "All retained observer cycles, including outside the pre-expansion comparison",
+        "metric_request_count": 2303,
+        "prometheus_query_count": 1645,
+        "failed_metric_request_count": 0,
+        "total_metric_request_duration_seconds": 38.0899818880971,
+        "total_cycle_duration_seconds": 24.20697982600177,
+        "overrun_cycle_count": 0,
+        "cycles": 329,
+        "mean_cycle_seconds": 0.07357744627964063,
+        "max_cycle_seconds": 0.43887885699950857
+      },
+      "service_and_occupancy": {
+        "total_requests": 4498,
+        "http_200": 3173,
+        "http_200_pct": 70.54246331702979,
+        "all_request_p95_ms_unrounded": "10000.73954330",
+        "reported_p95_ms": 10000.74,
+        "dropped_iterations": 1,
+        "sampled_pod_seconds": "2041.000",
+        "sampled_post_load_pod_seconds": "1144.848",
+        "replica_sampling_seconds": 15
+      },
+      "quality_flags": [
+        "evaluated_30_empty",
+        "source_raw_no_matching_raw_sample"
+      ]
+    },
+    {
+      "run": "20260908_202245_step_phpa_current_r3",
+      "raw_directory": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3",
+      "load_onset_unix": 1788870298.127,
+      "cutoff_seconds": 49.73534083366394,
+      "controller_first_scale_cpu_percent": 189.37321209227878,
+      "controller_first_scale_target": 4,
+      "phase": {
+        "requested_offset_seconds": 10,
+        "requeue_seconds": 30,
+        "actual_reconcile_gap_seconds": 10.278484106063843,
+        "phase_error_seconds": 0.2784841060638428,
+        "within_tolerance": true,
+        "tolerance_seconds": 2,
+        "planned_load_onset_unix": 1788870298,
+        "actual_onset_error_seconds": 0.127000093460083,
+        "gate_rounding_seconds": 0.16179895401000977
+      },
+      "comparison_cycle_count": 25,
+      "window_result_counts": {
+        "30": {
+          "empty": 18,
+          "valid": 7
+        },
+        "60": {
+          "valid": 25
+        }
+      },
+      "insufficient_raw_sample_counts": {
+        "30": 18,
+        "60": 0
+      },
+      "first_above_threshold": {
+        "30": {
+          "status": "valid",
+          "cpu_percent": 149.60280339302568,
+          "evaluation_seconds": 24.55374789237976,
+          "observation_interval_seconds": [
+            24.554576873779297,
+            24.55837893486023
+          ],
+          "error": null
+        },
+        "60": {
+          "status": "valid",
+          "cpu_percent": 58.37634999999999,
+          "evaluation_seconds": 28.554018259048462,
+          "observation_interval_seconds": [
+            28.554755926132202,
+            28.56009602546692
+          ],
+          "error": null
+        }
+      },
+      "first_crossing_60_minus_30_seconds": 4.000270366668701,
+      "cpu_requests_cores": [
+        0.2
+      ],
+      "source_statistics": {
+        "source_snapshot_count": 25,
+        "unique_source_timestamp_count": 4,
+        "source_unique_timestamp_gap_seconds": {
+          "count": 3,
+          "min": 10.609999895095825,
+          "median": 13.174000024795532,
+          "max": 19.94600009918213
+        },
+        "source_sample_age_at_response_end_seconds": {
+          "count": 25,
+          "min": 0.975006103515625,
+          "median": 6.973419189453125,
+          "max": 18.9689621925354
+        },
+        "matched_source_snapshot_count": 22,
+        "unmatched_source_snapshot_count": 3,
+        "matched_unique_source_count": 3,
+        "unmatched_unique_source_count": 1
+      },
+      "representative_source_raw_gap": {
+        "source": {
+          "labels": {
+            "container": "php-apache",
+            "cpu": "total",
+            "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+            "image": "registry.k8s.io/hpa-example:latest",
+            "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+            "namespace": "default",
+            "pod": "php-apache-7c4bc6fc97-7ptcv"
+          },
+          "source_node": "hpa-dev-control-plane",
+          "timestamp_unix": 1788870307.771,
+          "sample_seconds": 9.643999814987183,
+          "counter_value": 117.209203,
+          "ndjson_line": 659,
+          "request_interval_seconds": [
+            10.559989929199219,
+            10.619005918502808
+          ],
+          "request_started_at": "2026-09-08T12:25:08.686990+00:00",
+          "request_finished_at": "2026-09-08T12:25:08.746006+00:00",
+          "evaluation_seconds": 10.55122709274292,
+          "source_text": "container_cpu_usage_seconds_total{container=\"php-apache\",cpu=\"total\",id=\"/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope\",image=\"registry.k8s.io/hpa-example:latest\",name=\"da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55\",namespace=\"default\",pod=\"php-apache-7c4bc6fc97-7ptcv\"} 117.209203 1788870307771"
+        },
+        "later_raw_absence": {
+          "ndjson_line": 716,
+          "request_interval_seconds": [
+            22.553817987442017,
+            22.558482885360718
+          ],
+          "request_started_at": "2026-09-08T12:25:20.680818+00:00",
+          "request_finished_at": "2026-09-08T12:25:20.685483+00:00",
+          "evaluation_seconds": 22.553682565689087,
+          "same_series_retained_samples": [
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788870241.739,
+              "sample_seconds": -56.38800001144409,
+              "counter_value": 112.537799
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788870252.821,
+              "sample_seconds": -45.305999994277954,
+              "counter_value": 112.538093
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788870265.142,
+              "sample_seconds": -32.985000133514404,
+              "counter_value": 112.538403
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788870284.821,
+              "sample_seconds": -13.305999994277954,
+              "counter_value": 112.539095
+            },
+            {
+              "labels": {
+                "__name__": "container_cpu_usage_seconds_total",
+                "beta_kubernetes_io_arch": "amd64",
+                "beta_kubernetes_io_os": "linux",
+                "container": "php-apache",
+                "cpu": "total",
+                "id": "/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-pod679449c0_1f7c_48d4_97f2_e09a0ec1f1d4.slice/cri-containerd-da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55.scope",
+                "image": "registry.k8s.io/hpa-example:latest",
+                "instance": "hpa-dev-control-plane",
+                "job": "kubernetes-nodes-cadvisor",
+                "kubernetes_io_arch": "amd64",
+                "kubernetes_io_hostname": "hpa-dev-control-plane",
+                "kubernetes_io_os": "linux",
+                "metrics_path": "/metrics/cadvisor",
+                "name": "da39abd3e9caf7002426d06464a59e98174a56b8524de7f6bdc6b445259a2c55",
+                "namespace": "default",
+                "pod": "php-apache-7c4bc6fc97-7ptcv"
+              },
+              "timestamp_unix": 1788870297.161,
+              "sample_seconds": -0.9660000801086426,
+              "counter_value": 112.539571
+            }
+          ]
+        },
+        "observed_separation_seconds": 11.934812068939209
+      },
+      "scrape_statistics": {
+        "unique_reported_scrapes": 4,
+        "reported_scrape_gap_seconds": {
+          "count": 3,
+          "min": 15.0,
+          "median": 15.0,
+          "max": 15.0
+        },
+        "reported_scrape_duration_seconds": {
+          "count": 4,
+          "min": 0.022038257,
+          "median": 0.022762268500000002,
+          "max": 0.031689653
+        },
+        "health_report_counts": {
+          "up": 4
+        },
+        "last_error_nonempty_count": 0,
+        "inconsistent_report_count": 0,
+        "unique_up_samples": 9,
+        "up_zero_count": 0,
+        "post_onset_up_samples": 3,
+        "post_onset_up_zero_count": 0,
+        "request_errors": {}
+      },
+      "overhead": {
+        "scope": "All retained observer cycles, including outside the pre-expansion comparison",
+        "metric_request_count": 2303,
+        "prometheus_query_count": 1645,
+        "failed_metric_request_count": 0,
+        "total_metric_request_duration_seconds": 37.35596348301806,
+        "total_cycle_duration_seconds": 24.33428001498214,
+        "overrun_cycle_count": 0,
+        "cycles": 329,
+        "mean_cycle_seconds": 0.07396437694523447,
+        "max_cycle_seconds": 0.2583546989990282
+      },
+      "service_and_occupancy": {
+        "total_requests": 4498,
+        "http_200": 3226,
+        "http_200_pct": 71.7207647843486,
+        "all_request_p95_ms_unrounded": "10000.76672515",
+        "reported_p95_ms": 10000.77,
+        "dropped_iterations": 1,
+        "sampled_pod_seconds": "2071.000",
+        "sampled_post_load_pod_seconds": "1144.857",
+        "replica_sampling_seconds": 15
+      },
+      "quality_flags": [
+        "evaluated_30_empty",
+        "source_raw_no_matching_raw_sample"
+      ]
+    }
+  ],
+  "calibration": {
+    "verified": true,
+    "method": "Independent standard-library raw k6 and Pod/access-log parsing; no production analyzer imported",
+    "manifest_entries_verified": 105,
+    "phase_status": {
+      "ended_at": "2026-09-08T11:43:13.812117+00:00",
+      "calibration_exit_code": 0,
+      "restore_exit_code": 0,
+      "seal_exit_code": 0
+    },
+    "probes": [
+      {
+        "replicas": 1,
+        "total_requests": 2250,
+        "http_200": 271,
+        "http_200_fraction": 0.12044444444444445,
+        "all_request_p95_ms": 10000.937654849999,
+        "dropped_iterations": 1,
+        "tagged_requests_by_pod": {
+          "php-apache-7c4bc6fc97-v7n9p": 1351
+        },
+        "passes_criterion": false
+      },
+      {
+        "replicas": 5,
+        "total_requests": 2250,
+        "http_200": 2250,
+        "http_200_fraction": 1.0,
+        "all_request_p95_ms": 73.9300317,
+        "dropped_iterations": 0,
+        "tagged_requests_by_pod": {
+          "php-apache-7c4bc6fc97-cb887": 458,
+          "php-apache-7c4bc6fc97-k5tmf": 457,
+          "php-apache-7c4bc6fc97-ndl6n": 460,
+          "php-apache-7c4bc6fc97-nvgq9": 433,
+          "php-apache-7c4bc6fc97-v7n9p": 442
+        },
+        "passes_criterion": true
+      }
+    ]
+  },
+  "restoration": [
+    {
+      "resource": "deployment-php-apache-current.json",
+      "exact_spec_equal": true,
+      "uid_equal": true,
+      "original_uid": "a0101234-b61f-4ac2-8f10-d66d52b5c590",
+      "final_uid": "a0101234-b61f-4ac2-8f10-d66d52b5c590"
+    },
+    {
+      "resource": "deployment-phpa-predictive-hpa-current.json",
+      "exact_spec_equal": true,
+      "uid_equal": true,
+      "original_uid": "1e72dab6-764f-4744-b1b1-f94aa32f2d5c",
+      "final_uid": "1e72dab6-764f-4744-b1b1-f94aa32f2d5c"
+    },
+    {
+      "resource": "service-php-apache-current.json",
+      "exact_spec_equal": true,
+      "uid_equal": true,
+      "original_uid": "21252c7d-6bb9-4f6c-a448-817ec8186d9c",
+      "final_uid": "21252c7d-6bb9-4f6c-a448-817ec8186d9c"
+    },
+    {
+      "resource": "hpa-php-apache-current.json",
+      "exact_spec_equal": true,
+      "uid_equal": false,
+      "original_uid": "7c7538e6-e940-4f89-9b90-68f572a18d7a",
+      "final_uid": "cf274f3e-b338-4861-a2e0-5959d7a1b491"
+    },
+    {
+      "resource": "phpa-predictivehpa-sample-current.json",
+      "exact_spec_equal": true,
+      "uid_equal": false,
+      "original_uid": "940bdff7-db87-4883-b0fb-553e167bf051",
+      "final_uid": "d1d2e6ef-6a0e-43a0-b24f-b3ab42c59cd0"
+    },
+    {
+      "resource": "crd-predictivehpas.autoscaling.brian.io-current.json",
+      "exact_spec_equal": true,
+      "uid_equal": true,
+      "original_uid": "e2ef7c5a-6cee-4bd1-b037-b93f86a8eab4",
+      "final_uid": "e2ef7c5a-6cee-4bd1-b037-b93f86a8eab4"
+    }
+  ],
+  "binary_identities": [
+    {
+      "pid": 31090,
+      "sha256": "e341d03164554e1d7860ec3b218f1cdeb8828ab146cbc4d20f7bda05057b6975"
+    },
+    {
+      "pid": 55090,
+      "sha256": "e341d03164554e1d7860ec3b218f1cdeb8828ab146cbc4d20f7bda05057b6975"
+    },
+    {
+      "pid": 78904,
+      "sha256": "e341d03164554e1d7860ec3b218f1cdeb8828ab146cbc4d20f7bda05057b6975"
+    }
+  ],
+  "verification": {
+    "archives": {
+      "verified": true,
+      "source_commit": "e41e52e4fa4a1036dd27b31f4e03f136ba355862",
+      "completed_runs": 3,
+      "archive_entries_verified": 572,
+      "unique_files_verified": 572,
+      "seals": {
+        "collector-preflight/SHA256SUMS": {
+          "entries": 4,
+          "sha256": "3a25c1b69f5b600951df774d58aceef2d7334cc1b43d0b84b9b1085c90974a75"
+        },
+        "environment-initial/SHA256SUMS": {
+          "entries": 8,
+          "sha256": "4e8a67064d28a6a7a3d5cddf320e07c43203959666543a23829aeb145ca43e64"
+        },
+        "final-verification/SHA256SUMS": {
+          "entries": 16,
+          "sha256": "7304473390ec490e7dc7d11bbd5bd3e9694145674aa7e396e9e6e492ccad2fa3"
+        },
+        "first-rejected-preflight/SHA256SUMS": {
+          "entries": 25,
+          "sha256": "9c3d128626488303de6103f7a01afc8214955f1948ccbfe30f39ddf8e612b673"
+        },
+        "phase-revalidation-25/SHA256SUMS": {
+          "entries": 105,
+          "sha256": "328badd0125c63a6a5ec84d7a2e8c529b00eb1371f6bda59f21519520b9fb698"
+        },
+        "pilot-current-metric-pipeline/SHA256SUMS": {
+          "entries": 370,
+          "sha256": "938dcfabd3e55599056b7488b48311573d3865182c9494b2dbe8f71a823703d9"
+        }
+      },
+      "delivery_manifest_sha256": "f06db8421d405da2f76992213e45742926ee980ccd108c504839d9233afdbc92"
+    },
+    "numeric_comparison_matched": 6513,
+    "numeric_difference_count": 0,
+    "coverage_gaps": [
+      {
+        "group": "stored",
+        "path": "20260908_195850_step_phpa_current_r1",
+        "reason": "Independent ledger rejects conflicting/nonfinite counters; reset and conflict flags are not independently recomputed"
+      },
+      {
+        "group": "source",
+        "path": "20260908_195850_step_phpa_current_r1",
+        "reason": "Source-to-stored node mapping, candidate ambiguity and quality flags have no independent ledger implementation"
+      },
+      {
+        "group": "scrapes",
+        "path": "20260908_195850_step_phpa_current_r1",
+        "reason": "Scrape observation multiplicity/intervals, discovered labels and raw up/duration/sample-count history are not independently represented"
+      },
+      {
+        "group": "overhead",
+        "path": "20260908_195850_step_phpa_current_r1",
+        "reason": "Metric request counts/durations/failures are not independently aggregated; aggregate overrun compares derived and reported counts"
+      },
+      {
+        "group": "completeness",
+        "path": "20260908_195850_step_phpa_current_r1",
+        "reason": "Full-cycle missing/duplicate kinds, request raw values, retained error bodies and general quality flags have no independent ledger counterpart"
+      },
+      {
+        "group": "provenance",
+        "path": "20260908_195850_step_phpa_current_r1",
+        "reason": "Independent input checksums are retained, but the main report has no embedded raw-input checksums to compare"
+      },
+      {
+        "group": "stored",
+        "path": "20260908_201047_step_phpa_current_r2",
+        "reason": "Independent ledger rejects conflicting/nonfinite counters; reset and conflict flags are not independently recomputed"
+      },
+      {
+        "group": "source",
+        "path": "20260908_201047_step_phpa_current_r2",
+        "reason": "Source-to-stored node mapping, candidate ambiguity and quality flags have no independent ledger implementation"
+      },
+      {
+        "group": "scrapes",
+        "path": "20260908_201047_step_phpa_current_r2",
+        "reason": "Scrape observation multiplicity/intervals, discovered labels and raw up/duration/sample-count history are not independently represented"
+      },
+      {
+        "group": "overhead",
+        "path": "20260908_201047_step_phpa_current_r2",
+        "reason": "Metric request counts/durations/failures are not independently aggregated; aggregate overrun compares derived and reported counts"
+      },
+      {
+        "group": "completeness",
+        "path": "20260908_201047_step_phpa_current_r2",
+        "reason": "Full-cycle missing/duplicate kinds, request raw values, retained error bodies and general quality flags have no independent ledger counterpart"
+      },
+      {
+        "group": "provenance",
+        "path": "20260908_201047_step_phpa_current_r2",
+        "reason": "Independent input checksums are retained, but the main report has no embedded raw-input checksums to compare"
+      },
+      {
+        "group": "stored",
+        "path": "20260908_202245_step_phpa_current_r3",
+        "reason": "Independent ledger rejects conflicting/nonfinite counters; reset and conflict flags are not independently recomputed"
+      },
+      {
+        "group": "source",
+        "path": "20260908_202245_step_phpa_current_r3",
+        "reason": "Source-to-stored node mapping, candidate ambiguity and quality flags have no independent ledger implementation"
+      },
+      {
+        "group": "scrapes",
+        "path": "20260908_202245_step_phpa_current_r3",
+        "reason": "Scrape observation multiplicity/intervals, discovered labels and raw up/duration/sample-count history are not independently represented"
+      },
+      {
+        "group": "overhead",
+        "path": "20260908_202245_step_phpa_current_r3",
+        "reason": "Metric request counts/durations/failures are not independently aggregated; aggregate overrun compares derived and reported counts"
+      },
+      {
+        "group": "completeness",
+        "path": "20260908_202245_step_phpa_current_r3",
+        "reason": "Full-cycle missing/duplicate kinds, request raw values, retained error bodies and general quality flags have no independent ledger counterpart"
+      },
+      {
+        "group": "provenance",
+        "path": "20260908_202245_step_phpa_current_r3",
+        "reason": "Independent input checksums are retained, but the main report has no embedded raw-input checksums to compare"
+      }
+    ],
+    "independent_service_state_checks": 38
+  },
+  "figure_rule": "Each right panel selects the latest eligible source timestamp; table examples select the earliest source sample with a later nonoverlapping raw absence. These observations are not ingestion timestamps",
+  "inputs": [
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1/k6.json",
+      "sha256": "6e5c3df951f660d109604a8998923f71943e675da44a5917ba4478146d8c9db7"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1/controller.log",
+      "sha256": "c36b67a740c17faa7508175444741514c1093ba56d73e03674003800614e62a4"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1/latency-plan.json",
+      "sha256": "d81e3d7c1037cbf3c1e9b2283ef2e16dbe85917aa1d78cdfbfd9d524cd3f218a"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1/latency-observations.ndjson",
+      "sha256": "f087c72e3908e6ef50e731a6d67e8a47c1aa3e8a8a25a0a5ded5e4911247767f"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1/prom.json",
+      "sha256": "2a0661ee40a6cb5001a7a24a996035f70d1456f3cf34135501256bd63566f54c"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1/extract.json",
+      "sha256": "d9edbd7450b544403972e49bc49c88f2e0e8cd3f3851f9ddc0eaa4a80e026d9b"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1/latency.json",
+      "sha256": "8bdda80a146be33ef2be397ec0fca53163b57d400d037d569845d7d4394811c6"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_195850_step_phpa_current_r1/metadata.yaml",
+      "sha256": "04e076a5cc6b00f1b759393a8a8f90e15ceff23985bc2cd5be0dfc4e54e967fa"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/pipeline/20260908_195850_step_phpa_current_r1.json",
+      "sha256": "3d37effe501dce8878a63745db433c400be223ab059d0fadf949185cb3e5c1c8"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2/k6.json",
+      "sha256": "e7e5df546d96910a9cd6d850736fba284b9775adfe2625004e725da5c4c3cd9b"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2/controller.log",
+      "sha256": "2fab2a69d47b9e5604793665c0cd65a29bc26d53a02a1d6e30ed23b32bb2e77a"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2/latency-plan.json",
+      "sha256": "8b352656c9b1313591c5a6a9b765d45670746c1feb015dd2864b7965281b8ead"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2/latency-observations.ndjson",
+      "sha256": "f74dc3db1d19dc483a0efce280768a3561cbefa3b0af17cdf9cb1d1e38be425a"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2/prom.json",
+      "sha256": "425d1f5cc63a183ed0205129d12dd7ceeab5cdd3e128611187aeeeb8992c1bf8"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2/extract.json",
+      "sha256": "2067cded49dbdc09e9de79f15943e626e49bb45e827ebcb3c91999a24f73c4ef"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2/latency.json",
+      "sha256": "9a498aba74645a413d9e6cba6c8ae9dd484f00372cf22b0d04ba7c12e4ed8d6f"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_201047_step_phpa_current_r2/metadata.yaml",
+      "sha256": "164e99a118e80882844b0501253bf4820d39fd4ed726487b9fde25b287e58d05"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/pipeline/20260908_201047_step_phpa_current_r2.json",
+      "sha256": "208e6f68bced2f481cdd6b517ef21cb3db8b652cab90fdc60ea340fb8c944b57"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3/k6.json",
+      "sha256": "d0535f490a77f7ee68317bdb603448c1239298f9661939c7e21ae568babd81f5"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3/controller.log",
+      "sha256": "fb1c5a4b65ce9f1736af80465d97abfdf76eba25df32619170f677b44a5b5aaa"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3/latency-plan.json",
+      "sha256": "5c3b67234e3be57d47fce43d50e61410267edf9c884a98c805eb20356ce4ec3f"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3/latency-observations.ndjson",
+      "sha256": "86c077fb9a1f97658ad53f46fdbd2c3cb4bc88ed15ae3d6d0cf7687da6a318e0"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3/prom.json",
+      "sha256": "e138cff469692d3708652774c86eb64a56ebb3ba3ff6dc3e78b620660b28cdbe"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3/extract.json",
+      "sha256": "57879414d50b8adb8c9ac48306823cf776a02705a679ff3d6c0b82e17536323c"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3/latency.json",
+      "sha256": "2982adf5b96678c2ae1a344d26771f72549150e1b1ca330d3eb43e8d37fa91da"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/runs/20260908_202245_step_phpa_current_r3/metadata.yaml",
+      "sha256": "0620aba4730fab91486f96520f592c0714675277a92f7c9869fa05597bc64de4"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/pipeline/20260908_202245_step_phpa_current_r3.json",
+      "sha256": "9e3b78fae07a2ab6156b36b8ba50707715a173ece77cf810f7b3f355ef438398"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/results/pipeline.json",
+      "sha256": "62fb3e5fb57b7ebe7b6039b8a7d1b310f9ca7e3b7e5c4da5de00ec8d6f41b68a"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/results/independent-ledger-final.json",
+      "sha256": "207e884c97d0415c3566c72ceae5ea12436148f451afacacdd863081114cfef9"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/results/comparison-final.json",
+      "sha256": "a31dd054072be9fe139b39b292e549de8539b9731b657bf66f7079492e39f918"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/results/chain-summary.json",
+      "sha256": "abbf8ec72fee35656773fd53fa11acceba82db006e70b5b91fed0eb07638b11e"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/results/service-state-audit.json",
+      "sha256": "692328c96d9461e8fe2ca862db4753f00b1358b3a90fdadb1a74af46fa091aff"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/independent_audit.py",
+      "sha256": "47c2ff0389965fac73dc200f24cbf1781f4244512cd56b585d1587a733677d99"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/compare_pipeline.py",
+      "sha256": "428fc2a0e75238f530b0c0d3c31c11346fcde2bea8f3c0816c1ae09e00167536"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/chain_summary.py",
+      "sha256": "c194c694e0ae9ec4477ce10980047113cc2874e000f76ef381ec3f6700145c19"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/audit_service_and_state.py",
+      "sha256": "7cdb0665a9041f6bd5091c37a744cc5941e17544fd06ed0142b0442ba16eb671"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/plot_pipeline.py",
+      "sha256": "5649eea8010bc08588119e81880b017d3b3f6eba31ae0b82f47f38b5e72fac9f"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/verify_delivery.py",
+      "sha256": "78cb7fde7a2939d108aa251989df700fc37d510a253472d7bb5308abb7787adf"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/analysis-tools/build_evidence.py",
+      "sha256": "3349e57c7dd17f49d3133a4c87788874f80979df0f44240ec52b07edb99e0d17"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/delivery/delivery-manifest.json",
+      "sha256": "f06db8421d405da2f76992213e45742926ee980ccd108c504839d9233afdbc92"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified-verification.json",
+      "sha256": "6d6d05795061cdeb03f1bb11e4c27bb3e5d76ec7ed99df63241804cc6d26f194"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/supplemental/calibration-independent.json",
+      "sha256": "532d35601f8c4a0c91ac48c3f533a57041835e7068c8608b20d26d34e56439b2"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/tested-source-equivalence.json",
+      "sha256": "54f5a4b5d762dbde7b97876caf126e3093c5115a88cb0e872c27a1928419fe06"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/kernel-change-decision.json",
+      "sha256": "655128ddd85c91da124e059a0bcefe7bab0dd009f0ee9625fa741a723fff4352"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/independent-final-live-check.json",
+      "sha256": "8617384f1d205b13896e7f2b7da6cd3520c05395d93c64368715230c0ca19507"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/phase-revalidation-25/revalidation-result.json",
+      "sha256": "c105895026ca21b08768dd269f8b95830b7e89495d04de03b2c7f340d85aa35b"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/pilot-current-metric-pipeline/frozen-plan.json",
+      "sha256": "778b233993ba46ff7a6f8f3fcd2a22545e8f67a7a229feb8c5d143458d7c1837"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/environment-initial/prometheus-buildinfo.json",
+      "sha256": "849201668db8dc3169710a36a9fcd6c2bdce3a3b5a1973f4dbb6324106816a20"
+    },
+    {
+      "path": "benchmark-runs/metric-pipeline-20260908-kernel31/verified/environment-initial/monitoring-settings.json",
+      "sha256": "5a13746ea9897006ecb19dfb1908c1d2df711ab89c1e66c77533aafafb795c11"
+    },
+    {
+      "path": "docs/benchmarks/assets/metric-pipeline-20260908.png",
+      "sha256": "0a46201d63997978c7e4fc25e57f065ff58b7dfa0948076396b454545d3db7df"
+    },
+    {
+      "path": "docs/benchmarks/assets/metric-pipeline-20260908.svg",
+      "sha256": "8e5242a47fbbf8dde1000cae2ca3d1c67a8e990c062ed2fa776872e95d397234"
+    }
+  ]
+}

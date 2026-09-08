@@ -31,7 +31,10 @@ The independent reviewer reproduced three P2 findings through the public CLI:
 All three now have failing/passing public CLI regressions and fixes. Error
 responses retain their original body; node mapping can be verified, unknown or
 contradictory; completeness checks cover every retained cycle and empty streams.
-The complete analysis suite passed 69 tests. Independent rechecks are in progress.
+The complete analysis suite passed 69 tests. The original reviewer independently
+replayed all three original fixtures and the three added regressions: all pass,
+with no further findings. The Standards reviewer also checked the corrective
+diff (`e1cb2ea..e41e52e`) and found no new violations or reportable smells.
 The original fixtures and results are retained under
 `benchmark-runs/review-spec-20260908/`.
 Pending live results and the final teaching/report were explicitly outside this
@@ -52,5 +55,22 @@ files and the selected commit before and after packaging. Twelve public CLI
 checks and nineteen guard checks passed. Log existence alone is explicitly not
 a claim that tests passed; actual execution outcomes remain separate evidence.
 
-Final implementation and scientific-delivery review results will be recorded
-after the remaining corrections and real pilot verification.
+The later kernel31 preparation accepts only the exact recorded kernel/reboot/
+memory transition and retains the first rejected preflight unchanged. Six CLI
+checks, nineteen guard checks and an independent read-only review passed before
+launching that new batch. The same source `e41e52e` was used for calibration and
+all three Current runs.
+
+## Scientific delivery
+
+Three runs and full restoration completed successfully. Local archive verification
+matched 572 files and six complete seals. A separate raw ledger matched 6513
+comparable fields, with eighteen coverage gaps retained explicitly; independent
+chain parsing additionally checked source-node identity, match counts, scrape
+history and the three line-indexed examples. Independent raw service and resource
+state checks passed 38/38. No test or successful orchestration is presented as
+proof of service improvement. Final results and caveats are in
+[the report](metric-pipeline-20260908.md).
+
+Implementation findings: Standards 0 (no outstanding severity); Spec 0
+(three initial P2 findings resolved and independently replayed).

@@ -24,7 +24,14 @@ desiredReplicas = ceil(currentReplicas × cpu% / targetCPU%)
 
 ## 2. 实测数据
 
-最新的[指标可见性诊断](docs/benchmarks/metric-visibility-20260908.md)复算了十次已封存
+最新的[指标采集链路与窗口旁路对照](docs/benchmarks/metric-pipeline-20260908.md)在
+内核升级后的独立批次完成容量复核和三次 Current 运行。扩容前 59 个共同求值
+周期中，30 秒表达式有 39 次空结果，60 秒表达式全部有效；能比较首次越线的
+两轮分别同时越线、短窗约早 4 秒。源端已返回新样本、之后 raw 查询仍未看到
+的记录在三轮中均出现。保留一分钟窗口和默认 30 秒协调间隔，没有修改窗口后
+服务收益的结论；方法、时间语义和取舍见[中文讲解](docs/benchmarks/metric-pipeline-guide.zh-CN.md)。
+
+此前的[指标可见性诊断](docs/benchmarks/metric-visibility-20260908.md)复算了十次已封存
 Current 运行：三次明显 CPU 增量可见后，一分钟表达式约再过 12／16／16 秒才首次
 观测到超阈值，仍不能把这些观察差全部归因于平均窗口。200 个扩容前 raw 快照中，
 30 秒窗口有 142 个不足两个源样本，60 秒窗口只有 2 个；这不是修改窗口后的实测
