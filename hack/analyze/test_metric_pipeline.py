@@ -240,8 +240,8 @@ class MetricPipelineCLI(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             self.fixture(directory, [
-                observation("prom_cpu_raw", 1, 4, [cpu([(-5, 10), (1, 2), (2, 4), (3, "NaN")])]),
-                observation("prom_cpu_raw", 2, 6, [cpu([(2, 5)])]),
+                observation("prom_cpu_raw", 1, 4, [cpu([(-5, 10), (1, 2), (2, 4), (3, "NaN")], instance="node-a")]),
+                observation("prom_cpu_raw", 2, 6, [cpu([(2, 5)], instance="node-a")]),
                 observation("source_cadvisor", 2, 6, response={"lines": [
                     f'container_cpu_usage_seconds_total{{pod="old",container="app"}} 2 {(ONSET + 1) * 1000}',
                     f'container_cpu_usage_seconds_total{{pod="old",container="app"}} 4 {(ONSET + 2) * 1000}',
@@ -255,6 +255,67 @@ class MetricPipelineCLI(unittest.TestCase):
             self.assertTrue(report["source_raw_matches"][0]["candidates"][0]["counter_reset_from_previous"])
             self.assertEqual([], report["source_raw_matches"][1]["candidates"])
             self.assertEqual([], report["source_raw_matches"][2]["candidates"])
+
+    def test_non_json_gateway_errors_are_retained_without_aborting_the_report(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            kinds = ("prom_cpu_evaluated_30s", "prom_cpu_evaluated", "prom_cpu_raw", "prom_requests_raw",
+                     "prom_scrape_raw", "prom_scrape_targets", "source_cadvisor")
+            self.fixture(directory, [observation(kind, 1, 4, status="error", response="<html>Bad Gateway</html>",
+                                                error="Prometheus returned invalid JSON", http_status=502)
+                                     for kind in kinds])
+            report = self.report(directory)
+            self.assertEqual("error", report["cycles"][0]["evaluations"]["30"]["status"])
+            self.assertEqual("<html>Bad Gateway</html>", report["cycles"][0]["evaluations"]["30"]["response"])
+            self.assertEqual("Prometheus returned invalid JSON", report["cycles"][0]["evaluations"]["30"]["error"])
+            self.assertEqual(7, len(report["observation_errors"]))
+            self.assertTrue(all(row["response"] == "<html>Bad Gateway</html>" for row in report["observation_errors"]))
+
+    def test_source_matching_requires_evidence_that_stored_series_belong_to_the_source_node(self):
+        for instance, mapped_node, expected in (("node-b", None, "source_node_unverified"),
+                                               ("endpoint:10250", "node-b", "source_node_mismatch"),
+                                               ("endpoint:10250", "node-a", "exact_sample_match")):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                rows = [observation("source_cadvisor", 1, 4, response={"lines": [
+                    f'container_cpu_usage_seconds_total{{pod="old",container="app"}} 2 {(ONSET + 1) * 1000}'
+                ]}, source_node="node-a"),
+                        observation("prom_cpu_raw", 1, 4, [cpu([(1, 2)], instance=instance, job="cadvisor")])]
+                if mapped_node:
+                    rows.append(observation("prom_scrape_targets", 1, 4, response={"status": "success", "data": {
+                        "activeTargets": [{"labels": {"instance": instance, "job": "cadvisor"},
+                                           "discoveredLabels": {"__meta_kubernetes_node_name": mapped_node},
+                                           "scrapeUrl": "https://endpoint:10250/metrics/cadvisor", "health": "up",
+                                           "lastScrape": ONSET + 1, "lastScrapeDuration": 0.4, "lastError": ""}]}}))
+                self.fixture(directory, rows)
+                report = self.report(directory)
+                match = report["source_raw_matches"][0]
+                self.assertEqual(expected, match["status"])
+                if expected != "exact_sample_match":
+                    self.assertEqual([], match["candidates"])
+                    self.assertIn("source_raw_" + expected, report["quality_flags"])
+
+    def test_pipeline_completeness_exposes_missing_duplicate_and_absent_cycles(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            rows = [observation("prom_cpu_evaluated_30s", 1, 4, [scalar(4, 20)]),
+                    observation("prom_cpu_evaluated", 1, 4, [scalar(4, 10)])]
+            self.fixture(directory, rows)
+            report = self.report(directory)
+            expected_missing = ["observer_cycle", "prom_cpu_raw", "prom_requests_raw", "prom_scrape_raw",
+                                "prom_scrape_targets", "source_cadvisor"]
+            self.assertEqual(expected_missing, report["cycles"][0]["missing_kinds"])
+            self.assertTrue(all("pipeline_missing_" + kind in report["quality_flags"] for kind in expected_missing))
+            rows += [observation("prom_cpu_raw", 1, 4), observation("prom_cpu_raw", 1, 4)]
+            self.fixture(directory, rows)
+            report = self.report(directory)
+            self.assertEqual(["prom_cpu_raw"], report["cycles"][0]["duplicate_kinds"])
+            self.assertIn("pipeline_duplicate_prom_cpu_raw", report["quality_flags"])
+            self.fixture(directory, [])
+            report = self.report(directory)
+            self.assertEqual([], report["cycles"])
+            self.assertIn("missing_pipeline_observations", report["quality_flags"])
+            self.assertIn("no_pre_expansion_cycles", report["quality_flags"])
 
 
 if __name__ == "__main__":

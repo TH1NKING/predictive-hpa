@@ -15,11 +15,18 @@ from latency import controller_cycles, epoch, records, scenario_schedule
 EVALUATIONS = {"30": "prom_cpu_evaluated_30s", "60": "prom_cpu_evaluated"}
 QUERY_KINDS = {"prom_cpu_raw", "prom_requests_raw", "prom_scrape_raw", *EVALUATIONS.values()}
 METRIC_KINDS = QUERY_KINDS | {"prom_scrape_targets", "source_cadvisor"}
+EXPECTED_KINDS = METRIC_KINDS | {"observer_cycle"}
+
+
+def response_succeeded(row: dict) -> bool:
+    response = row.get("response")
+    return row["status"] == "success" and isinstance(response, dict) and response.get("status") != "error"
 
 
 def evaluated(row: dict, onset: float) -> dict:
     value = None
-    if row["status"] != "success" or row.get("response", {}).get("status") == "error":
+    response = row.get("response")
+    if not response_succeeded(row):
         status = "error"
     else:
         result = row["response"]["data"]["result"]
@@ -32,7 +39,8 @@ def evaluated(row: dict, onset: float) -> dict:
             "evaluation_seconds": epoch(row["evaluation_time_unix"]) - onset,
             "observation_interval_seconds": [epoch(row["request_started_at"]) - onset,
                                              epoch(row["request_finished_at"]) - onset],
-            "error": row.get("error", row.get("response", {}).get("error"))}
+            "response": response,
+            "error": row.get("error") or (response.get("error") if isinstance(response, dict) else None)}
 
 
 def raw_values(row: dict) -> list[tuple]:
@@ -46,7 +54,7 @@ def raw_evidence(rows: list[dict], onset: float, width: float, flags: set) -> tu
         kind = row["kind"]
         if kind not in ("prom_cpu_raw", "prom_requests_raw"):
             continue
-        if row["status"] != "success" or row.get("response", {}).get("status") == "error":
+        if not response_succeeded(row):
             flags.add(f"{kind}_error")
             continue
         values = raw_values(row)
@@ -94,7 +102,7 @@ def raw_evidence(rows: list[dict], onset: float, width: float, flags: set) -> tu
 def window_counts(rows: list[dict], onset: float) -> list[dict]:
     windows = []
     for row in rows:
-        if row["kind"] != "prom_cpu_raw" or row["status"] != "success" or row["response"].get("status") == "error":
+        if row["kind"] != "prom_cpu_raw" or not response_succeeded(row):
             continue
         evaluation = epoch(row["evaluation_time_unix"])
         series = {}
@@ -109,12 +117,28 @@ def window_counts(rows: list[dict], onset: float) -> list[dict]:
     return windows
 
 
+def source_node_evidence(labels: dict, source_node: str | None, targets: list[dict]) -> dict:
+    nodes = {target["discoveredLabels"]["__meta_kubernetes_node_name"] for target in targets
+             if target.get("discoveredLabels", {}).get("__meta_kubernetes_node_name")
+             and target.get("labels") and all(labels.get(key) == value for key, value in target["labels"].items())}
+    if labels.get("node"):
+        nodes.add(labels["node"])
+    # Exact equality can identify a node-name instance; a different instance may be an address.
+    if not nodes and source_node and labels.get("instance") == source_node:
+        nodes.add(source_node)
+    status = "unverified" if not source_node or not nodes or len(nodes) != 1 else (
+        "matched" if source_node in nodes else "mismatch")
+    return {"node_match_status": status, "mapped_nodes": sorted(nodes)}
+
+
 def source_evidence(rows: list[dict], raw: list[dict], onset: float, flags: set) -> tuple:
     samples, matches = [], []
+    targets = [target for row in rows if row["kind"] == "prom_scrape_targets" and response_succeeded(row)
+               for target in row["response"]["data"]["activeTargets"]]
     for row in rows:
         if row["kind"] != "source_cadvisor":
             continue
-        if row["status"] != "success":
+        if not response_succeeded(row):
             flags.add("source_cadvisor_error")
             continue
         if not row["response"]["lines"]:
@@ -152,17 +176,24 @@ def source_evidence(rows: list[dict], raw: list[dict], onset: float, flags: set)
             samples.append(item)
             if name != "container_cpu_usage_seconds_total":
                 continue
-            candidates = [sample for sample in raw if finite is not None and sample["counter_value"] == finite
-                          and not sample["conflicting_values"]
-                          and all(sample["labels"].get(key) == value for key, value in labels.items() if key != "__name__")
-                          and (stamp is None or sample["sample_seconds"] == stamp - onset)]
-            status = "no_matching_raw_sample" if not candidates else (
+            potential = [{**sample, **source_node_evidence(sample["labels"], row.get("source_node"), targets)}
+                         for sample in raw if finite is not None and sample["counter_value"] == finite
+                         and not sample["conflicting_values"]
+                         and all(sample["labels"].get(key) == value for key, value in labels.items() if key != "__name__")
+                         and (stamp is None or sample["sample_seconds"] == stamp - onset)]
+            candidates = [sample for sample in potential if sample["node_match_status"] == "matched"]
+            unknown = [sample for sample in potential if sample["node_match_status"] == "unverified"]
+            rejected = [sample for sample in potential if sample["node_match_status"] == "mismatch"]
+            status = "source_node_unverified" if unknown else (
+                "source_node_mismatch" if rejected and not candidates else (
+                "no_matching_raw_sample" if not candidates else (
                 "ambiguous_sample_match" if stamp is not None and len(candidates) > 1 else (
                 "exact_sample_match" if stamp is not None else (
-                "ambiguous_counter_value" if len(candidates) > 1 else "counter_value_only")))
+                "ambiguous_counter_value" if len(candidates) > 1 else "counter_value_only")))))
             matches.append({"source_sample_index": len(samples) - 1, "status": status, "candidates": candidates,
+                            "unverified_candidates": unknown, "rejected_candidates": rejected,
                             "ingestion_time_seconds": None,
-                            "interpretation": "Label, timestamp and counter agreement is identity evidence; observer bounds are not ingestion timestamps"})
+                            "interpretation": "Node, label, timestamp and counter agreement is identity evidence; observer bounds are not ingestion timestamps"})
             if status != "exact_sample_match":
                 flags.add(f"source_raw_{status}")
     return samples, matches
@@ -173,7 +204,7 @@ def scrape_evidence(rows: list[dict], onset: float, flags: set) -> list[dict]:
     for row in rows:
         if row["kind"] != "prom_scrape_targets":
             continue
-        if row["status"] != "success" or row.get("response", {}).get("status") == "error":
+        if not response_succeeded(row):
             flags.add("prom_scrape_targets_error")
             continue
         targets = row["response"]["data"]["activeTargets"]
@@ -204,7 +235,7 @@ def scrape_metric_evidence(rows: list[dict], onset: float, flags: set) -> tuple:
     for row in rows:
         if row["kind"] != "prom_scrape_raw":
             continue
-        status = "error" if row["status"] != "success" or row.get("response", {}).get("status") == "error" else "success"
+        status = "success" if response_succeeded(row) else "error"
         values = raw_values(row) if status == "success" else []
         if status == "success" and not values:
             status = "empty"
@@ -243,7 +274,7 @@ def overhead_evidence(rows: list[dict]) -> dict:
     return {"scope": "All retained observer cycles, including outside the pre-expansion comparison",
             "metric_request_count": len(requests),
             "prometheus_query_count": sum(row["kind"] in QUERY_KINDS for row in requests),
-            "failed_metric_request_count": sum(row["status"] != "success" for row in requests),
+            "failed_metric_request_count": sum(not response_succeeded(row) for row in requests),
             "total_metric_request_duration_seconds": sum(float(row["duration_seconds"]) for row in requests),
             "total_cycle_duration_seconds": sum(row["duration_seconds"] for row in cycles),
             "overrun_cycle_count": sum(row["overrun_seconds"] > 0 for row in cycles), "cycles": cycles}
@@ -263,7 +294,7 @@ def validate_observations(rows: list[dict], onset: float) -> None:
             interval = float(row["observation_interval_seconds"])
             if not math.isfinite(interval) or interval <= 0:
                 raise ValueError("Invalid observer cycle interval")
-        elif row["status"] == "success" and row.get("response", {}).get("status") != "error":
+        elif response_succeeded(row):
             if row["kind"] in EVALUATIONS.values():
                 evaluated(row, onset)
             elif row["kind"] in QUERY_KINDS:
@@ -280,17 +311,37 @@ def validate_observations(rows: list[dict], onset: float) -> None:
                     target["health"], target["lastError"]
 
 
+def pipeline_completeness(rows: list[dict], flags: set) -> dict:
+    assigned = {}
+    for row in rows:
+        assigned.setdefault(row["cycle_id"], []).append(row)
+    if not any(row["kind"] in METRIC_KINDS for row in rows):
+        flags.add("missing_pipeline_observations")
+    quality = {}
+    for cycle_id, cycle in assigned.items():
+        counts = {kind: sum(row["kind"] == kind for row in cycle) for kind in sorted(EXPECTED_KINDS)}
+        missing = [kind for kind, count in counts.items() if count == 0]
+        duplicates = [kind for kind, count in counts.items() if count > 1]
+        flags.update("pipeline_missing_" + kind for kind in missing)
+        flags.update("pipeline_duplicate_" + kind for kind in duplicates)
+        quality[cycle_id] = {"cycle_id": cycle_id, "kind_counts": counts, "missing_kinds": missing,
+                             "duplicate_kinds": duplicates,
+                             "scope": "All retained observations in this assigned cycle, including outside the comparison cutoff"}
+    return quality
+
+
 def analyze(directory: Path, batch: str) -> dict:
     flags = set()
     onset = scenario_schedule(directory)["load_onset_unix"]
     controller = controller_cycles(directory / "controller.log")
     plan = json.loads((directory / "latency-plan.json").read_text(encoding="utf-8"))
     observations = records(directory / "latency-observations.ndjson")
-    observations = [row for row in observations if row["kind"] in METRIC_KINDS | {"observer_cycle"}]
+    observations = [row for row in observations if row["kind"] in EXPECTED_KINDS]
     source_range = float(plan["source_range_seconds"])
     if not math.isfinite(source_range) or source_range < 60:
         raise ValueError("Source range must cover both 30-second and 60-second windows")
     validate_observations(observations, onset)
+    completeness = pipeline_completeness(observations, flags)
     expansion = min((cycle["scale"] for cycle in controller if cycle.get("scale")
                      and cycle["scale"]["finalDesired"] > cycle["scale"]["previousDesiredReplicas"]
                      and epoch(cycle["scale"]["scaleWriteStartedAt"]) >= onset),
@@ -328,10 +379,12 @@ def analyze(directory: Path, batch: str) -> dict:
             "mismatched" if len(times) != 1 else "matched"))
         if len(times) != 1:
             flags.add("evaluation_time_mismatch")
-        cycles.append({"cycle_id": cycle_id, "evaluation_seconds": evaluation - onset,
+        cycles.append({**completeness[cycle_id], "evaluation_seconds": evaluation - onset,
                        "evaluation_times_seconds": sorted(stamp - onset for stamp in times),
                        "pair_status": pair, "evaluations": values, "window_samples": window_counts(rows, onset)})
     cycles.sort(key=lambda row: row["evaluation_seconds"])
+    if cutoff is not None and not cycles:
+        flags.add("no_pre_expansion_cycles")
     first = {width: next((row["evaluations"][width] for row in cycles
                           if row["pair_status"] == "matched" and row["evaluations"][width]["status"] == "valid"
                           and row["evaluations"][width]["cpu_percent"] > 55), None) for width in EVALUATIONS}
@@ -339,11 +392,13 @@ def analyze(directory: Path, batch: str) -> dict:
     return {"batch": batch, "run": directory.name, "input_directory": str(directory.resolve()),
             "load_onset_unix": onset, "cutoff_seconds": cutoff - onset if cutoff is not None else None,
             "cycles": cycles, "first_above_threshold": first,
+            "pipeline_cycle_quality": list(completeness.values()),
             "first_crossing_60_minus_30_seconds": difference,
             "raw_samples": raw_samples, "request_values_cores": request_values,
             "source_samples": source_samples, "source_raw_matches": source_matches,
             "scrapes": scrapes, "overhead": overhead,
             "scrape_metric_observations": scrape_observations, "scrape_metric_samples": scrape_samples,
+            "observation_errors": [row for row in observations if row["kind"] in METRIC_KINDS and not response_succeeded(row)],
             "scrape_interpretation": "Reported scrape time may be aligned; duration covers scrape and append work, not commit; their sum is not an ingestion timestamp",
             "snapshot_interpretation": "Equal evaluation times align the windows; sequential HTTP requests do not provide an atomic TSDB snapshot",
             "crossing_interpretation": "Difference between first observed threshold crossings in matched cycles, not a causal estimate",
