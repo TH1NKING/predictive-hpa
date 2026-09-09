@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "purpose": "Functional correctness, fault handling and restart protection; not a service-performance benchmark",
+  "implementation_commits": [
+    "fd5fb8dbf7d786ed64d2555dac5d5473d92061f1",
+    "9b1a67741ea24d2fb5c6250e7b90c522bdbe429b"
+  ],
+  "environment": {
+    "kubernetes": "v1.35.0",
+    "linux_kernel": "7.0.0-31-generic",
+    "go": "go1.26.2",
+    "prometheus": "v3.11.3",
+    "scrape_interval_seconds": 5
+  },
+  "source_code_sha256": "c372bdd6d40d14a38e589761c955d1c45b47e276a6ae48c3886a43ec2e0a4dbf",
+  "source_code_files_verified": 28,
+  "binary_sha256": "37f3c60b3ad049c835437d30130897a718816dd34878a30dbe5d3c440133da26",
+  "runtime_image_digest": "sha256:3804e5a7e5ca17cee625f82accf416d6abc126e504701ddfdfb3fc8cba6e792a",
+  "image_packaging": "CGO_ENABLED=0 go build -trimpath; scratch; USER 65532:65532; binary verified inside image layer",
+  "checks": {
+    "linux_lint_fix_passed": true,
+    "linux_make_test_passed": true,
+    "linux_race_passed": true,
+    "package_statement_coverage_percent": {
+      "controller": 89.9,
+      "metricsprovider": 86.2,
+      "predictor": 96.2
+    },
+    "helm_lint_passed": true,
+    "manager_replicas_ready": 2,
+    "rbac_checks_passed": 13
+  },
+  "review": {
+    "initial_standards_findings": 0,
+    "initial_spec_p2_findings": 2,
+    "remaining_standards_findings": 0,
+    "remaining_spec_findings": 0
+  },
+  "final_acceptance": {
+    "finished_at": "2026-09-09T11:09:14.840422+00:00",
+    "context": "kind-phpa-metrics-safety-20260909",
+    "cluster_uid": "5c6a59ea-daa5-4f57-838b-84fe7844d35f",
+    "checks": [
+      {
+        "check": "Idle web stays below 20% while same-prefix canary exceeds 100%",
+        "at": "2026-09-09T11:01:27.438055+00:00",
+        "passed": true
+      },
+      {
+        "check": "Idle target eventually downscales to one after protection",
+        "at": "2026-09-09T11:02:54.021499+00:00",
+        "passed": true
+      },
+      {
+        "check": "Rolling update returns complete fresh metrics",
+        "at": "2026-09-09T11:03:30.776869+00:00",
+        "passed": true
+      },
+      {
+        "check": "Rolling update remains isolated from canary CPU",
+        "at": "2026-09-09T11:03:30.866000+00:00",
+        "passed": true
+      },
+      {
+        "check": "Real target CPU triggers an actual Scale increase",
+        "at": "2026-09-09T11:03:56.626517+00:00",
+        "passed": true
+      },
+      {
+        "check": "Successor leader establishes cold-start protection",
+        "at": "2026-09-09T11:05:19.603344+00:00",
+        "passed": true
+      },
+      {
+        "check": "New leader retained capacity during 30s observation",
+        "at": "2026-09-09T11:05:50.131206+00:00",
+        "passed": true,
+        "replicas": 3
+      },
+      {
+        "check": "Target can shrink after successor protection expires",
+        "at": "2026-09-09T11:06:46.210730+00:00",
+        "passed": true
+      },
+      {
+        "check": "Prometheus outage sets MetricsReady False",
+        "at": "2026-09-09T11:07:16.976644+00:00",
+        "passed": true
+      },
+      {
+        "check": "Outage holds Scale and clears obsolete CPU for 35s",
+        "at": "2026-09-09T11:07:52.862083+00:00",
+        "passed": true
+      },
+      {
+        "check": "Fresh source recovers metrics and scaling",
+        "at": "2026-09-09T11:09:14.494952+00:00",
+        "passed": true
+      }
+    ],
+    "passed": true,
+    "error": null,
+    "cleanup_error": null
+  },
+  "independent_observations": {
+    "snapshots": 108,
+    "successful_commands": 276,
+    "first_isolation_idle_cpu_percent": 1,
+    "first_isolation_canary_cpu_percent": 300,
+    "first_observed_upscale_replicas": 3,
+    "protected_replicas": 3,
+    "protection_snapshots": 6,
+    "protected_until": "2026-09-09T11:06:44.507594+00:00",
+    "first_observed_shrink_after_protection": "2026-09-09T11:06:46.210618+00:00",
+    "outage_snapshots": 8,
+    "outage_requested_replicas": 3,
+    "source_restored": true,
+    "fixture_namespace_removed": true
+  },
+  "test_log_sha256": {
+    "review-fixes-lint-fix.log": "96ebbece67ef19d6ffc9d29adcf9e712f611b0f9940e0795cfbf4e6cd3c36f2b",
+    "review-fixes-make-test.log": "0c4c8383d5b6cacec2be0a99523e79c1faf0cb9fae57743c2d205af06848adda",
+    "review-fixes-race.log": "35d093549e5673dbf336cb42c739b48fb3d81c0a09f4e46e55da88ecf0f11bf7"
+  },
+  "archives": {
+    "runtime": "348ed3a65b1222172d1ba76b838440a392679afdbc437756890827558cb38226",
+    "final_deployment": "605ff0e1b073038383d7cfe8261408fdedeb5915e1c846b8bc50c8d682ad6c76",
+    "acceptance": "41a435ae320c91564aa836aeb0bf25e101d3913448907b4ee673e812da9496b4"
+  },
+  "cleanup": {
+    "at": "2026-09-09T11:20:48.856842+00:00",
+    "dedicated_cluster_deleted": "phpa-metrics-safety-20260909",
+    "remaining_clusters": [
+      "hpa-dev"
+    ],
+    "shared_cluster_uid_unchanged": true
+  },
+  "cleanup_receipt_sha256": "e274b3f7ce1076506b48f09cf624af50d55cc9120ed2d152f6995bb9e04035a5",
+  "limitations": [
+    "Only the dedicated Kubernetes v1.35.0 environment was exercised",
+    "The repository Dockerfile packaging path was not exercised in this acceptance",
+    "Raw run records remain in the local benchmark-runs archive",
+    "CPU observation and recommendation histories are not persisted across process restarts"
+  ]
+}

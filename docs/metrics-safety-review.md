@@ -27,3 +27,21 @@ had passed:
 
 These findings distinguish input/identity correctness from passing fixtures;
 they require public-boundary regressions and a follow-up review of the fixes.
+
+## Follow-up
+
+Both issues were fixed in `9b1a677` and independently re-reviewed:
+
+- `TestProviderRetainsAcceptedHistoryWhileRolloutMetricsWarmUp` covers Pending
+  -> Ready with no CPU yet -> fresh CPU, retaining the original timestamps and
+  values of previously verified observations.
+- `TestReconcileSafetyNoScaleDecisionCannotPublishMetricsForReplacedTarget`
+  replaces the target after the initial Scale read on a no-write decision. The
+  success-status path now rechecks UID and clears stale CPU with
+  `MetricsReady=False/TargetChanged`.
+
+Standards follow-up: 0 residual findings. Spec follow-up: both original P2s
+resolved, 0 residual findings. Linux lint-fix, full make test and the
+controller/provider race checks passed after the fixes. Final cluster evidence
+is recorded separately in [validation](metrics-safety-validation.md); the earlier
+image's run is not substituted for the corrected image.

@@ -13,7 +13,7 @@ PredictiveHPA（PHPA）是为了理解kubernete工作原理、流程等做的个
 
 围绕这个问题，我实现了 CRD、控制器、EWMA 预测和缩容稳定窗口，打通了从声明式配置到 `Deployment/scale` 写入的流程，并在 Kind 集群中进行了容量校准和多轮对照实验。**目前的实验尚未证明预测模式能更早扩容或取得整体服务收益。** 这个结果也让我继续排查负载分流、指标可见性和协调时机，把实现过程、实验结果和设计取舍记录下来。
 
-[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [实验与结论](docs/benchmarks/README.md)
+[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [指标安全讲解](docs/metrics-safety-guide.zh-CN.md) · [实验与结论](docs/benchmarks/README.md)
 
 ## 我做了哪些工作
 
@@ -22,7 +22,7 @@ PredictiveHPA（PHPA）是为了理解kubernete工作原理、流程等做的个
 | Kubernetes 控制器 | Kubebuilder / controller-runtime；读取 CR、查询指标、更新 Scale 子资源与 status | [Reconcile](internal/controller/predictivehpa_controller.go) |
 | 指标与预测 | Kubernetes UID 归属校验；Prometheus CPU 观测与数据有效性检查；EWMA 平滑与阻尼趋势外推 | [metricsprovider](internal/metricsprovider/prometheus.go)、[predictor](internal/predictor/ewma.go) |
 | 扩缩容策略 | 三种决策模式、预测限幅、副本上下限、10% 容差、缩容稳定窗口 | [决策函数](internal/controller/scaling_decision.go)、[窗口历史](internal/controller/scale_history.go) |
-| 自动化验证 | 单元测试、FakeClock 时间控制、envtest API 集成测试、Kind 部署烟测、实验工具离线回归 | [controller tests](internal/controller/reconcile_scale_test.go)、[CI](.github/workflows) |
+| 验证 | 单元测试、FakeClock、envtest、Kind 部署烟测及真实负载/故障/切主验收 | [controller tests](internal/controller/reconcile_scale_test.go)、[验证记录](docs/metrics-safety-validation.md)、[CI](.github/workflows) |
 | 实验与诊断 | k6 集群内 Service 发压、固定副本容量校准、匹配对照、查询与 Scale 时间记录、失败记录保留 | [实验导航](docs/benchmarks/README.md)、[工具](hack) |
 
 ## 控制器如何工作
