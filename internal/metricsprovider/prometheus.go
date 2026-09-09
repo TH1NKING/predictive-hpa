@@ -98,7 +98,8 @@ func NewPrometheus(baseURL string, reader client.Reader) (*PrometheusProvider, e
 }
 
 // AverageCPUUtilizationPercentage samples a live roster twice around the CPU queries.
-// Invalid observations discard this target's history, requiring prediction warmup again.
+// Missing current coverage or a changing roster does not invalidate accepted past
+// observations. Stale/invalid input and query failures restart prediction warmup.
 func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 	ctx context.Context, target *appsv1.Deployment, window time.Duration,
 ) (history CPUHistory, observationErr error) {
@@ -108,7 +109,7 @@ func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 	var gate chan struct{}
 	gateHeld := false
 	defer func() {
-		if observationErr != nil && target != nil && gateHeld {
+		if invalidatesObservationHistory(observationErr) && target != nil && gateHeld {
 			p.discard(client.ObjectKeyFromObject(target))
 		}
 		p.logObservation(ctx, started, queryStarted, queryFinished, evaluatedAt, history, observationErr)
@@ -166,6 +167,10 @@ func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 		return CPUHistory{}, ErrStaleData
 	}
 	return p.record(target, window, predictor.Sample{Timestamp: evaluatedAt, Value: value}, sourceAt), nil
+}
+
+func invalidatesObservationHistory(err error) bool {
+	return err != nil && !errors.Is(err, ErrIncompleteData) && !errors.Is(err, ErrNoData) && !errors.Is(err, ErrTargetChanged)
 }
 
 func (p *PrometheusProvider) queryGate(key types.NamespacedName) chan struct{} {

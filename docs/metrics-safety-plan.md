@@ -20,8 +20,11 @@ restart-safe scale-down protection. The review baseline is
   roster after the query, so a concurrent rollout cannot combine different
   membership or request snapshots.
 - Retain verified live observations by target identity; keep past observations
-  across normal rollouts and Pod deletion. Rebuild history on process restart
-  rather than assigning past samples using only the current Pod list.
+  across normal rollouts and Pod deletion, including Pending/unready transitions
+  and temporarily absent new-container metrics. Reject the current incomplete
+  observation without erasing prior verified facts or filling the gap with zero.
+  Invalid/stale samples and query failures reset CPU history. Rebuild history on
+  process restart rather than assigning past samples using only the current Pod list.
 - Keep the 60-second CPU rate window. Bound observation storage and report the
   supported history window and observation cadence explicitly.
 
@@ -52,7 +55,8 @@ restart-safe scale-down protection. The review baseline is
 - Retain raw recommendations in bounded conservative time buckets. Historical
   maxima cannot initiate an expansion or reverse an already-requested downscale.
   Current replica bounds remain authoritative.
-- Recheck PHPA/target identity before writes, use optimistic concurrency, and
+- Recheck PHPA/target identity before writes, including successful status
+  publication when no Scale update is needed, use optimistic concurrency, and
   preserve the distinction between requested and observed replicas.
 - Enable Helm leader election with the needed namespace-scoped Lease RBAC;
   keep the default manager replica count at one.

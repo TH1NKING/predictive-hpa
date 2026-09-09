@@ -554,3 +554,46 @@ func TestReconcileSafetyStatusPreservesConcurrentConditions(t *testing.T) {
 		t.Fatalf("concurrent condition lost: %+v", condition)
 	}
 }
+
+func TestReconcileSafetyNoScaleDecisionCannotPublishMetricsForReplacedTarget(t *testing.T) {
+	r, p, req := safetyFixture(t)
+	safetyCPU(r, p, 50)
+	replaced := false
+	r.Client = interceptor.NewClient(r.Client.(client.WithWatch), interceptor.Funcs{
+		SubResourceGet: func(ctx context.Context, c client.Client, name string, obj, body client.Object, opts ...client.SubResourceGetOption) error {
+			if err := c.SubResource(name).Get(ctx, obj, body, opts...); err != nil {
+				return err
+			}
+			if name == "scale" && !replaced {
+				replaced = true
+				var deploy appsv1.Deployment
+				if err := c.Get(ctx, req.NamespacedName, &deploy); err != nil {
+					return err
+				}
+				if err := c.Delete(ctx, &deploy); err != nil {
+					return err
+				}
+				deploy.UID, deploy.ResourceVersion = "replacement-after-scale-read", ""
+				replicas := int32(3)
+				deploy.Spec.Replicas, deploy.Status.Replicas = &replicas, replicas
+				return c.Create(ctx, &deploy)
+			}
+			return nil
+		},
+	})
+	previous := safetyStatus(t, r, req)
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	status := safetyStatus(t, r, req)
+	condition := meta.FindStatusCondition(status.Conditions, conditionMetricsReady)
+	if condition == nil || condition.Status != metav1.ConditionFalse || condition.Reason != "TargetChanged" {
+		t.Fatalf("published old target metrics after replacement: %+v", condition)
+	}
+	if status.CurrentCPUUtilizationPercentage != nil || status.PredictedCPUUtilizationPercentage != nil {
+		t.Fatal("replacement must clear obsolete CPU display values")
+	}
+	if !status.LastScaleTime.Equal(previous.LastScaleTime) || safetyReplicas(t, r) != 3 {
+		t.Fatal("no-scale decision changed the replacement or lastScaleTime")
+	}
+}

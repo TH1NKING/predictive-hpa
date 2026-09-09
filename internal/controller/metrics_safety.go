@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -121,6 +122,23 @@ func (r *PredictiveHPAReconciler) freshPHPA(ctx context.Context, expected *autos
 	return &latest, nil
 }
 
+// A hold/tolerance decision also publishes target-specific observations. Verify
+// that incarnation before publishing success, even when no Scale write occurs.
+func (r *PredictiveHPAReconciler) validateStatusTarget(ctx context.Context, expected *appsv1.Deployment) error {
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+	var latest appsv1.Deployment
+	if err := reader.Get(ctx, client.ObjectKeyFromObject(expected), &latest); err != nil {
+		return fmt.Errorf("%w: could not verify target before status publication: %v", metricsprovider.ErrTargetChanged, err)
+	}
+	if latest.UID != expected.UID || !latest.DeletionTimestamp.IsZero() {
+		return fmt.Errorf("%w: target incarnation changed before status publication", metricsprovider.ErrTargetChanged)
+	}
+	return nil
+}
+
 func (r *PredictiveHPAReconciler) patchStatus(ctx context.Context, expected *autoscalingv1alpha1.PredictiveHPA,
 	mutate func(*autoscalingv1alpha1.PredictiveHPAStatus)) error {
 	latest, err := r.freshPHPA(ctx, expected)
@@ -156,7 +174,10 @@ type decisionStatusUpdate struct {
 // publishDecisionStatus translates a completed policy outcome into owned API
 // fields. patchStatus supplies the fresh version and preserves other writers'
 // conditions; an unsuccessful Scale write never reaches this publication step.
-func (r *PredictiveHPAReconciler) publishDecisionStatus(ctx context.Context, phpa *autoscalingv1alpha1.PredictiveHPA, update decisionStatusUpdate) error {
+func (r *PredictiveHPAReconciler) publishDecisionStatus(ctx context.Context, phpa *autoscalingv1alpha1.PredictiveHPA, target *appsv1.Deployment, update decisionStatusUpdate) error {
+	if err := r.validateStatusTarget(ctx, target); err != nil {
+		return err
+	}
 	currentInt, predictedInt := cpuStatusValue(update.currentCPU), cpuStatusValue(update.predictedCPU)
 	stabilization := update.stabilization
 	condition := metav1.Condition{

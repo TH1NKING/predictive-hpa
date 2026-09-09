@@ -306,10 +306,13 @@ func (r *PredictiveHPAReconciler) reconcileTarget(
 	}
 
 	// 10. Publish only controller-owned status fields using a fresh API version.
-	if err := r.publishDecisionStatus(ctx, &phpa, decisionStatusUpdate{
+	if err := r.publishDecisionStatus(ctx, &phpa, &deploy, decisionStatusUpdate{
 		currentCPU: currentCPU, predictedCPU: predicted, currentReplicas: currentReplicas,
 		desiredReplicas: desiredReplicas, stabilization: stabilization, scaled: scaled,
 	}); err != nil {
+		if _, transient := metricsFailureReason(err); transient {
+			return r.metricsUnavailable(ctx, &phpa, err, requeueInterval)
+		}
 		return ctrl.Result{}, fmt.Errorf("update status: %w", err)
 	}
 

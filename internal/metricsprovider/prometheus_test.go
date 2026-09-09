@@ -131,7 +131,6 @@ func TestProviderRejectsUnsafeSourcesAndRequiresNewWarmup(t *testing.T) {
 			f.sources = []map[string]any{f.sample(fmt.Sprint(f.clock.Now().Add(time.Second).Unix()))}
 		}, ErrInvalidData},
 		{"infinite source", func(f *providerFixture) { f.sources = []map[string]any{f.sample("+Inf")} }, ErrInvalidData},
-		{"different source series", func(f *providerFixture) { f.sources[0]["metric"].(map[string]string)["instance"] = "another-kubelet" }, ErrIncompleteData},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -224,6 +223,7 @@ func TestProviderRejectsUnusableRostersAndAmbiguousInstances(t *testing.T) {
 			f.rates[0]["metric"].(map[string]string)["namespace"] = "other"
 			f.sources[0]["metric"].(map[string]string)["namespace"] = "other"
 		}, ErrIncompleteData},
+		{"different source series", func(f *providerFixture) { f.sources[0]["metric"].(map[string]string)["instance"] = "another-kubelet" }, ErrIncompleteData},
 		{"old ReplicaSet UID", func(f *providerFixture) { f.pod.OwnerReferences[0].UID = "old-rs-uid" }, ErrNoData},
 		{"missing request", func(f *providerFixture) { f.pod.Spec.Containers[0].Resources.Requests = nil }, ErrInvalidData},
 		{"pending Pod", func(f *providerFixture) { f.pod.Status.Phase = corev1.PodPending }, ErrIncompleteData},
@@ -275,6 +275,51 @@ func TestProviderRetainsVerifiedObservationsAfterRollout(t *testing.T) {
 	got, err := p.AverageCPUUtilizationPercentage(context.Background(), f.target, time.Minute)
 	if err != nil || len(got.Samples) != 2 || got.Samples[0].Value != 50 || got.Samples[1].Value != 100 {
 		t.Fatalf("rollout erased validated past observations: %+v %v", got, err)
+	}
+}
+
+func TestProviderRetainsAcceptedHistoryWhileRolloutMetricsWarmUp(t *testing.T) {
+	f := newProviderFixture(t)
+	p := f.provider(t)
+	if _, err := p.AverageCPUUtilizationPercentage(context.Background(), f.target, 2*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.Step(30 * time.Second)
+	f.setCPU("0.2")
+	before, err := p.AverageCPUUtilizationPercentage(context.Background(), f.target, 2*time.Minute)
+	if err != nil || len(before.Samples) != 2 {
+		t.Fatalf("old Pod observations unavailable: %+v %v", before, err)
+	}
+	if err := f.reader.Delete(context.Background(), f.pod); err != nil {
+		t.Fatal(err)
+	}
+	f.pod = f.pod.DeepCopy()
+	f.pod.Name = "web-rollout-pod"
+	f.pod.UID = "cccccccc-1234-1234-1234-123456789abc"
+	f.pod.ResourceVersion = ""
+	f.pod.Status.Phase = corev1.PodPending
+	if err := f.reader.Create(context.Background(), f.pod); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.Step(15 * time.Second)
+	if got, err := p.AverageCPUUtilizationPercentage(context.Background(), f.target, 2*time.Minute); !errors.Is(err, ErrIncompleteData) || len(got.Samples) != 0 {
+		t.Fatalf("Pending Pod must hold the current observation: %+v %v", got, err)
+	}
+	f.pod.Status.Phase = corev1.PodRunning
+	f.savePod(t)
+	f.clock.Step(15 * time.Second)
+	f.rates, f.sources = []map[string]any{}, []map[string]any{}
+	if got, err := p.AverageCPUUtilizationPercentage(context.Background(), f.target, 2*time.Minute); !errors.Is(err, ErrNoData) || len(got.Samples) != 0 {
+		t.Fatalf("Ready Pod without CPU samples must remain unavailable: %+v %v", got, err)
+	}
+	f.clock.Step(15 * time.Second)
+	f.setCPU("0.4")
+	got, err := p.AverageCPUUtilizationPercentage(context.Background(), f.target, 2*time.Minute)
+	if err != nil || len(got.Samples) != 3 {
+		t.Fatalf("rollout erased accepted history: %+v %v", got, err)
+	}
+	if got.Samples[0] != before.Samples[0] || got.Samples[1] != before.Samples[1] || got.Samples[2].Value != 200 {
+		t.Fatalf("past observations were recomputed using the new Pod: before=%+v after=%+v", before, got)
 	}
 }
 
