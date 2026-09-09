@@ -1,228 +1,138 @@
-# PredictiveHPA (PHPA)
+# PredictiveHPA
 
-> 基于 EWMA 时序预测的 Kubernetes 自定义 HPA 控制器，用于研究预测信号对扩缩容时机与资源成本的影响。
+**用 Go 实现 Kubernetes 自定义扩缩容控制器，并用真实集群实验检验预测信号是否有用。**
 
 [![Tests](https://github.com/TH1NKING/predictive-hpa/actions/workflows/test.yml/badge.svg)](https://github.com/TH1NKING/predictive-hpa/actions/workflows/test.yml)
 [![Lint](https://github.com/TH1NKING/predictive-hpa/actions/workflows/lint.yml/badge.svg)](https://github.com/TH1NKING/predictive-hpa/actions/workflows/lint.yml)
-![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)
-![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.35-326CE5?logo=kubernetes)
-![License](https://img.shields.io/badge/License-Apache%202.0-blue)
+[![E2E](https://github.com/TH1NKING/predictive-hpa/actions/workflows/test-e2e.yml/badge.svg)](https://github.com/TH1NKING/predictive-hpa/actions/workflows/test-e2e.yml)
+[![Benchmark Harness](https://github.com/TH1NKING/predictive-hpa/actions/workflows/benchmark-harness.yml/badge.svg)](https://github.com/TH1NKING/predictive-hpa/actions/workflows/benchmark-harness.yml)
+[![Go](https://img.shields.io/badge/Go-1.25.3%2B-00ADD8?logo=go)](go.mod)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
----
+PredictiveHPA（PHPA）是一个大学生面向秋招的个人项目，方向是 **Go / Kubernetes / 云原生基础设施**。项目从一个问题出发：如果在当前 CPU 指标之外引入历史趋势，能否改善扩缩容时机？围绕这个问题，实现了 CRD、控制器、EWMA 预测、稳定窗口，以及容量校准、对照实验和延迟诊断工具。
 
-## 1. 核心价值主张
+目前已完成从声明式配置到 `Deployment/scale` 写入的闭环，并在 Kind 集群中做了多轮验证。**现有实验尚未证明预测模式能更早扩容或取得整体服务收益。** 项目的主要成果是可运行的控制器、可测试的决策逻辑，以及能够追踪问题和解释取舍的实验过程。
 
-PHPA 从 CPU 历史序列估计未来利用率，可选择预测、当前值或混合信号用于副本决策。它能否更早扩容、降低请求失败或减少资源消耗，需要通过匹配配置的实验验证；当前数据不支持无条件的性能优势。
+[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [实验与结论](docs/benchmarks/README.md)
 
-PHPA 使用与原生 HPA 相同形式的基础副本计算公式：
+## 实现了什么
 
+| 部分 | 已实现能力 | 代码入口 |
+|---|---|---|
+| Kubernetes 控制器 | Kubebuilder / controller-runtime；读取 CR、查询指标、更新 Scale 子资源与 status | [Reconcile](internal/controller/predictivehpa_controller.go) |
+| 指标与预测 | Prometheus 历史 CPU 查询；EWMA 平滑与阻尼趋势外推；算法和数据源分包 | [metricsprovider](internal/metricsprovider/prometheus.go)、[predictor](internal/predictor/ewma.go) |
+| 扩缩容策略 | 三种决策模式、预测限幅、副本上下限、10% 容差、缩容稳定窗口 | [决策函数](internal/controller/scaling_decision.go)、[窗口历史](internal/controller/scale_history.go) |
+| 自动化验证 | 单元测试、FakeClock 时间控制、envtest API 集成测试、Kind 部署烟测、实验工具离线回归 | [controller tests](internal/controller/reconcile_scale_test.go)、[CI](.github/workflows) |
+| 实验与诊断 | k6 集群内 Service 发压、固定副本容量校准、匹配对照、查询与 Scale 时间记录、失败记录保留 | [实验导航](docs/benchmarks/README.md)、[工具](hack) |
+
+## 控制器如何工作
+
+```mermaid
+flowchart LR
+    A["cAdvisor CPU 计数器"] --> P[Prometheus]
+    B["kube-state-metrics CPU requests"] --> P
+    P -->|历史 CPU 利用率| M[metricsprovider]
+    C["PredictiveHPA CR"] --> R[Reconcile]
+    M --> E["EWMA + 阻尼趋势外推"]
+    M --> R
+    E --> R
+    R --> D["选择信号 → 副本边界 → 稳定窗口 → 容差"]
+    D -->|需要调整时| S["Deployment/scale"]
+    D --> O["PHPA status + 结构化日志"]
 ```
-desiredReplicas = ceil(currentReplicas × cpu% / targetCPU%)
+
+CPU 利用率以容器的 CPU request 为参照。基础副本公式为：
+
+```text
+desiredReplicas = ceil(currentReplicas × decisionCPU / targetCPU)
 ```
 
-当前预测实现为 **EWMA 平滑 + 阻尼趋势外推**（阻尼系数 `0.85`），控制器将预测值限制在 `0` 到 `1.3 × 当前 CPU`，按 `decisionMode` 选择决策信号，再执行副本上下限、稳定窗口和容差规则。相同形式的公式不等于相同的完整控制流程；指标来源、采样延迟与协调行为仍可能不同，因此控制器对比不能直接归因于预测算法本身。
+三种模式只切换决策信号，共享指标源、样本就绪要求及后续策略，便于在同一控制器内做对照：
 
-## 2. 实测数据
+| `decisionMode` | 决策信号 | 用途 |
+|---|---|---|
+| `Predictive`（默认） | 限幅后的预测 CPU | 检验预测参与扩缩容的效果 |
+| `Current` | 最新观测 CPU | 提供同控制器的当前值基线 |
+| `Hybrid` | `max(当前值, min(限幅预测, 目标值))` | 当前需求触发扩容，预测可保留副本，但不能单独触发扩容 |
 
-最新的[指标采集链路与窗口旁路对照](docs/benchmarks/metric-pipeline-20260908.md)在
-内核升级后的独立批次完成容量复核和三次 Current 运行。扩容前 59 个共同求值
-周期中，30 秒表达式有 39 次空结果，60 秒表达式全部有效；能比较首次越线的
-两轮分别同时越线、短窗约早 4 秒。源端已返回新样本、之后 raw 查询仍未看到
-的记录在三轮中均出现。保留一分钟窗口和默认 30 秒协调间隔，没有修改窗口后
-服务收益的结论；方法、时间语义和取舍见[中文讲解](docs/benchmarks/metric-pipeline-guide.zh-CN.md)。
+当前预测使用 EWMA 与阻尼系数 `0.85` 的趋势外推；控制器把预测限制在 `0` 到当前 CPU 的 `1.3` 倍。正常协调默认在完成后 `30s` 重排队，缩容稳定窗口默认 `60s`。这些选择都有代价，推导、异常路径与配置说明见[实现与设计](docs/design.md)。
 
-此前的[指标可见性诊断](docs/benchmarks/metric-visibility-20260908.md)复算了十次已封存
-Current 运行：三次明显 CPU 增量可见后，一分钟表达式约再过 12／16／16 秒才首次
-观测到超阈值，仍不能把这些观察差全部归因于平均窗口。200 个扩容前 raw 快照中，
-30 秒窗口有 142 个不足两个源样本，60 秒窗口只有 2 个；这不是修改窗口后的实测
-失败率，因此保留一分钟 CPU 窗口。本轮也修复了长期不缩容时稳定历史持续累积的
-问题，方法与取舍见[中文讲解](docs/benchmarks/history-metrics-guide.zh-CN.md)。
+## 实验得到了什么
 
-此前的[协调周期匹配对照](docs/benchmarks/latency-cadence-followup-20260907.md)在同一
-程序、10 秒启动偏移下比较 30／15 秒间隔，各两次。15 秒组观察到平均首次扩容
-早 15.48 秒、HTTP 200 高 7.66 个百分点，同时副本占用增加 7.82%、查询增加
-73.44%，全请求 p95 仍约 10 秒。其 CPU 超阈值信息也平均早了 8.51 秒，不能把
-全部提前量归因于协调周期；默认保留 30 秒。
+### 同控制器的三种模式对照
 
-此前的[扩容时序诊断](docs/benchmarks/latency-diagnostic-20260907.md)完成了六次 Current 运行，
-每种启动偏移两次。首次独立观测到足够 CPU 平均在负载后 26.283 秒，随后至扩容
-查询开始又平均等待 12.923 秒；查询开始至 Scale 成功响应只有 5.5–8.4ms。
-这缩小了延迟来源，没有证明服务或预测优势。完整时间语义与方法取舍见
-[中文讲解](docs/benchmarks/latency-diagnostic-guide.zh-CN.md)。
+2026-09-07，在匹配配置下，以集群内 Service 承接 **25 RPS step** 负载，三种模式各运行三次。以下为描述性均值：
 
-### 2026-09-07：同控制器决策消融
-
-[同控制器决策消融](docs/benchmarks/decision-mode-ablation-20260907.md)比较了 Current、Predictive、Hybrid 各三次匹配的 25 RPS step 运行：
-
-| 描述性均值（每组 n=3） | Current | Predictive（默认） | Hybrid |
+| 指标（每组 n=3） | Current | Predictive | Hybrid |
 |---|---:|---:|---:|
 | HTTP 200 成功率 | 69.85% | 68.68% | 68.40% |
-| 首次成功提高副本目标 | 48.67s | 48.67s | 48.33s |
-| 首次采样副本增加 | 65s | 65s | 65s |
-| 总 Pod-seconds（541s 窗口） | 2,101 | 2,261 | 2,181 |
-| 负载后 Pod-seconds（360s） | 1,126 | 1,236 | 1,196 |
+| 首次成功提高 Scale 目标，距负载开始 | 48.67s | 48.67s | 48.33s |
+| 总 Pod-seconds，统一 541s 窗口 | 2,101 | 2,261 | 2,181 |
 
-**本轮没有观察到平均首次扩容提前，也未证明整体服务优势。** Current 的总副本占用均值少 7.1%；三组成功率相近，但小样本不能证明服务非劣效或稳定资源收益。每次均丢弃一次迭代，全请求 p95 均接近 10 秒，均未达到诊断服务标准。回归及现场日志证实了当前值扩容保护的作用，同时说明低观测值也会推迟决策。详细取舍见[中文讲解](docs/benchmarks/decision-mode-ablation-guide.zh-CN.md)。
+三组首次扩容时间接近，全请求 p95 均接近 10s，均未达到诊断服务标准。Current 的副本占用均值较少，但不能据此宣称服务非劣效或稳定的成本收益。Pod-seconds 是采样副本数对时间的积分，不是 CPU 消耗或云账单。[完整结果、逐次数据与限制](docs/benchmarks/decision-mode-ablation-20260907.md)
 
-### 2026-09-06：PHPA 与原生 HPA 的受控对照
+此前与原生 HPA 的匹配对照中，PHPA 也出现扩容更晚、成功率更低的情况。不同批次的环境和方法不能混合计算收益。[原生 HPA 对照](docs/benchmarks/capacity-and-controlled-pilot-20260906.md)
 
-上一轮 [容量校准与受控 step 对照](docs/benchmarks/capacity-and-controlled-pilot-20260906.md) 完成了 18 个固定副本探针，以及 Native-60 / PHPA-60 各 3 次、25 RPS 的匹配实验。通过集群内 Service 发压，并统一从负载开始到停止后 360s 的统计窗口。两个批次比较对象与环境记录不同，不直接合并为同一组实验。
+### 没有得到预期收益后，继续定位原因
 
-| 描述性均值（每组 n=3） | Native-60 | PHPA-60 |
-|---|---:|---:|
-| HTTP 200 成功率 | 85.63% | 65.41% |
-| 首次观察到扩容 | 40s | 70s |
-| 总 Pod-seconds（同为 541s 窗口） | 2,306 | 2,101 |
-| 停止负载后的 Pod-seconds | 1,037 | 1,161 |
+- **区分决策规则与系统效果。** 回归测试及日志复现了“当前 CPU 已超标，较低预测却压制扩容”的路径；Current / Hybrid 能保护该路径，但真实运行仍可能因观测值偏低而等待。[决策消融讲解](docs/benchmarks/decision-mode-ablation-guide.zh-CN.md)
+- **把扩容延迟拆到可观察的阶段。** 六次 Current 运行中，首次独立观测到 CPU 超过扩容阈值平均在负载后 26.283s，此后到扩容查询开始平均再等 12.923s；查询开始到 Scale 成功响应仅 5.5–8.4ms。观测把排查范围缩小到指标可见性与协调时机，尚未隔离各阶段的因果贡献。[时序诊断](docs/benchmarks/latency-diagnostic-20260907.md)
+- **用数据检查调参代价。** 更短协调周期的试验同时增加了副本占用与查询次数；30s CPU rate 窗口在新的三次旁路观测中有 39/59 个扩容前共同求值周期为空，60s 窗口全部有效。因此保留默认 30s 协调间隔与 60s rate 窗口。[周期对照](docs/benchmarks/latency-cadence-followup-20260907.md)、[指标链路诊断](docs/benchmarks/metric-pipeline-20260908.md)
 
-本轮 PHPA 扩容更晚、成功率更低；总副本占用减少约 8.9%，但负载后的占用增加约 12.0%。较少副本伴随服务质量下降，不能据此宣称效率收益。两组全请求 p95 均接近 10s，合计有 5 次丢弃迭代；均未达到校准使用的 99% 成功率／500ms p95 标准。副本变化按 15s 采样，结论限于本轮小样本 step 场景，不宣称统计显著或预测算法的独立因果效果。方法与取舍见[中文讲解](docs/benchmarks/controlled-pilot-guide.zh-CN.md)。
+所有批次的实验协议、报告、图表和中文讲解集中在[实验导航](docs/benchmarks/README.md)。大型原始运行记录保存在本地归档，Git 仓库提供分析工具与结果摘要；重新执行实验和复算已有摘要的证据范围不同。
 
-历史 [稳定窗口消融 v2](docs/benchmarks/stabilization-window-ablation-v2.md) 包含 27 次实验：3 种负载模式 × 3 组控制器 × 3 次重复。它分别比较原生 HPA 的 300s/60s 窗口，以及同为 60s 窗口的 PHPA 与原生 HPA。两个批次的流量路径、并发配置和统计窗口不同，不能将数值变化归因于单一修改。
+## 运行项目
 
-| 对比 | 首次扩容 | 负载停止后的资源拖尾 | 总 Pod-seconds | 请求失败率均值 |
-|---|---|---|---|---|
-| Native-60 相对 Native-300 | 基本不变（差 0.0–0.7s） | 缩短约 203–240s † | 减少约 27%–36% | 变化方向不一致 |
-| PHPA-60 相对 Native-60 | 晚约 18–26s | 延长约 6–28s | 增加约 16%–69% | 降低约 2.1–4.4 个百分点 |
+建议在独立 Kind 集群中体验。需要 Docker、Kind、kubectl、Helm；Go 开发与测试以 [go.mod](go.mod) 和 [Makefile](Makefile) 为准。
 
-PHPA-60 的峰值副本增加约 88%–100%。这些是每组 `n=3` 的描述性均值差，未宣称统计显著。† Native-300 的 step/ramp 存在截尾，对应资源拖尾与缩短幅度为下界。原生 HPA 缩短稳定窗口的资源收益不能当作预测算法的收益。
-
-**v2 证据限制（2026-09-05 补充）：** v2 失败率约 59%–96%，几乎所有组的全请求 p95 触及 10s 上限；归档脚本通过 `kubectl port-forward svc/php-apache` 压测，按 [Kubernetes 文档](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_port-forward/)，该会话选择一个 Pod，不能证明新增副本分担了请求。历史流量实际分布和高失败率根因尚未验证。
-
-**2026-09-05 Service 路径校准：** [2026-09-05 校准报告](docs/benchmarks/service-routing-validation-results-20260905.md) 记录了 14 次有效固定副本探针，每个目标 Pod 均有请求证据。同为 25 RPS，5 副本在 90s 和反序 180s 探针中均为 100% HTTP 200、p95 约 80–87ms；1 副本两次均未达到预设成功率与延迟标准。这证明了本次环境与负载下从 1 到 5 副本的承载改善，不证明精确最大容量、5 到 10 副本的容量增益、统计显著性或预测算法收益。正式控制器对照仍需遵循 [校准与实验流程](docs/benchmarks/service-routing-validation.md)。
-
-## 3. 架构
-
-```
-kubelet cAdvisor ──► Prometheus (TSDB)
-                          │  query_range: rate(container_cpu_usage_seconds_total[1m])
-                          ▼
-                 ┌─ metricsprovider ─┐     业务语义接口，PromQL 不泄漏到调用方
-                 │                   │
-                 │     predictor     │     纯函数 EWMA + 阻尼趋势外推，stateless
-                 │                   │
-                 │     controller    │     Reconcile: 预测限幅 → 副本 clamp → 稳定窗口 → tolerance → scale
-                 └───────────────────┘
-                          │
-                          ▼
-              Deployment/scale 子资源 + PHPA status 回写
-```
-
-四个解耦的包：`internal/predictor`（算法）、`internal/metricsprovider`（数据源抽象）、`internal/controller`（K8s 协调逻辑）、`api/v1alpha1`（CRD 类型）。每个包独立测试。
-
-## 4. 快速开始
-
-前置：可用的 K8s 集群（开发用 kind）、集群内 Prometheus（抓取 cAdvisor 指标）。
+先按 [Helm 部署指南](deploy/charts/predictive-hpa/README.md)创建实验集群、安装 Prometheus / kube-state-metrics、构建并加载控制器镜像。控制器启动后，创建示例工作负载和 PHPA：
 
 ```bash
-# 安装控制器 + CRD + RBAC
-helm install phpa ./deploy/charts/predictive-hpa \
-  --set prometheus.url=http://prometheus-server.monitoring.svc:80
-
-# 创建一个 PHPA 实例
+# 在已完成上述准备的实验集群中，从仓库根目录执行
+kubectl apply -n default -f config/benchmark/php-apache.yaml
+kubectl rollout status deployment/php-apache -n default --timeout=120s
 kubectl apply -f config/samples/autoscaling_v1alpha1_predictivehpa.yaml
-
-# 观察预测值与扩缩容
-kubectl get phpa -w
+kubectl get phpa -n default -w
 ```
 
+[示例 CR](config/samples/autoscaling_v1alpha1_predictivehpa.yaml)使用 1–10 个副本、50% 目标 CPU、5 分钟历史窗口和 30 秒预测视野。没有负载时保持最小副本是正常现象；Prometheus 无数据或历史样本不足时，控制器会等待重试。目标 Deployment 与 PHPA 必须同命名空间，且不要同时让原生 HPA 和 PHPA 控制同一个 Deployment。
 
-历史输出示例（kind 集群，php-apache 负载，target=50%；仅用于说明状态列）：
+若要验证扩缩容效果，先完成[固定副本容量校准](docs/benchmarks/service-routing-validation.md)，再按[受控对照流程](docs/benchmarks/controlled-pilot.md)发压。历史实验发现 `port-forward svc/...` 路径不足以证明新增副本分担请求，当前实验工具采用集群内 Service 路径并检查请求分布。
 
-```
-NAME                   REFERENCE    MINPODS   MAXPODS   REPLICAS   CURRENT%   PREDICTED%   AGE
-predictivehpa-sample   php-apache   1         10        1          0          0            59m
-predictivehpa-sample   php-apache   1         10        1          186        139          60m
-predictivehpa-sample   php-apache   1         10        3          244        250          61m
-predictivehpa-sample   php-apache   1         10        10         73         74           61m
-predictivehpa-sample   php-apache   1         10        9          44         41           62m
-predictivehpa-sample   php-apache   1         10        8          50         50           65m
-```
+## 测试与代码阅读
 
-`CURRENT%` 和 `PREDICTED%` 分别展示观测与限幅后的预测，`REPLICAS` 展示副本状态。单次输出不能证明提前扩容或容量收益；总体实验结果与限制见第 2 节。
+Linux / Bash 环境，从仓库根目录执行：
 
-## 5. CRD 字段
+```bash
+make test       # 单元测试与 envtest，需要 API Server / etcd 测试二进制
+make lint       # Go 静态检查
+make test-e2e   # 创建/使用专用 Kind 测试集群，验证部署与 metrics
 
-```
-GVK: autoscaling.brian.io / v1alpha1 / PredictiveHPA   (shortName: phpa)
+python -m pip install -r hack/analyze/requirements.txt
+python -m unittest discover -s hack/tests -p 'test_*.py'
+python -m unittest discover -s hack/analyze -p 'test_*.py'
 ```
 
-### spec
+envtest 验证给定输入下的 API 交互与决策行为，不模拟真实 CPU、Pod 调度或服务性能。E2E 验证控制器部署和 metrics 访问，性能结论来自单独的集群实验。
 
-| 字段 | 类型 | 默认 | 说明 |
-|---|---|---|---|
-| `scaleTargetRef` | CrossVersionObjectReference | — | 目标 Deployment（与原生 HPA 同结构） |
-| `minReplicas` | *int32 | 1 | 下限（0 保留但 v1alpha1 运行时 fallback 到 1） |
-| `maxReplicas` | int32 | — | 上限 |
-| `targetCPUUtilizationPercentage` | int32 | — | 目标利用率，1–100 |
-| `prediction.algorithm` | enum | `EWMA` | 当前仅 EWMA |
-| `prediction.alphaPercent` | int32 | — | EWMA 平滑系数 ×100，1–99 |
-| `prediction.window` | Duration | — | 历史回溯窗口 |
-| `prediction.horizon` | Duration | — | 预测视野 |
-| `decisionMode` | enum | `Predictive` | `Predictive` 用预测值；`Current` 用当前值；`Hybrid` 当前值触发扩容，预测辅助保守缩容 |
-| `scaleDownStabilizationWindowSeconds` | *int32 | 60 | 缩容稳定窗口（原生 HPA 默认 300s） |
+```text
+api/v1alpha1/          CRD 类型与校验标记
+cmd/                  manager 入口与启动参数
+internal/controller/  协调流程、副本决策、稳定窗口及测试
+internal/predictor/   EWMA 与趋势外推
+internal/metricsprovider/  Prometheus 查询与业务接口
+deploy/charts/        Helm 部署
+config/benchmark/     实验环境与工作负载配置
+hack/                 k6 发压、运行控制、采集和分析工具
+docs/benchmarks/      实验协议、报告、图表与中文讲解
+```
 
-### status
+## 当前边界与后续方向
 
-`currentReplicas` / `desiredReplicas` / `currentCPUUtilizationPercentage` / `predictedCPUUtilizationPercentage` / `lastScaleTime` / `conditions`（含 `ScaleDownStabilized`）。
+- **范围：** `v1alpha1` 仅支持同命名空间的 Deployment、CPU 指标和 EWMA；不支持 scale-to-zero，`minReplicas: 0` 运行时按 1 处理。
+- **状态：** 缩容历史保存在进程内存，重启或切主后会丢失。Helm 按单副本使用；manager 有 leader-election 参数，但项目尚未完成带历史恢复的 HA 方案。
+- **指标：** 当前 PromQL 按 Deployment 名称前缀匹配 Pod，尚未实现基于 owner/selector 的精确归属和复杂多容器语义验证；主要证据来自单容器 `php-apache` 实验。
 
-非法配置（如 `algorithm: ARIMA`、`alphaPercent: 200`）由 OpenAPI v3 schema 在 admission 阶段直接拒绝，控制器代码不重复校验。字段详情：`kubectl explain phpa.spec.prediction`。
+后续优先补齐指标归属、缺失/陈旧数据处理与稳定历史恢复，再考虑扩大负载场景和重复次数。多指标、其他工作负载及更复杂预测算法属于待评估方向，尚未实现。
 
-三种决策模式共享指标源、预测计算、默认 30s 重排队配置、容差和稳定窗口；资源事件也可能触发协调。`Hybrid` 的决策信号为
-`max(当前 CPU, min(限幅预测 CPU, 目标 CPU))`：预测不能单独触发扩容，也不能让缩容低于当前需求。
-`Current` 仍计算预测供观察，保留共同的样本就绪要求。省略 `decisionMode` 保持原有行为。
-模式对照的方法与验收标准见[同控制器消融方案](docs/benchmarks/decision-mode-ablation.md)；新增模式本身不代表已证明性能收益。
-
-manager 支持 `--requeue-interval=15s` 等不少于 1 秒的正常重排队间隔，省略时保持
-30 秒。该启动参数适用于正常完成以及目标尚未出现、暂时缺指标／样本的重试；
-不支持的目标类型仍使用 60 秒重试。它不修改 Prometheus 采集间隔、查询步长或
-CPU rate 窗口，也不增加 CRD 字段。具体诊断与匹配对照见
-[时序诊断](docs/benchmarks/latency-diagnostic-20260907.md)和
-[协调周期协议](docs/benchmarks/latency-cadence-followup.md)；实际取舍见
-[四次对照结果](docs/benchmarks/latency-cadence-followup-20260907.md)。
-
-## 6. 设计决策摘要
-
-| 决策 | 选择 | 被否决方案与理由 |
-|---|---|---|
-| 预测算法 | Simple EWMA + 阻尼趋势外推（系数 0.85） | ARIMA/LSTM：当前实现优先保持计算轻量、无需外部推理依赖 |
-| 扩缩容公式 | 与原生 HPA 采用相同形式的基础公式 | 减少公式差异，但完整控制器对比仍不能隔离预测算法的纯因果效应 |
-| alpha 参数类型 | `alphaPercent int32` (1–99) | `float64`：K8s API 惯例回避浮点（JSON 精度、validation 复杂）；与 `targetCPUUtilizationPercentage` 命名风格一致 |
-| 稳定窗口状态 | in-memory map（单副本） | annotation/status/ConfigMap 持久化：写冲突与语义错配；与原生 HPA 单实例 controller-manager 假设一致，limitation 显式写明 |
-| 字段校验位置 | OpenAPI schema（kubebuilder markers） | 控制器内校验：错误应在 admission 前置拒绝，而非进了 etcd 再报；webhook：当前无跨资源校验需求，不引入证书管理复杂度 |
-| 预测限幅 | 控制器限制为 0 到当前 CPU 的 1.3 倍，predictor 返回原始值 | predictor 内 clamp：业务约束属于控制器层；原始预测与限幅值的差异可通过日志观察 |
-
-## 7. 测试策略
-
-双层证据，边界明确：
-
-- **envtest（Ginkgo）**：决策逻辑的自动化回归——扩缩容公式、min/max clamp、tolerance 带、稳定窗口压制（注入 FakeClock 做确定性时间控制）。覆盖"控制器对给定输入做出正确决策"。
-- **k6 真集群对照实验（v2：27 次矩阵）**：记录指标延迟、Pod 启动与噪声共同作用下的观测结果；流量分配、过载、小样本及截尾限制见第 2 节和完整报告。
-
-单元测试覆盖 predictor 算法边界与 metricsprovider 的 PromQL 构造；集群实验的结论范围取决于负载路径、配置匹配与数据质量。
-
-## 8. 已知 Limitation
-
-1. **仅支持单副本部署**——稳定窗口历史在 in-memory map，不支持 HA / leader election
-2. **控制器重启丢失稳定窗口历史**——重启窗口内可能发生未受保护的缩容
-3. **不支持 scale-to-zero**——`minReplicas: 0` 被运行时 fallback 到 1（需要外部 activator 架构，见 Roadmap）
-4. **仅支持 Deployment**——StatefulSet 等其他 workload 类型会被拒绝
-5. **仅支持 CPU 指标**——无 memory / 自定义指标抽象
-6. **历史压测结论受流量路径限制**——新 Service 校准验证了当前请求分配，但不能追溯证明 v2 历史流量分布或预测收益
-
-## 9. Roadmap
-
-### v1beta1（计划中）
-- 可配置 tolerance（`spec.tolerance`，当前写死 10%）
-- 扩缩方向独立的稳定窗口
-- ConfigMap 持久化稳定窗口历史（重启安全）
-
-### v2alpha1（架构级变更，超出当前范围）
-- Scale-to-zero（需要 KEDA Activator 式外部唤醒机制，是架构问题而非参数问题）
-- Holt 双重 EWMA（可配置 beta）
-- 多指标源
-
-## 10. 项目背景
-
-30 天个人项目（2026-05 至 2026-06），前置项目为 mydocker（轻量容器运行时）。从容器运行时到调度弹性方向的自然演进。设计决策过程、基线实验、踩坑记录均有完整文档化。
-
-License: Apache 2.0
+本项目采用 [Apache-2.0](LICENSE) 许可证。
