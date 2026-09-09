@@ -113,7 +113,7 @@ python -m unittest discover -s hack/tests -p 'test_*.py'
 python -m unittest discover -s hack/analyze -p 'test_*.py'
 ```
 
-我用 envtest 验证给定输入下的 API 交互与决策行为，用 E2E 检查控制器部署和 metrics 访问。它们不能代替真实 CPU、Pod 调度和请求负载，所以性能结论来自单独的集群实验。
+我用 envtest 验证给定输入下的 API 交互与决策行为，用 E2E 检查控制器部署和 metrics 访问。这些测试不能代替真实负载下的性能验证，因此性能结论来自单独的集群实验。
 
 ```text
 api/v1alpha1/          CRD 类型与校验标记
