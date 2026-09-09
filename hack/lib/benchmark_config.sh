@@ -11,6 +11,27 @@ benchmark_config_init() {
     true|false) ;;
     *) echo "ERROR: LATENCY_DIAGNOSTIC must be true or false" >&2; return 1 ;;
   esac
+  METRIC_PIPELINE_DIAGNOSTIC="${METRIC_PIPELINE_DIAGNOSTIC-false}"
+  METRIC_PIPELINE_SOURCE_NODE="${METRIC_PIPELINE_SOURCE_NODE-}"
+  case "$METRIC_PIPELINE_DIAGNOSTIC" in
+    true|false) ;;
+    *) echo "ERROR: METRIC_PIPELINE_DIAGNOSTIC must be true or false" >&2; return 1 ;;
+  esac
+  if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
+    if [ "$LATENCY_DIAGNOSTIC" != true ]; then
+      echo "ERROR: METRIC_PIPELINE_DIAGNOSTIC requires LATENCY_DIAGNOSTIC=true" >&2
+      return 1
+    fi
+    if ! [[ "$METRIC_PIPELINE_SOURCE_NODE" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || \
+        (( ${#METRIC_PIPELINE_SOURCE_NODE} > 253 )); then
+      echo "ERROR: METRIC_PIPELINE_SOURCE_NODE must be an explicit Kubernetes node name" >&2
+      return 1
+    fi
+  elif [ -n "$METRIC_PIPELINE_SOURCE_NODE" ]; then
+    echo "ERROR: METRIC_PIPELINE_SOURCE_NODE requires METRIC_PIPELINE_DIAGNOSTIC=true" >&2
+    return 1
+  fi
+  export METRIC_PIPELINE_DIAGNOSTIC METRIC_PIPELINE_SOURCE_NODE
   RPS="${RPS-25}"
   if [ "$LATENCY_DIAGNOSTIC" = true ]; then
     BENCHMARK_PATTERNS="${BENCHMARK_PATTERNS-step}"
@@ -125,6 +146,9 @@ benchmark_config_fingerprint() {
       if [ "$LATENCY_DIAGNOSTIC" = true ]; then
         printf '%s\n' hack/run_latency_diagnostic.py hack/analyze/latency.py
       fi
+      if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
+        printf '%s\n' hack/analyze/metric_pipeline.py
+      fi
       find api cmd internal -type f -name '*.go' ! -name '*_test.go'
       find config/benchmark config/samples -type f -name '*.yaml'
       find hack/k6 -type f -name '*.js'
@@ -149,6 +173,11 @@ benchmark_config_fingerprint() {
           "latency_gate_timeout_seconds=$LATENCY_GATE_TIMEOUT_SECONDS" \
           'latency_observer_interval_seconds=2' 'latency_phase_tolerance_seconds=2' \
           'latency_gate_clock_precision_seconds=1' 'latency_launch_rounding=ceil'
+      fi
+      if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
+        printf '%s\n' 'metric_pipeline_diagnostic=metric-pipeline-v1' \
+          "metric_pipeline_source_node=$METRIC_PIPELINE_SOURCE_NODE" \
+          'metric_pipeline_cpu_windows_seconds=30,60' 'metric_pipeline_source_range_seconds=90'
       fi
     } | sha256sum | cut -d ' ' -f 1
   ) || return 1
