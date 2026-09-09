@@ -1,0 +1,114 @@
+# Dedicated acceptance fixture; apply only to an isolated Kind cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metrics-safety-workloads
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: metrics-safety-workloads
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: metrics-safety-web
+  template:
+    metadata:
+      labels:
+        app: metrics-safety-web
+    spec:
+      containers:
+        - name: app
+          image: busybox@sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47
+          imagePullPolicy: IfNotPresent
+          command: [sh, -c]
+          args:
+            - |
+              while true; do
+                if [ -f /tmp/load ]; then
+                  i=0
+                  while [ "$i" -lt 20000 ]; do i=$((i+1)); done
+                else
+                  sleep 1
+                fi
+              done
+          resources:
+            requests:
+              cpu: 50m
+              memory: 8Mi
+            limits:
+              cpu: 150m
+              memory: 32Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-canary
+  namespace: metrics-safety-workloads
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-safety-web-canary
+  template:
+    metadata:
+      labels:
+        app: metrics-safety-web-canary
+    spec:
+      containers:
+        - name: app
+          image: busybox@sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47
+          imagePullPolicy: IfNotPresent
+          command: [sh, -c]
+          args: ["while true; do :; done"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 8Mi
+            limits:
+              cpu: 150m
+              memory: 32Mi
+---
+apiVersion: autoscaling.brian.io/v1alpha1
+kind: PredictiveHPA
+metadata:
+  name: web
+  namespace: metrics-safety-workloads
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50
+  decisionMode: Current
+  prediction:
+    algorithm: EWMA
+    alphaPercent: 30
+    window: 5m
+    horizon: 30s
+  scaleDownStabilizationWindowSeconds: 90
+---
+apiVersion: autoscaling.brian.io/v1alpha1
+kind: PredictiveHPA
+metadata:
+  name: web-canary
+  namespace: metrics-safety-workloads
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-canary
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 50
+  decisionMode: Current
+  prediction:
+    algorithm: EWMA
+    alphaPercent: 30
+    window: 5m
+    horizon: 30s
+  scaleDownStabilizationWindowSeconds: 90

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -14,78 +13,65 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
+const diagnosticEvaluation = "2023-11-14T22:15:00Z"
+
 func TestQueryDiagnosticsKeepEvaluationTimeSeparate(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(promFakeResponse([][2]any{
-			{1700000000.0, "10.5"}, {1700000015.0, "12.0"},
-		}))
-	}))
-	defer server.Close()
-	provider, err := NewPrometheus(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	f := newProviderFixture(t)
+	p := f.provider(t)
 	var output bytes.Buffer
-	logger := zap.New(zap.WriteTo(&output), zap.UseDevMode(false)).WithValues("reconcileStartedAt", "test-cycle")
-	ctx := logf.IntoContext(context.Background(), logger)
+	ctx := logf.IntoContext(context.Background(), zap.New(zap.WriteTo(&output), zap.UseDevMode(false)).WithValues("reconcileStartedAt", "test-cycle"))
 	before := time.Now()
-	samples, err := provider.AverageCPUUtilizationPercentage(ctx, "default", "web", 5*time.Minute)
+	got, err := p.AverageCPUUtilizationPercentage(ctx, f.target, time.Minute)
 	after := time.Now()
-	if err != nil || len(samples) != 2 || samples[1].Value != 12 {
-		t.Fatalf("diagnostics changed query results: samples=%v err=%v", samples, err)
+	if err != nil || len(got.Samples) != 1 {
+		t.Fatalf("diagnostics changed observation: %+v %v", got, err)
 	}
 	var record map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
-		t.Fatalf("expected a query diagnostic record, got %q: %v", output.String(), err)
+		t.Fatal(err)
 	}
 	if record["msg"] != "Queried CPU utilization" || record["reconcileStartedAt"] != "test-cycle" {
-		t.Fatalf("query is not correlated to its reconciliation: %v", record)
+		t.Fatalf("query correlation lost: %v", record)
 	}
-	// These are stored query evaluation points, independently specified by the
-	// external API fixture. They must not be relabeled as raw scrape times.
-	if record["latestEvaluationAt"] != "2023-11-14T22:13:35Z" || record["samples"] != float64(2) {
-		t.Fatalf("missing evaluation metadata: %v", record)
+	if record["queryInstantAt"] != diagnosticEvaluation || record["latestEvaluationAt"] != diagnosticEvaluation || record["sourceTimestamp"] != "2023-11-14T22:14:55Z" {
+		t.Fatalf("source and evaluation timestamps were confused: %v", record)
 	}
-	if record["queryStepSeconds"] != float64(15) || record["cpuRateWindowSeconds"] != float64(60) {
-		t.Fatalf("missing query time scales: %v", record)
+	if record["cpuRateWindowSeconds"] != float64(60) || record["observationSpacingSeconds"] != float64(15) {
+		t.Fatalf("sampling contract missing: %v", record)
 	}
 	for _, field := range []string{"queryStartedAt", "queryFinishedAt"} {
 		value, ok := record[field].(string)
 		stamp, parseErr := time.Parse(time.RFC3339Nano, value)
 		if !ok || parseErr != nil || stamp.Before(before) || stamp.After(after) {
-			t.Fatalf("%s is not an observed query boundary: %v", field, record[field])
+			t.Fatalf("invalid query boundary %s: %v", field, record[field])
 		}
 	}
-	if record["queryError"] != "" {
-		t.Fatalf("successful query was reported as an error: %v", record)
+	if _, exists := record["queryStepSeconds"]; exists {
+		t.Fatalf("live observations mislabeled as query_range grid: %v", record)
 	}
 }
 
 func TestQueryDiagnosticsRetainFailureWithoutInventingAnEvaluation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"status":"error","errorType":"unavailable","error":"offline"}`))
-	}))
-	defer server.Close()
-	provider, err := NewPrometheus(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	f := newProviderFixture(t)
+	f.status = http.StatusServiceUnavailable
+	p := f.provider(t)
 	var output bytes.Buffer
 	ctx := logf.IntoContext(context.Background(), zap.New(zap.WriteTo(&output), zap.UseDevMode(false)))
-	samples, err := provider.AverageCPUUtilizationPercentage(ctx, "default", "web", time.Minute)
-	if err == nil || len(samples) != 0 {
-		t.Fatalf("expected the original query failure, got samples=%v err=%v", samples, err)
+	if _, err := p.AverageCPUUtilizationPercentage(ctx, f.target, time.Minute); err == nil {
+		t.Fatal("missing query failure")
 	}
 	var record map[string]any
-	if decodeErr := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); decodeErr != nil {
-		t.Fatalf("query failure lost its diagnostics: %v", decodeErr)
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
+		t.Fatal(err)
 	}
-	errorMessage, _ := record["queryError"].(string)
-	if !strings.Contains(errorMessage, "query_range") || record["samples"] != float64(0) {
-		t.Fatalf("failed query was not identified: %v", record)
+	message, _ := record["queryError"].(string)
+	if !strings.Contains(message, "instant query") || record["samples"] != float64(0) {
+		t.Fatalf("query failure lost: %v", record)
 	}
-	if value, exists := record["latestEvaluationAt"]; !exists || value != nil {
-		t.Fatalf("failed query must expose an unknown evaluation time: %v", record)
+	if record["latestEvaluationAt"] != nil || record["sourceTimestamp"] != nil {
+		t.Fatalf("failed query invented accepted observation: %v", record)
+	}
+	if record["queryInstantAt"] != diagnosticEvaluation {
+		t.Fatalf("requested instant lost: %v", record)
 	}
 }

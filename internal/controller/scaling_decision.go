@@ -15,7 +15,28 @@ limitations under the License.
 */
 package controller
 
-import "math"
+import (
+	"math"
+
+	autoscalingv1alpha1 "github.com/th1nking/predictive-hpa/api/v1alpha1"
+)
+
+// Select only the signal; modes share prediction readiness and all later policy.
+func selectDecisionSignal(mode autoscalingv1alpha1.DecisionMode, current, predicted float64, target int32) (autoscalingv1alpha1.DecisionMode, float64) {
+	if mode == "" {
+		mode = autoscalingv1alpha1.DecisionModePredictive
+	}
+	switch mode {
+	case autoscalingv1alpha1.DecisionModeCurrent:
+		return mode, current
+	case autoscalingv1alpha1.DecisionModeHybrid:
+		// Forecast can retain capacity but cannot initiate expansion or undercut
+		// current demand in Hybrid mode.
+		return mode, max(current, min(predicted, float64(target)))
+	default:
+		return mode, predicted
+	}
+}
 
 // tolerance is the relative error allowed between decision and target CPU
 // utilization before a scaling action is taken. Matches the native HPA
@@ -51,16 +72,17 @@ func computeDesiredReplicas(
 		decisionCPU = 0
 	}
 
-	desiredRaw := int32(math.Ceil(
+	desiredRaw := math.Ceil(
 		float64(currentReplicas) * decisionCPU / float64(targetCPU),
-	))
+	)
 
 	if minReplicas < 1 {
 		minReplicas = 1
 	}
 
-	desired := min(max(desiredRaw, minReplicas), maxReplicas)
-	return desired
+	// Clamp while still floating-point. Converting a large finite CPU-derived
+	// value first can overflow int32 and turn high demand into a minimum request.
+	return int32(min(max(desiredRaw, float64(minReplicas)), float64(maxReplicas)))
 }
 
 // withinTolerance reports whether the selected CPU utilization is within

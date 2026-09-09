@@ -26,12 +26,12 @@ helm upgrade --install prometheus prometheus-community/prometheus \
 
 这里沿用项目环境记录中的 Prometheus chart 版本。配置启用 kube-state-metrics，抓取间隔为 15 秒，关闭实验不需要的组件；Prometheus 使用临时存储。
 
-控制器需要能够从 Prometheus 查询到以下两类指标：
+控制器需要能够从 Prometheus 查询到以下指标，并保留 cAdvisor 的 `id`、`namespace`、`pod`、`container` 标签：
 
 - cAdvisor 的 `container_cpu_usage_seconds_total`，用于计算 CPU 使用量。
-- kube-state-metrics 的 `kube_pod_container_resource_requests{resource="cpu"}`，用于将使用量换算为 CPU request 百分比。
+- 原始 CPU 计数器的 `timestamp(...)`，用于检查 Prometheus 源样本年龄。
 
-因此目标容器必须配置 CPU requests。仅安装 metrics-server 不能满足当前 provider 的查询需求。如果使用已有 Prometheus，请确认它采集了上述指标，并在安装控制器时替换 `prometheus.url`。
+CPU requests 来自 Kubernetes API 中通过 UID 归属校验的 Pod，而不是异步抓取的 kube-state-metrics 分母。目标普通容器必须配置正数 CPU requests。kube-state-metrics 仍用于已有实验诊断，但不再是控制器计算 CPU 利用率的必要输入。仅安装 metrics-server 不能满足当前 provider 的需求。
 
 ### 2. 构建并部署当前代码
 
@@ -68,7 +68,7 @@ kubectl --context kind-predictive-hpa-demo get phpa -n default
 
 示例 PHPA 的 namespace 是 `default`，目标也是该 namespace 的 `php-apache` Deployment。控制器自身部署在 `predictive-hpa-system`，不要求与业务同 namespace。不要让原生 HPA 或另一个 PHPA 同时控制该 Deployment。
 
-示例使用 `Predictive` 模式、50% CPU 目标、1–10 副本、5 分钟查询窗口、30 秒预测时距和 60 秒缩容稳定窗口。没有施加负载时，观察到低 CPU 或保持 1 副本是正常现象。正式压测请使用[仓库中的实验方案](../../../docs/benchmarks/controlled-pilot.md)。
+示例使用 `Predictive` 模式、50% CPU 目标、1–10 副本、5 分钟观测保留窗口、30 秒预测时距和 60 秒缩容稳定窗口。新进程需要积累至少两个不同时间的有效观测，缩容还受冷启动保护约束。正式压测请重新完成容量校准，历史查询方案的结果不能直接作为当前代码的性能证据。
 
 ### 4. 检查控制器是否进入决策流程
 
@@ -79,9 +79,9 @@ kubectl --context kind-predictive-hpa-demo get phpa predictivehpa-sample \
   -n default -o yaml
 ```
 
-日志中的 `Queried CPU utilization`、`Evaluated PredictiveHPA scaling decision` 和 `Reconciled PredictiveHPA` 可用于核对查询与决策；成功写入目标副本数时会记录 `Scaled Deployment`。PHPA status 包含当前/预测 CPU、当前/期望副本数与 `ScaleDownStabilized` condition。
+日志中的 `Queried CPU utilization`、`Evaluated PredictiveHPA scaling decision` 和 `Reconciled PredictiveHPA` 可用于核对查询与决策；成功写入目标副本数时会记录 `Scaled Deployment`。PHPA status 包含当前/预测 CPU、当前/期望副本数，以及 `MetricsReady`、`ScaleDownStabilized` conditions。
 
-`Metrics not yet available` 或 `Insufficient samples for prediction` 表示当前轮次不会写入伸缩目标，控制器会重试。若持续出现，检查 Prometheus 地址、抓取目标及 CPU requests。Pod 为 Running、Helm `--wait` 完成，只能说明部署层面的状态，不能单独证明指标链路和伸缩决策正常。
+`MetricsReady=False` 表示当前轮次不会写入伸缩目标；查看 reason/message 区分样本不足、源数据陈旧、缺少 requests、容器实例歧义或查询错误。不可用时会清除过期的 CPU 展示值，数据恢复并积累有效观测后继续协调。Pod 为 Running、Helm `--wait` 完成，只能说明部署层面的状态。
 
 ## 部署参数与实例参数
 
@@ -92,11 +92,11 @@ kubectl --context kind-predictive-hpa-demo get phpa predictivehpa-sample \
 | `image.repository` | 控制器镜像仓库 | `ghcr.io/th1nking/predictive-hpa` |
 | `image.tag` | 镜像 tag；空值取 `Chart.yaml` 的 `appVersion` | `""`，当前解析为 `0.1.0` |
 | `image.pullPolicy` | 镜像拉取策略 | `IfNotPresent` |
-| `replicaCount` | 控制器副本数；当前应保持单副本 | `1` |
+| `replicaCount` | manager 副本数；通过 Lease 保证单个 leader | `1` |
 | `resources` | 控制器 requests/limits | CPU `50m`/`200m`，内存 `64Mi`/`256Mi` |
 | `prometheus.url` | 控制器访问的 Prometheus 查询端点 | `http://prometheus-server.monitoring.svc:80` |
 | `installCRD` | 是否由本 release 管理 CRD | `true` |
-| `rbac.create` | 是否创建 ClusterRole/ClusterRoleBinding | `true` |
+| `rbac.create` | 是否创建业务读取权限和命名空间级 Lease 权限 | `true` |
 | `serviceAccount.create` | 是否创建 ServiceAccount | `true` |
 | `serviceAccount.name` | 自定义 ServiceAccount 名称 | `""` |
 | `metricsService.enabled` | 为控制器自身的 metrics 启用监听与 Service | `false` |
@@ -114,9 +114,9 @@ kubectl --context kind-predictive-hpa-demo get phpa predictivehpa-sample \
 
 ## 当前部署边界
 
-- **保持单副本。** chart 没有启用 `--leader-elect`，也没有配置 Lease 所需的 RBAC。模板允许修改 `replicaCount`，但提高副本数会让多个控制器同时工作。二进制虽有 leader election 选项，缩容建议历史仍保存在进程内存中，重启或领导者切换不能恢复先前窗口；第一次缩容可能缺少历史保护。
+- **选主与冷启动。** chart 启用 `--leader-elect`，并配置命名空间级 Lease Role/RoleBinding。默认单副本，可用 `replicaCount=2` 验证切主；新 leader 重新积累 CPU 历史，并保护目标已请求副本一个完整稳定窗口。原始历史没有持久化，频繁切主可能延长容量保留时间。`rbac.create=false` 时需自行提供 Pod/ReplicaSet 读取权限及 Lease 权限。
 - **Deployment + CPU + EWMA。** 目标必须与 PHPA 同 namespace。当前不支持 StatefulSet、内存/自定义指标或 scale-to-zero；`minReplicas: 0` 在计算时按 1 处理。
-- **指标匹配有假设。** 查询使用 `pod=~"<deployment>-.*"` 匹配 Pod，当前没有按 owner reference 精确关联。已有实验以单容器、明确 CPU request 的业务为主；多容器业务与同名前缀工作负载需要额外验证。
+- **保守的指标有效性要求。** 所有纳入的普通容器必须有正数 CPU request、完整且新鲜的 CPU 数据和可确认的 runtime container ID。Pod 级资源和可重启 init sidecar 暂不支持；输入不可用时保留 Scale。支持的 cAdvisor 身份来自标准 Linux cgroupfs/systemd 路径，不能移除 `id` 标签后只靠 Pod 名称匹配。
 - **metrics 开关不等于监控接入完成。** 二进制默认通过 HTTPS 和鉴权暴露自身 metrics，即使配置端口为 8080 也不会自动变成 HTTP。chart 尚未提供完整的 TokenReview/SubjectAccessReview 权限、metrics 读取授权、证书配置与 ServiceMonitor；默认演示流程保持关闭。`prometheus.url` 则是控制器读取业务指标的入口，两者用途不同。
 - **Helm 与 Kustomize 尚未完全对齐。** chart 当前没有配置健康探针；仓库的 Kind E2E 使用 Kustomize，验证 manager 运行与 metrics 端点，不能作为 chart 完整部署流程或真实扩缩容效果的验收证据。
 

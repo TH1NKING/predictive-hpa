@@ -3,7 +3,7 @@
   RBAC rules 在此手写，未走 CRD 那样的同步脚本——rules 短且稳定，drift 风险低。
   注意：生产代码里 rules 的 source of truth 是 internal/controller 顶部的
   +kubebuilder:rbac markers（make manifests 生成 config/rbac/role.yaml）。
-  若未来新增 marker（如加 memory 指标要读 pods），需手动同步下面的 rules。
+  新增 marker 后，需同步下面的 rules。
 */ -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -20,9 +20,16 @@ rules:
   - apiGroups: ["autoscaling.brian.io"]
     resources: ["predictivehpas/status"]
     verbs: ["get", "update", "patch"]
+  - apiGroups: ["autoscaling.brian.io"]
+    resources: ["predictivehpas/finalizers"]
+    verbs: ["update"]
   # 目标 Deployment：读取当前副本数
   - apiGroups: ["apps"]
-    resources: ["deployments"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  # 核验 Pod 身份、容器实例和 CPU requests。
+  - apiGroups: [""]
+    resources: ["pods"]
     verbs: ["get", "list", "watch"]
   # scale 子资源：通过 scale 子资源调整副本数（而非直接改 Deployment spec）
   - apiGroups: ["apps"]
@@ -30,6 +37,9 @@ rules:
     verbs: ["get", "update", "patch"]
   # events：记录扩缩容事件（可观测性）
   - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["events.k8s.io"]
     resources: ["events"]
     verbs: ["create", "patch"]
 ---
@@ -43,6 +53,34 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ include "predictive-hpa.fullname" . }}-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "predictive-hpa.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "predictive-hpa.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "predictive-hpa.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "predictive-hpa.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "predictive-hpa.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "predictive-hpa.fullname" . }}-leader-election
 subjects:
   - kind: ServiceAccount
     name: {{ include "predictive-hpa.serviceAccountName" . }}

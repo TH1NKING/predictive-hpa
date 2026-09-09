@@ -16,8 +16,9 @@ image:
 imagePullSecrets: []
 
 # -- 控制器副本数
-# 固定 1：稳定窗口历史是 in-memory 的，不支持多副本 HA（见项目 Limitation）。
-# 多副本会导致各副本各自维护一份不一致的缩容历史。HA 是 v1beta1 的 roadmap。
+# 默认 1；可设为 2 验证 Lease 选主。只有 leader 执行协调。
+# 新 leader 重新积累 CPU 样本，并保护已请求副本一个完整稳定窗口。
+# 这不是历史状态复制；频繁重启可能延长容量保留时间。
 replicaCount: 1
 
 # -- 控制器资源限制
@@ -30,7 +31,7 @@ resources:
     memory: 64Mi
 
 # -- Prometheus 查询端点
-# 控制器从这里拉历史 CPU 时序作为 EWMA 输入。
+# 控制器从这里查询当前 CPU rate 与原始计数器时间戳。
 # in-cluster 直连 Service DNS；开发期可用 port-forward 后的地址。
 prometheus:
   url: "http://prometheus-server.monitoring.svc:80"

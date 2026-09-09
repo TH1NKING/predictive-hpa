@@ -105,6 +105,7 @@ var _ = BeforeSuite(func() {
 
 	fakeMetrics = newFakeMetricsProvider()
 	fakeClock = testingclock.NewFakeClock(time.Now())
+	fakeMetrics.Clock = fakeClock
 
 	err = (&PredictiveHPAReconciler{
 		Client:          mgr.GetClient(),
