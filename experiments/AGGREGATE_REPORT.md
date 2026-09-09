@@ -2,9 +2,35 @@
 
 > Generated 2026-07-09 01:52 UTC from 18 experiment(s) across 3 pattern(s) × 2 controller(s).
 
+> **Historical evidence notice — updated 2026-09-09.** This report preserves the
+> July 2026 batch and its original tables. It describes an earlier controller
+> and benchmark harness, not the current implementation. All 18 run metadata
+> files record commit `409227d` with `dirty: true`, so that commit alone does
+> not identify the exact code executed.
+>
+> The historical harness at that commit targets `localhost:8080` through
+> `kubectl port-forward svc/php-apache`. That path does not establish request
+> distribution across replicas; actual per-Pod traffic in these runs was not
+> verified. PHPA used a 60s downscale window while native HPA used its 300s
+> default. Together with differing metric and reconciliation paths, this
+> prevents attributing the observed differences to prediction alone.
+>
+> These tables retain the old extraction conventions: inferred load boundaries,
+> 15s replica samples, and total Pod-seconds over experiments of different
+> lengths (612–675s). Some native runs ended before returning to one replica.
+> The reported tails are therefore observation-window values, not necessarily
+> complete scale-down durations. Pod-seconds measure sampled replica occupancy,
+> not CPU consumption or billing. No original data or table has been recomputed.
+
+For subsequent evidence, start with the [Service routing validation](../docs/benchmarks/service-routing-validation.md),
+[matched-window controlled pilot](../docs/benchmarks/capacity-and-controlled-pilot-20260906.md),
+and [same-controller decision-mode comparison](../docs/benchmarks/decision-mode-ablation-20260907.md).
+Those are separate batches; they neither reconstruct historical traffic nor
+establish a general prediction advantage.
+
 ## 1. Executive Summary
 
-PHPA's design intent: trade slower first-scale-up response for faster scale-down and lower resource waste. The numbers below quantify both sides of that trade.
+This batch observed later first scale-up, higher peak replicas, and shorter recorded post-load tails for PHPA. These are descriptive observations under the historical configurations and timing conventions above. They do not establish a resource-efficiency benefit or the cause of the differences.
 
 | Pattern | Metric | PHPA | native HPA | Δ (PHPA − native) |
 |---|---|---|---|---|
@@ -31,9 +57,9 @@ PHPA's design intent: trade slower first-scale-up response for faster scale-down
 - **Experiment duration range**: 612s — 675s
 - **Cluster**: kind-hpa-dev (single node, Ubuntu 24.04 VM)
 - **Target workload**: php-apache (CPU-bound, requests=200m / limits=500m)
-- **Load tool**: k6 v1.3.0, target RPS=25 (calibrated; see Phase 3.2)
+- **Load tool**: k6 v1.3.0, target RPS=25 (historical setting; delivered load was reduced by dropped iterations)
 
-Each experiment follows the same 11-step orchestrator (`hack/run_benchmark.sh`): reset Deployment to 1 replica → switch controller → 30s metric accumulation → k6 load (211s) → 360s tail observation → collect prom + events + controller log → smoke check → mark success.
+The historical orchestrator intended to reset the Deployment to one replica, switch controllers, accumulate metrics, run the selected load pattern, observe the tail, and collect Prometheus samples, events and controller logs. Its metadata start precedes setup; the old extractor inferred load start and stop from that timestamp plus fixed offsets instead of recording the actual k6 process boundaries. Setup time and pattern duration therefore matter when interpreting relative timing. A successful collection status does not establish successful service or a valid capacity comparison.
 
 ## 3. Per-Pattern Comparison
 
@@ -69,7 +95,7 @@ Each experiment follows the same 11-step orchestrator (`hack/run_benchmark.sh`):
 
 **Interpretation:**
 
-PHPA's first scale-up is ~15s slower than native HPA (105s vs 90s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 8.0 vs native 5.0. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 214s vs native HPA's 426s, the core selling point. PHPA's failed-rate (76.1%) exceeds native HPA's (74.1%). Slower first-scale-up reflected in client-side timeouts.
+The historical extraction reports first scale-up at 105s for PHPA versus 90s for native HPA, and mean peak replicas of 8.0 versus 5.0. Recorded tail occupancy is 214s versus 426s, but a complete native return to one replica was observed in only one run. Failed-rate means are 76.1% and 74.1%, with all-request p95 near 10s. The batch does not isolate how smoothing, collection delay, routing or control settings contributed to these observations.
 
 ### 3.2 `spike` pattern
 
@@ -103,7 +129,7 @@ PHPA's first scale-up is ~15s slower than native HPA (105s vs 90s). This reflect
 
 **Interpretation:**
 
-PHPA's first scale-up is ~5s slower than native HPA (85s vs 80s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 6.3 vs native 5.0. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 164s vs native HPA's 393s, the core selling point. Business impact: PHPA's failed-rate is 56.0% vs native HPA's 59.6% (lower is better). Difference is small because the bottleneck is the single-Pod start-up window, not the controller.
+The historical extraction reports first scale-up at 85s for PHPA versus 80s for native HPA, mean peak replicas of 6.3 versus 5.0, and recorded tail occupancy of 164s versus 393s. Failed-rate means are 56.0% and 59.6%, with all-request p95 near 10s. Three repeats with unverified request distribution do not establish a service advantage, noninferiority or a single-Pod startup bottleneck.
 
 ### 3.3 `step` pattern
 
@@ -137,24 +163,25 @@ PHPA's first scale-up is ~5s slower than native HPA (85s vs 80s). This reflects 
 
 **Interpretation:**
 
-PHPA's first scale-up is ~15s slower than native HPA (95s vs 80s). This reflects the EWMA + 1m Prometheus rate path's smoothing tax. PHPA over-provisions: peak replicas 10.0 vs native 5.3. EWMA's forward extrapolation overshoots when the rate-of-change is high. PHPA finishes scale-down faster: waste window 164s vs native HPA's 372s, the core selling point. PHPA's failed-rate (91.5%) exceeds native HPA's (91.0%). Slower first-scale-up reflected in client-side timeouts.
+The historical extraction reports first scale-up at 95s for PHPA versus 80s for native HPA, and mean peak replicas of 10.0 versus 5.3. PHPA's recorded tail occupancy is 164s; native HPA's 372s is limited by observation ending before full scale-down in every run. Failed-rate means exceed 90% for both controllers and all-request p95 is near 10s. Neither the reported tail difference nor lower total occupancy establishes useful service efficiency.
 
 ## 4. Cross-Pattern Findings
 
-When the matrix includes multiple patterns, this section calls out what holds independent of load shape — e.g., whether PHPA's scale-down advantage replicates under ramp and spike, or only under step. With 3 patterns now covered (ramp, spike, step), the following trends emerge:
+Across these three patterns, the archived group means show consistent directions for first scale-up and peak replicas. This is a description of this batch, not evidence that the behavior is structural or independent of workload and environment.
 
-- **The scale-up-cost / scale-down-benefit trade-off holds in all three patterns — it is structural, not an artifact of one load shape.** PHPA is *always* slower to first scale-up (+19% step, +17% ramp, +6% spike) and *always* clears idle Pods faster (waste window −56% / −50% / −58%). Every core delta keeps the same sign across patterns; only the magnitude moves. The design bet — trade scale-up speed for scale-down efficiency — reproduces regardless of load shape.
-- **Peak overshoot is bounded by design, which is why the remaining overshoot stays modest.** A relative-lead cap (predicted CPU ≤ 1.3× current) plus damped-trend extrapolation hold peak replicas to +27% under spike (6.3 vs 5.0) and +60% under ramp (8.0 vs 5.0); step still reads +88% (10.0 vs 5.3) only because it saturates the maxReplicas=10 ceiling. The controller log shows the cap engaging 15–24 times per run — without it, a cold-start onset extrapolates to roughly 2× current CPU and would nearly double the fleet on the first tick.
-- **Peak-vs-total paradox: despite higher peaks than native, PHPA consumes fewer Pod-seconds in every pattern.** Total Pod-seconds: spike 1472 vs 2648 (−44%), ramp 2158 vs 2785 (−23%), step 2240 vs 2712 (−17%); average replicas track the same way (spike 2.34 vs 4.20, ramp 3.25 vs 4.22, step 3.73 vs 4.52). Faster scale-down more than repays the brief higher peak — PHPA's over-provisioning is a short transient, native's cost is a long tail. Net compute consumed, not peak replicas, is the honest efficiency metric, and PHPA wins it across the board, most decisively under the spike.
-- **Request success (k6 failed-rate) is indistinguishable between controllers in all three patterns** (Δ ≤ 6%, within or near stdev; the spike even favors PHPA at 56.0% vs 59.6%). At the calibrated RPS=25 the bottleneck is single-Pod cold-start capacity (see §3.2 calibration), which neither controller can shortcut. The controller choice moves *resource efficiency*, not *request success*, at this operating point.
-- **Failed-rate magnitude tracks load shape, not controller:** step ~91% ≫ ramp ~76% > spike ~56%, near-identically for PHPA and native HPA. The step's instantaneous jump to full RPS starves the single starting Pod hardest; the spike's shorter high-load dwell lets the fewest requests pile up. This confirms the harness measures load-shape effects cleanly with the controller as a second-order variable — the clean A/B the "same formula, different input" design was built to expose.
+- **The configurations did not isolate prediction.** PHPA and native HPA differed in downscale windows, metric paths and control behavior. The shorter recorded PHPA tails cannot be credited to EWMA alone.
+- **The damping and prediction cap were engineering constraints, not a measured causal explanation.** This batch has no matched uncapped control. Higher PHPA peak replicas remain visible in all three tables; a forecast cap does not establish a bound on fleet-wide overshoot relative to native HPA.
+- **Lower recorded total Pod-seconds do not establish efficiency.** The tables report less PHPA occupancy in each pattern, but use unequal full-experiment windows, inferred load boundaries and some incomplete tails. Service outcomes were poor, and sampled replica occupancy is neither consumed CPU nor cloud cost.
+- **Similar failed-rate means do not establish equivalent service.** Every group had dropped iterations and an all-request p95 around 10s. No equivalence or noninferiority analysis was performed; the root causes of failures and historical request distribution remain unresolved.
+- **Load-shape differences are observations rather than a validated causal model.** Step had higher failure rates than ramp or spike in this batch. The data do not isolate load shape, startup capacity or controller choice as the explanation.
 
 ## 5. Known Limitations
 
 ### Sampling & instrumentation
 
 - **Replica timeline precision is 15s** (prom step size). Per-second scale events are visible only via events.yaml, which is unreliable for PHPA (no SuccessfulRescale emitted) and contaminated across experiments by 1h K8s event TTL — see commit e862d1b for rationale.
-- **Sample size n=3 per (pattern, controller)** is below the threshold for formal statistical inference. Reported mean ± stdev is engineering summary only — no t-tests, no p-values.
+- **Sample size n=3 per (pattern, controller)** supports only the descriptive summary presented here. No hypothesis, equivalence or noninferiority tests were performed; no statistical-significance claim is made.
+- **Historical time references and incomplete tails** limit comparisons. Negative values in the original `First scale-down (after k6 stop)` rows mean that the extractor's first recorded downscale preceded its inferred stop reference; they are not a measured negative post-load response time. `n/a` and extraction warnings must not be read as completed scale-down.
 - **Single-node kind cluster** does not reflect production scheduling latency, node-to-node network jitter, or PV provisioning delays.
 
 ### Warnings emitted during extraction
