@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "predictive-hpa.labels" . | nindent 4 }}
 spec:
-  # 固定单副本：in-memory 稳定窗口历史不支持多副本 HA（见 values.yaml 注释）
+  # Lease 选主保证单个活跃 manager；新 leader 重建观测与缩容保护。
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
@@ -28,7 +28,8 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
-            # 控制器从这里拉历史 CPU 时序作为 EWMA 输入
+            - --leader-elect
+            # 核验当前 CPU 观测后，在进程内积累 EWMA 历史。
             - --prometheus-url={{ .Values.prometheus.url }}
             {{- if .Values.metricsService.enabled }}
             - --metrics-bind-address=:{{ .Values.metricsService.port }}

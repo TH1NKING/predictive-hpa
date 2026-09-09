@@ -191,7 +191,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	metricsProvider, err := metricsprovider.NewPrometheus(prometheusURL)
+	metricsProvider, err := metricsprovider.NewPrometheus(prometheusURL, mgr.GetAPIReader())
 	if err != nil {
 		setupLog.Error(err, "Failed to create metrics provider")
 		os.Exit(1)

@@ -4,33 +4,35 @@
 
 ## 从 CR 到 Scale 的代码路径
 
-入口是 [`cmd/main.go`](../cmd/main.go)：创建 manager、注册 CRD scheme、构造 Prometheus Provider，并把它注入 [`PredictiveHPAReconciler`](../internal/controller/predictivehpa_controller.go)。控制器监听 PredictiveHPA 资源，正常协调后通过 `RequeueAfter` 再次检查。
+入口是 [`cmd/main.go`](../cmd/main.go)：创建 manager、注册 CRD scheme、用 uncached API Reader 构造 Prometheus Provider，并把它注入 [`PredictiveHPAReconciler`](../internal/controller/predictivehpa_controller.go)。控制器监听 PredictiveHPA 及目标 Deployment 的相关变化，正常协调后通过 `RequeueAfter` 再次检查。
 
 一次协调按以下顺序执行：
 
-1. 读取 PHPA 和同命名空间的目标 Deployment。PHPA 被删除后，清理对应的内存历史；目标尚不存在时重试。当前仅处理 `kind: Deployment`。
-2. Provider 按 `prediction.window` 查询历史 CPU 利用率，返回按时间排列的样本。无数据或预测所需样本不足时不写 Scale，等待后续协调。
+1. 读取 PHPA 和同命名空间的目标 Deployment，读取 Scale 中已请求的副本数，并核验对象身份。PHPA 被删除后清理对应的建议历史。当前仅处理 `kind: Deployment`。
+2. Provider 核验当前 Pod → ReplicaSet → Deployment 的 UID 链，查询每个普通容器的 CPU rate 和源样本时间，用同一集合的 CPU requests 归一化。查询前后的成员、容器实例或 requests 变化时拒绝本次观测；通过后加入有界 CPU 历史。无数据或预测样本不足时不写 Scale，并更新 `MetricsReady`。
 3. 计算 EWMA 和阻尼趋势预测，再由控制器限幅；按 `decisionMode` 选择送入副本公式的信号。
-4. 使用 `Deployment.status.replicas` 作为当前副本，计算 `ceil(当前副本 × 决策 CPU / 目标 CPU)`，应用 min/max 边界，记录建议副本数并裁剪过期历史。需要缩容时，取窗口内建议值的最大值。
-5. 最终建议等于当前副本，或决策 CPU 落入容差带时，跳过 Scale 写入；否则重新读取 Scale 子资源，再写入副本目标。
-6. 更新 PHPA status，包括观测 CPU、限幅预测、期望副本和 `ScaleDownStabilized` 条件，并记录协调结果。
+4. 计算需求建议并应用 min/max 边界，记录未经稳定化的建议值。缩容时应用窗口最大值与冷启动保护；窗口最大值只能保留容量，不能主动触发扩容。动作判断区分已请求副本与滞后的观测副本。
+5. 不需要调整或处于容差带时跳过写入；否则重新核验 PHPA/目标身份与配置，使用 Scale 的版本进行乐观并发更新。
+6. 更新 PHPA status，包括 CPU、当前/期望副本、`MetricsReady` 与 `ScaleDownStabilized` 条件，并记录协调结果。输入不可用时清除过时 CPU 展示值，保留上次成功 Scale 时间。
 
 重新读取 Scale 后更新，能使用该子资源的当前版本；API 写入失败或冲突会返回错误，后续协调重试。Scale 写入和 status 更新是两个请求，不能视为原子事务。代码在成功 Scale 写入后立即记录日志，因此随后 status 冲突不会抹去已发生的扩容证据。
 
-当前没有为目标 Deployment 注册额外 watch；PHPA 事件和重排队驱动协调。因此 `30s` 配置不是严格的墙钟调度周期，也不是完整的端到端扩容延迟。
+事件和重排队共同驱动协调。因此 `30s` 配置不是严格的墙钟调度周期，也不是完整的端到端扩容延迟。状态回写不应触发无休止的自身协调；配置和用户显式触发的事件仍需要处理。
 
 ## 指标、预测与策略为何分开
 
 [`metricsprovider.Provider`](../internal/metricsprovider/prometheus.go)暴露“查询 Deployment 的 CPU 利用率序列”的业务接口，调用方不拼接 PromQL。当前只有 Prometheus 实现；接口存在不等于已经支持多种数据源。
 
-输入依赖两类指标：
+输入来自两条通道：
 
 - cAdvisor 的 `container_cpu_usage_seconds_total`，用于计算 CPU 使用率；
-- kube-state-metrics 的 `kube_pod_container_resource_requests{resource="cpu"}`，用于按 CPU request 归一化。
+- Kubernetes API 的 Pod/ReplicaSet/Deployment，提供 UID 归属、当前容器实例、Ready 状态与 CPU requests。
 
-代码使用一分钟 `rate` 窗口、15 秒历史查询步长，按 Deployment 名称前缀筛选 Pod。Prometheus 的抓取间隔由监控部署决定，本仓库实验配置设为 15 秒。**抓取间隔、rate 窗口、历史查询步长、预测窗口和协调间隔是五个不同参数。** 改短其中一个，不能保证其他环节更早提供有效信号。
+CPU 使用一分钟 `rate` 窗口，另查原始计数器的 `timestamp(...)`。源样本最大年龄默认 45 秒，查询过程有 10 秒期限。每个纳入容器必须有唯一的新鲜使用量、当前 runtime container ID 和正数 request；计算 `100 × 总 CPU 使用量 / 同一容器集合的总 CPU request`。这支持普通多容器的加权计算，不会把缺失 request 的容器悄悄从分母移除。
 
-当前表达式聚合使用量与 requests，未根据 owner/selector 精确解析工作负载归属。多容器、同名前缀工作负载、滚动更新与缺失数据语义还需要进一步验证。现有单容器实验的结果不能代表这些场景。
+Provider 保存通过校验的实时观测，保留窗口支持 15 秒至 1 小时；用于预测的观测间隔至少 15 秒，默认协调周期约 30 秒。窗口必须容纳至少两个不同时间的有效观测。每个目标最多保留约 241 个锚点，目标缓存上限为 256；逐出或重启后重新积累样本。超过缓存容量的持续活跃目标可能反复预热，本版本没有相应的大规模可用性保证。滚动更新中的未就绪、暂时缺样和成员变化会拒绝当前观测，但保留窗口内此前已验证的历史，不补零、不重算旧成员。非法样本、源数据陈旧或查询失败会清空该目标的 CPU 历史，恢复后重新预热。Pod 级资源与可重启 init sidecar 等语义被明确拒绝。
+
+这是一次数据模型变化：以前向 Prometheus 回溯查询 15 秒步长的历史，现在积累自己验证过的观测。历史的已删除 Pod 不会被套用当前 Pod 名单重新计算，但启动前任意历史也不会被冒充为已验证数据。理由见 [ADR 0001](adr/0001-verified-live-cpu-observations.md)。旧 benchmark 的采样和启动行为不能当成当前版本的性能证据。
 
 [`predictor`](../internal/predictor/ewma.go)保持无 Kubernetes 依赖的计算接口：
 
@@ -58,7 +60,9 @@ Current 仍执行预测计算并保留相同的样本就绪门槛。这样便于
 
 缩容窗口记录每次计算得到的建议副本数，缩容时取最近窗口内的最大建议值。它与“每次扩容后固定等待 60 秒”不同。当前实现无论扩容、持平还是缩容都会裁剪过期记录，避免长期不缩容时历史持续增长。容差则检查 CPU 与目标值的相对偏差是否小于 `0.1`，减少阈值附近的反复动作。
 
-历史按 PHPA 的命名空间与名称保存在内存 map 中，访问由互斥锁保护。好处是无需额外 API 写入；代价是重启无法恢复历史，首次缩容可能没有窗口保护。选择 ConfigMap/status 等持久化方案，还需要解决更新冲突、恢复语义和额外写入成本，目前没有实现。
+建议历史以 PHPA 的命名空间/名称定位，同时校验 PHPA UID、目标 UID 和目标引用。新进程、对象替换或窗口配置改变后，会重新保护实时 Scale 已请求副本一个完整的新窗口。缩短正数窗口也会重新计时，因为旧时间桶已丢失桶内每个峰值的精确时间；设为零则立即禁用。当前副本边界仍有约束力。冷启动只阻止缩容；真实需求仍可触发扩容。
+
+历史采用有界的保守时间桶，桶内保留最大建议值和最新观察时间，避免高频事件无限增加条目。最大值不会提前过期，代价是最多多保留一个桶宽。重启可能额外保留一个完整窗口，因此这是重建保护而不是持久化历史恢复。相比 status/ConfigMap 方案，它避免了历史写入与 Scale 写入之间的持久化协议，详见 [ADR 0002](adr/0002-cold-start-scale-down-protection.md)。
 
 ## 配置参考
 

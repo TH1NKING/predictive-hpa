@@ -177,10 +177,17 @@ var _ = Describe("PredictiveHPA reconcile loop", func() {
 			RequeueInterval: 15 * time.Second,
 		}
 
-		result, err := reconciler.Reconcile(logf.IntoContext(ctx, logger), ctrl.Request{
-			NamespacedName: client.ObjectKeyFromObject(phpa),
-		})
-		Expect(err).NotTo(HaveOccurred())
+		var result ctrl.Result
+		// The suite's manager also observes this PHPA. Missing-target status now
+		// uses optimistic concurrency, so retry this public request if that
+		// manager publishes the same unavailable condition concurrently.
+		Eventually(func(g Gomega) {
+			var err error
+			result, err = reconciler.Reconcile(logf.IntoContext(ctx, logger), ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(phpa),
+			})
+			g.Expect(err).NotTo(HaveOccurred())
+		}, 5*time.Second, 50*time.Millisecond).Should(Succeed())
 		Expect(result.RequeueAfter).To(Equal(15 * time.Second))
 		var finished map[string]any
 		for _, record := range diagnostics.records(testNamespace) {

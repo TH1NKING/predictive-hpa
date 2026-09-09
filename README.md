@@ -9,20 +9,20 @@
 [![Go](https://img.shields.io/badge/Go-1.25.3%2B-00ADD8?logo=go)](go.mod)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
-PredictiveHPA（PHPA）是为了理解kubernete工作原理、流程等做的个人项目，主要学习和实践 **Go / Kubernetes / 云原生基础设施**。我想通过实现一个扩缩容控制器，理解从指标采集到副本调整的完整过程，并验证一个问题：如果在当前 CPU 指标之外引入历史趋势，能否改善扩缩容时机？
+PredictiveHPA（PHPA）是我为了理解 Kubernetes 的工作原理和控制流程而做的个人项目，主要学习和实践 **Go / Kubernetes / 云原生基础设施**。我想通过实现一个扩缩容控制器，理解从指标采集到副本调整的完整过程，并验证一个问题：如果在当前 CPU 指标之外引入历史趋势，能否改善扩缩容时机？
 
 围绕这个问题，我实现了 CRD、控制器、EWMA 预测和缩容稳定窗口，打通了从声明式配置到 `Deployment/scale` 写入的流程，并在 Kind 集群中进行了容量校准和多轮对照实验。**目前的实验尚未证明预测模式能更早扩容或取得整体服务收益。** 这个结果也让我继续排查负载分流、指标可见性和协调时机，把实现过程、实验结果和设计取舍记录下来。
 
-[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [实验与结论](docs/benchmarks/README.md)
+[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [指标安全讲解](docs/metrics-safety-guide.zh-CN.md) · [实验与结论](docs/benchmarks/README.md)
 
 ## 我做了哪些工作
 
 | 部分 | 已实现能力 | 代码入口 |
 |---|---|---|
 | Kubernetes 控制器 | Kubebuilder / controller-runtime；读取 CR、查询指标、更新 Scale 子资源与 status | [Reconcile](internal/controller/predictivehpa_controller.go) |
-| 指标与预测 | Prometheus 历史 CPU 查询；EWMA 平滑与阻尼趋势外推；算法和数据源分包 | [metricsprovider](internal/metricsprovider/prometheus.go)、[predictor](internal/predictor/ewma.go) |
-| 扩缩容策略 | 三种决策模式、预测限幅、副本上下限、10% 容差、缩容稳定窗口 | [决策函数](internal/controller/scaling_decision.go)、[窗口历史](internal/controller/scale_history.go) |
-| 自动化验证 | 单元测试、FakeClock 时间控制、envtest API 集成测试、Kind 部署烟测、实验工具离线回归 | [controller tests](internal/controller/reconcile_scale_test.go)、[CI](.github/workflows) |
+| 指标与预测 | Kubernetes UID 归属校验；Prometheus CPU 观测与数据有效性检查；EWMA 平滑与阻尼趋势外推 | [metricsprovider](internal/metricsprovider/prometheus.go)、[predictor](internal/predictor/ewma.go) |
+| 扩缩容策略 | 三种决策模式、预测限幅、副本上下限、10% 容差、有界缩容历史与冷启动保护 | [决策函数](internal/controller/scaling_decision.go)、[窗口历史](internal/controller/scale_history.go) |
+| 验证 | 单元测试、FakeClock、envtest、Kind 部署烟测及真实负载/故障/切主验收 | [controller tests](internal/controller/reconcile_scale_test.go)、[验证记录](docs/metrics-safety-validation.md)、[CI](.github/workflows) |
 | 实验与诊断 | k6 集群内 Service 发压、固定副本容量校准、匹配对照、查询与 Scale 时间记录、失败记录保留 | [实验导航](docs/benchmarks/README.md)、[工具](hack) |
 
 ## 控制器如何工作
@@ -30,10 +30,10 @@ PredictiveHPA（PHPA）是为了理解kubernete工作原理、流程等做的个
 ```mermaid
 flowchart LR
     A["cAdvisor CPU 计数器"] --> P[Prometheus]
-    B["kube-state-metrics CPU requests"] --> P
-    P -->|历史 CPU 利用率| M[metricsprovider]
+    B["Kubernetes API：UID 归属、CPU requests"] --> M
+    P -->|CPU rate 与源样本时间| M[metricsprovider]
     C["PredictiveHPA CR"] --> R[Reconcile]
-    M --> E["EWMA + 阻尼趋势外推"]
+    M -->|保留通过校验的观测历史| E["EWMA + 阻尼趋势外推"]
     M --> R
     E --> R
     R --> D["选择信号 → 副本边界 → 稳定窗口 → 容差"]
@@ -55,9 +55,24 @@ desiredReplicas = ceil(currentReplicas × decisionCPU / targetCPU)
 | `Current` | 最新观测 CPU | 提供同控制器的当前值基线 |
 | `Hybrid` | `max(当前值, min(限幅预测, 目标值))` | 当前需求触发扩容，预测可保留副本，但不能单独触发扩容 |
 
-预测部分我选择了 EWMA 与阻尼系数 `0.85` 的趋势外推，并在控制器中把预测限制在 `0` 到当前 CPU 的 `1.3` 倍。正常协调默认在完成后 `30s` 重排队，缩容稳定窗口默认 `60s`。为什么这样选择、有哪些代价，以及异常路径和配置说明，我整理在了[实现与设计](docs/design.md)中。
+预测部分我选择了 EWMA 与阻尼系数 `0.85` 的趋势外推，并在控制器中把预测限制在 `0` 到当前 CPU 的 `1.3` 倍。正常协调默认在完成后 `30s` 重排队，缩容稳定窗口默认 `60s`。控制器启动后需要积累至少两个有效观测；重启或切主时，会重新保护已请求副本一个完整稳定窗口。为什么这样选择、有哪些代价，以及异常路径和配置说明，我整理在了[实现与设计](docs/design.md)中。
+
+## 指标安全和故障恢复验证
+
+补齐 UID 归属、缺失/陈旧数据处理与重启保护后，我在独立 Kind 集群中完成了 **11 项功能验收**，并复核了 108 份对象快照和 276 条命令：
+
+| 场景 | 实际结果 |
+|---|---|
+| 同名前缀工作负载 | 同轮观测中，空闲 `web` 为 1% CPU，高负载 `web-canary` 为 300%，指标保持隔离 |
+| 真实 CPU 负载 | `web` 的已请求副本从 1 增至 3；滚动更新后能够恢复完整指标 |
+| leader 切换 | 新 leader 建立冷启动保护，30 秒观察段内保持至少 3 个副本，保护到期后能够缩至 1 个 |
+| Prometheus 中断与恢复 | 中断期间保持 Scale、清除过期 CPU 展示值；指标恢复后继续协调 |
+
+Linux 单元测试、envtest 和 race 检查均通过。这里验证的是控制器的功能与故障行为；新版本是否改善服务成功率、延迟和副本占用，还需要重新做匹配对照。[完整验证记录与边界](docs/metrics-safety-validation.md) · [代码讲解与方案取舍](docs/metrics-safety-guide.zh-CN.md)
 
 ## 实验得到了什么
+
+以下实验来自指标安全改造之前的代码。当前版本改为积累经过 UID 校验的实时观测，采样和冷启动行为已有变化；这些历史结果不能作为当前版本的性能验收。
 
 ### 同控制器的三种模式对照
 
@@ -130,9 +145,9 @@ docs/benchmarks/      实验协议、报告、图表与中文讲解
 ## 当前边界与后续方向
 
 - **范围：** `v1alpha1` 仅支持同命名空间的 Deployment、CPU 指标和 EWMA；不支持 scale-to-zero，`minReplicas: 0` 运行时按 1 处理。
-- **状态：** 缩容历史保存在进程内存，重启或切主后会丢失。Helm 按单副本使用；manager 有 leader-election 参数，但项目尚未完成带历史恢复的 HA 方案。
-- **指标：** 当前 PromQL 按 Deployment 名称前缀匹配 Pod，尚未实现基于 owner/selector 的精确归属和复杂多容器语义验证；主要证据来自单容器 `php-apache` 实验。
+- **状态：** CPU 观测和副本建议都保存在有界进程内存中。Helm 启用 Lease 选主，默认单副本；新 leader 重新积累 CPU 样本并建立缩容保护，不恢复原始历史。频繁重启可能延长容量保留时间。
+- **指标：** 依据 Pod → ReplicaSet → Deployment 的 UID 链核验归属，CPU 使用量和 requests 对齐到相同的普通容器集合。缺失、陈旧或无法确认身份的数据会暂停决策；Pod 级资源和可重启 init sidecar 等语义不在本版本支持范围内。
 
-接下来，我计划优先补齐指标归属、缺失/陈旧数据处理与稳定历史恢复，再扩大负载场景和重复次数。多指标、其他工作负载及更复杂的预测算法也在考虑范围内，但目前还没有实现。
+指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。后续还需要基于新版本重新校准容量、扩大负载场景和重复次数。多指标、其他工作负载及更复杂的预测算法也在考虑范围内。
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。

@@ -1,127 +1,291 @@
-// Package metricsprovider abstracts fetching CPU utilization time-series
-// for a Kubernetes Deployment. Implementations may pull from Prometheus,
-// metrics-server, or other monitoring backends.
+// Package metricsprovider collects verified live CPU observations for a Deployment.
 package metricsprovider
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
+	"reflect"
+	"regexp"
+	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/clock"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/th1nking/predictive-hpa/internal/predictor"
 )
 
-// Provider abstracts fetching of metric time-series for a Deployment.
+// CPUHistory contains only observations collected and verified by this process.
+// SourceTimestamp is the oldest source timestamp across the latest observation's containers.
+type CPUHistory struct {
+	Samples         []predictor.Sample
+	ObservedAt      time.Time
+	SourceTimestamp time.Time
+}
+
+// Provider supplies CPU utilization observations for an exact Deployment incarnation.
 type Provider interface {
-	// AverageCPUUtilizationPercentage returns the average CPU utilization
-	// (in percent of requested CPU) across all pods of the named Deployment,
-	// sampled over the most recent `window` of time.
-	AverageCPUUtilizationPercentage(
-		ctx context.Context,
-		namespace, deployment string,
-		window time.Duration,
-	) ([]predictor.Sample, error)
+	AverageCPUUtilizationPercentage(context.Context, *appsv1.Deployment, time.Duration) (CPUHistory, error)
 }
 
-// ErrNoData is returned when Prometheus succeeds but yields no series
-// (e.g. the Deployment has no Pods yet, or kube-state-metrics hasn't
-// caught up). Callers should treat this as a transient condition.
-var ErrNoData = errors.New("metricsprovider: no data returned")
+var (
+	// ErrNoData means there is no eligible workload or no metric response.
+	ErrNoData = errors.New("metricsprovider: no data returned")
+	// ErrStaleData means the newest usable raw counter is older than the allowed age.
+	ErrStaleData = errors.New("metricsprovider: stale source data")
+	// ErrInvalidData means a value or resource configuration cannot safely drive scaling.
+	ErrInvalidData = errors.New("metricsprovider: invalid data")
+	// ErrIncompleteData means the verified container set lacks unambiguous, ready input.
+	ErrIncompleteData = errors.New("metricsprovider: incomplete data")
+	// ErrTargetChanged means identity, membership or resource inputs changed during collection.
+	ErrTargetChanged = errors.New("metricsprovider: target changed during observation")
+)
 
-// PrometheusProvider implements Provider against the Prometheus HTTP API.
+const (
+	// DefaultMaxSampleAge bounds the age of actual CPU counter samples, not query evaluation times.
+	DefaultMaxSampleAge = 45 * time.Second
+	observationSpacing  = 15 * time.Second
+	maxHistoryWindow    = time.Hour
+	maxTargets          = 256
+	queryTimeout        = 10 * time.Second
+)
+
+type targetHistory struct {
+	uid      types.UID
+	samples  []predictor.Sample
+	lastUsed time.Time
+}
+
+// PrometheusProvider joins live API identity and requests with Prometheus CPU samples.
+// Configure Clock and MaxSampleAge before sharing the provider between goroutines.
 type PrometheusProvider struct {
-	api  promv1.API
-	step time.Duration
+	api          promv1.API
+	reader       client.Reader
+	Clock        clock.PassiveClock
+	MaxSampleAge time.Duration
+	mu           sync.Mutex
+	history      map[types.NamespacedName]*targetHistory
+	// Fixed gates serialize a target's observations without holding the history lock.
+	// Hash collisions only serialize unrelated targets; waits share the query deadline.
+	gates [64]chan struct{}
 }
 
-// NewPrometheus constructs a PrometheusProvider pointed at the given
-// Prometheus base URL (e.g. "http://localhost:9090").
-func NewPrometheus(baseURL string) (*PrometheusProvider, error) {
-	client, err := api.NewClient(api.Config{Address: baseURL})
+// NewPrometheus requires an uncached API reader so both roster snapshots are authoritative.
+func NewPrometheus(baseURL string, reader client.Reader) (*PrometheusProvider, error) {
+	if reader == nil {
+		return nil, fmt.Errorf("%w: API reader is required", ErrInvalidData)
+	}
+	promClient, err := api.NewClient(api.Config{Address: baseURL})
 	if err != nil {
 		return nil, fmt.Errorf("metricsprovider: build prometheus client: %w", err)
 	}
-	return &PrometheusProvider{
-		api:  promv1.NewAPI(client),
-		step: 15 * time.Second,
-	}, nil
+	p := &PrometheusProvider{api: promv1.NewAPI(promClient), reader: reader, Clock: clock.RealClock{},
+		MaxSampleAge: DefaultMaxSampleAge, history: make(map[types.NamespacedName]*targetHistory)}
+	for i := range p.gates {
+		p.gates[i] = make(chan struct{}, 1)
+	}
+	return p, nil
 }
 
-// cpuUtilQueryTemplate computes per-Deployment average CPU utilization in
-// percent. The `container!=""` filter excludes the pod-level pseudo-
-// aggregate series emitted by cAdvisor (verified in Phase 0/8.5a).
-const cpuUtilQueryTemplate = `(avg(rate(container_cpu_usage_seconds_total{namespace="%s",pod=~"%s-.*",container!=""}[1m]))/avg(kube_pod_container_resource_requests{namespace="%s",pod=~"%s-.*",resource="cpu"}))*100`
-
-// AverageCPUUtilizationPercentage queries Prometheus for the given
-// Deployment's CPU utilization series and returns it as a []predictor.Sample
-// ordered by ascending timestamp.
+// AverageCPUUtilizationPercentage samples a live roster twice around the CPU queries.
+// Missing current coverage or a changing roster does not invalidate accepted past
+// observations. Stale/invalid input and query failures restart prediction warmup.
 func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
-	ctx context.Context,
-	namespace, deployment string,
-	window time.Duration,
-) (samples []predictor.Sample, queryErr error) {
-	query := fmt.Sprintf(cpuUtilQueryTemplate, namespace, deployment, namespace, deployment)
-
-	end := time.Now()
-	start := end.Add(-window)
-
-	queryStarted := time.Now()
-	result, _, err := p.api.QueryRange(ctx, query, promv1.Range{
-		Start: start,
-		End:   end,
-		Step:  p.step,
-	})
-	queryFinished := time.Now()
+	ctx context.Context, target *appsv1.Deployment, window time.Duration,
+) (history CPUHistory, observationErr error) {
+	started := time.Now()
+	var evaluatedAt time.Time
+	var queryStarted, queryFinished time.Time
+	var gate chan struct{}
+	gateHeld := false
 	defer func() {
-		var latestEvaluationAt any
-		if len(samples) > 0 {
-			latestEvaluationAt = samples[len(samples)-1].Timestamp.UTC().Format(time.RFC3339Nano)
+		if invalidatesObservationHistory(observationErr) && target != nil && gateHeld {
+			p.discard(client.ObjectKeyFromObject(target))
 		}
-		errorMessage := ""
-		if queryErr != nil {
-			errorMessage = queryErr.Error()
+		p.logObservation(ctx, started, queryStarted, queryFinished, evaluatedAt, history, observationErr)
+		if gateHeld {
+			<-gate
 		}
-		// QueryRange timestamps identify evaluation points, not source scrapes.
-		// Raw-series visibility is collected separately by the experiment observer.
-		logf.FromContext(ctx).Info("Queried CPU utilization",
-			"queryStartedAt", queryStarted.UTC().Format(time.RFC3339Nano),
-			"queryFinishedAt", queryFinished.UTC().Format(time.RFC3339Nano),
-			"queryDurationSeconds", queryFinished.Sub(queryStarted).Seconds(),
-			"rangeStartAt", start.UTC().Format(time.RFC3339Nano),
-			"rangeEndAt", end.UTC().Format(time.RFC3339Nano),
-			"queryStepSeconds", p.step.Seconds(), "cpuRateWindowSeconds", 60,
-			"latestEvaluationAt", latestEvaluationAt, "samples", len(samples),
-			"queryError", errorMessage)
 	}()
+	if target == nil || target.UID == "" {
+		return CPUHistory{}, fmt.Errorf("%w: target UID is required", ErrInvalidData)
+	}
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return CPUHistory{}, err
+	}
+	gate = p.queryGate(client.ObjectKeyFromObject(target))
+	select {
+	case gate <- struct{}{}:
+		gateHeld = true
+	case <-ctx.Done():
+		return CPUHistory{}, ctx.Err()
+	}
+	if window < observationSpacing || window > maxHistoryWindow {
+		return CPUHistory{}, fmt.Errorf("%w: history window must be between 15s and 1h", ErrInvalidData)
+	}
+	roster, err := p.readRoster(ctx, target)
 	if err != nil {
-		return nil, fmt.Errorf("metricsprovider: query_range: %w", err)
+		return CPUHistory{}, err
 	}
+	evaluatedAt = p.now().Truncate(time.Millisecond)
+	selector := cpuSelector(target.Namespace, roster)
+	queryStarted = time.Now()
+	rates, err := p.query(ctx, "rate("+selector+"[1m])", evaluatedAt)
+	queryFinished = time.Now()
+	if err != nil {
+		return CPUHistory{}, err
+	}
+	sources, err := p.query(ctx, "timestamp("+selector+")", evaluatedAt)
+	queryFinished = time.Now()
+	if err != nil {
+		return CPUHistory{}, err
+	}
+	value, sourceAt, err := p.utilization(roster, rates, sources, evaluatedAt)
+	if err != nil {
+		return CPUHistory{}, err
+	}
+	after, err := p.readRoster(ctx, target)
+	if err != nil {
+		return CPUHistory{}, fmt.Errorf("%w: post-query roster: %v", ErrTargetChanged, err)
+	}
+	if !reflect.DeepEqual(roster, after) {
+		return CPUHistory{}, ErrTargetChanged
+	}
+	if p.now().Sub(sourceAt) > p.maxSampleAge() {
+		return CPUHistory{}, ErrStaleData
+	}
+	return p.record(target, window, predictor.Sample{Timestamp: evaluatedAt, Value: value}, sourceAt), nil
+}
 
-	matrix, ok := result.(model.Matrix)
+func invalidatesObservationHistory(err error) bool {
+	return err != nil && !errors.Is(err, ErrIncompleteData) && !errors.Is(err, ErrNoData) && !errors.Is(err, ErrTargetChanged)
+}
+
+func (p *PrometheusProvider) queryGate(key types.NamespacedName) chan struct{} {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(key.String()))
+	return p.gates[hash.Sum64()%uint64(len(p.gates))]
+}
+
+func cpuSelector(namespace string, roster targetRoster) string {
+	names := make(map[string]struct{})
+	for key := range roster.containers {
+		names[key.pod] = struct{}{}
+	}
+	patterns := make([]string, 0, len(names))
+	for name := range names {
+		patterns = append(patterns, regexp.QuoteMeta(name))
+	}
+	slices.Sort(patterns)
+	return fmt.Sprintf(`container_cpu_usage_seconds_total{namespace=%q,pod=~%q,container!="",container!="POD"}`, namespace, strings.Join(patterns, "|"))
+}
+
+func (p *PrometheusProvider) now() time.Time {
+	if p.Clock != nil {
+		return p.Clock.Now()
+	}
+	return time.Now()
+}
+
+func (p *PrometheusProvider) query(ctx context.Context, expression string, at time.Time) (model.Vector, error) {
+	result, warnings, err := p.api.Query(ctx, expression, at)
+	if err != nil {
+		return nil, fmt.Errorf("metricsprovider: instant query: %w", err)
+	}
+	if len(warnings) != 0 {
+		return nil, fmt.Errorf("%w: Prometheus warnings: %v", ErrIncompleteData, warnings)
+	}
+	vector, ok := result.(model.Vector)
 	if !ok {
-		return nil, fmt.Errorf("metricsprovider: unexpected result type %T (want Matrix)", result)
+		return nil, fmt.Errorf("%w: expected Prometheus vector, got %T", ErrInvalidData, result)
 	}
-	if len(matrix) == 0 {
-		return nil, ErrNoData
-	}
-	// avg() drops all labels, so the result should be a single series.
-	if len(matrix) > 1 {
-		return nil, fmt.Errorf("metricsprovider: got %d series, want 1 (query bug)", len(matrix))
-	}
+	return vector, nil
+}
 
-	series := matrix[0]
-	samples = make([]predictor.Sample, len(series.Values))
-	for i, v := range series.Values {
-		samples[i] = predictor.Sample{
-			Timestamp: v.Timestamp.Time(),
-			Value:     float64(v.Value),
+func (p *PrometheusProvider) record(target *appsv1.Deployment, window time.Duration, sample predictor.Sample, sourceAt time.Time) CPUHistory {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	key := client.ObjectKeyFromObject(target)
+	stored := p.history[key]
+	if stored == nil || stored.uid != target.UID {
+		if stored == nil && len(p.history) >= maxTargets {
+			p.evictOldest()
+		}
+		stored = &targetHistory{uid: target.UID}
+		p.history[key] = stored
+	}
+	stored.lastUsed = sample.Timestamp
+	cutoff := sample.Timestamp.Add(-window)
+	retained := make([]predictor.Sample, 0, len(stored.samples)+1)
+	for _, previous := range stored.samples {
+		if !previous.Timestamp.Before(cutoff) && previous.Timestamp.Before(sample.Timestamp) {
+			retained = append(retained, previous)
 		}
 	}
-	return samples, nil
+	stored.samples = retained
+	if len(retained) == 0 || sample.Timestamp.Sub(retained[len(retained)-1].Timestamp) >= observationSpacing {
+		stored.samples = append(stored.samples, sample)
+		return CPUHistory{Samples: append([]predictor.Sample(nil), stored.samples...), ObservedAt: sample.Timestamp, SourceTimestamp: sourceAt}
+	}
+	// Keep the last anchor internally so frequent events cannot postpone warmup.
+	// Return the live observation in its place, using its actual evaluation time.
+	result := append([]predictor.Sample(nil), retained[:len(retained)-1]...)
+	result = append(result, sample)
+	return CPUHistory{Samples: result, ObservedAt: sample.Timestamp, SourceTimestamp: sourceAt}
+}
+
+func (p *PrometheusProvider) evictOldest() {
+	var oldestKey types.NamespacedName
+	var oldest time.Time
+	for key, stored := range p.history {
+		if oldest.IsZero() || stored.lastUsed.Before(oldest) {
+			oldestKey, oldest = key, stored.lastUsed
+		}
+	}
+	delete(p.history, oldestKey)
+}
+
+func (p *PrometheusProvider) discard(key types.NamespacedName) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.history, key)
+}
+
+func (p *PrometheusProvider) logObservation(
+	ctx context.Context, started, queryStarted, queryFinished, evaluatedAt time.Time, history CPUHistory, err error,
+) {
+	errorMessage := ""
+	if err != nil {
+		errorMessage = err.Error()
+	}
+	finished := time.Now()
+	var queryDuration float64
+	if !queryStarted.IsZero() && !queryFinished.IsZero() {
+		queryDuration = queryFinished.Sub(queryStarted).Seconds()
+	}
+	logf.FromContext(ctx).Info("Queried CPU utilization",
+		"observationStartedAt", started.UTC().Format(time.RFC3339Nano), "observationFinishedAt", finished.UTC().Format(time.RFC3339Nano),
+		"queryStartedAt", optionalTimestamp(queryStarted), "queryFinishedAt", optionalTimestamp(queryFinished),
+		"queryDurationSeconds", queryDuration, "queryInstantAt", optionalTimestamp(evaluatedAt),
+		"latestEvaluationAt", optionalTimestamp(history.ObservedAt), "sourceTimestamp", optionalTimestamp(history.SourceTimestamp), "samples", len(history.Samples),
+		"cpuRateWindowSeconds", 60, "observationSpacingSeconds", observationSpacing.Seconds(), "queryError", errorMessage)
+}
+
+func optionalTimestamp(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
