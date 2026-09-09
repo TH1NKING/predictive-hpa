@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.25.3%2B-00ADD8?logo=go)](go.mod)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
-PredictiveHPA（PHPA）是我在大学期间为准备秋招做的个人项目，主要学习和实践 **Go / Kubernetes / 云原生基础设施**。我想通过实现一个扩缩容控制器，理解从指标采集到副本调整的完整过程，并验证一个问题：如果在当前 CPU 指标之外引入历史趋势，能否改善扩缩容时机？
+PredictiveHPA（PHPA）是为了理解kubernete工作原理、流程等做的个人项目，主要学习和实践 **Go / Kubernetes / 云原生基础设施**。我想通过实现一个扩缩容控制器，理解从指标采集到副本调整的完整过程，并验证一个问题：如果在当前 CPU 指标之外引入历史趋势，能否改善扩缩容时机？
 
 围绕这个问题，我实现了 CRD、控制器、EWMA 预测和缩容稳定窗口，打通了从声明式配置到 `Deployment/scale` 写入的流程，并在 Kind 集群中进行了容量校准和多轮对照实验。**目前的实验尚未证明预测模式能更早扩容或取得整体服务收益。** 这个结果也让我继续排查负载分流、指标可见性和协调时机，把实现过程、实验结果和设计取舍记录下来。
 
