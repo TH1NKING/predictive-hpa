@@ -192,6 +192,31 @@ class Runner:
                                            "accepted_pod_image_ids": sorted(accepted_ids)})
         return accepted_ids
 
+    def cached_fixture_images(self):
+        requested = list(dict.fromkeys(self.args.preload_fixture_image))
+        if not requested:
+            return []
+        allowed = set()
+        for name in ("metrics-safety-monitoring.yaml", "metrics-safety-workloads.yaml"):
+            contents = (self.source / "config/benchmark" / name).read_text(encoding="utf-8")
+            allowed.update(ref.strip("\"'") for ref in re.findall(r"^\s*image:\s*([^\s#]+)", contents, re.MULTILINE))
+        if any(ref not in allowed or not re.fullmatch(r"[^@\s]+@sha256:[a-f0-9]{64}", ref) for ref in requested):
+            raise RuntimeError("Preload requires an exact pinned image reference declared by the frozen acceptance fixtures")
+        records = []
+        for index, ref in enumerate(requested, 1):
+            images = json.loads(self.command(f"fixture-cache-{index}", ["docker", "image", "inspect", ref]))
+            if not isinstance(images, list) or len(images) != 1:
+                raise RuntimeError("Expected one cached fixture image for the pinned reference")
+            cached = images[0]
+            pinned = ref.rsplit("@", 1)[1]
+            known = {cached.get("Id"), (cached.get("Descriptor") or {}).get("digest")}
+            known.update(value.rsplit("@", 1)[-1] for value in cached.get("RepoDigests", []) if isinstance(value, str))
+            if pinned not in known:
+                raise RuntimeError("Cached fixture image does not match its pinned digest")
+            records.append({"image": ref, "pinned_digest": pinned, "docker_image_id": cached["Id"]})
+        self.write("fixture-images.json", {"images": records})
+        return requested
+
     def inspect_node(self):
         nodes = json.loads(self.command("node-identity", ["docker", "inspect", self.node_name]))
         if len(nodes) != 1:
@@ -259,6 +284,7 @@ class Runner:
                                ("kubectl-version", ["kubectl", "version", "--client", "-o", "json"])):
             self.command(label, command)
         self.freeze_source()
+        fixture_images = self.cached_fixture_images()
         iidfile = self.private / "image-id"
         self.command("docker-build", ["docker", "build", "--provenance=false", "--file", str(self.source / "Dockerfile"),
                                        "--iidfile", str(iidfile), "--tag", self.image, str(self.source)], timeout=1200)
@@ -287,6 +313,10 @@ class Runner:
         runtime = json.loads(self.command("runtime-image", ["docker", "exec", self.node_name, "crictl", "inspecti", self.image]))
         runtime_ids = self.verify_image_identity(image_id, runtime)
         self.guard()
+        for index, ref in enumerate(fixture_images, 1):
+            self.command(f"fixture-load-{index}", ["kind", "load", "docker-image", ref,
+                                                 "--name", self.args.cluster_name], timeout=180)
+            self.guard()
         self.kubectl("monitoring-apply", "apply", "-f", str(self.source / "config/benchmark/metrics-safety-monitoring.yaml"))
         for deployment in ("prometheus", "kube-state-metrics"):
             self.kubectl(deployment + "-ready", "-n", "metrics-safety", "rollout", "status",
@@ -421,6 +451,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cluster-name", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--preload-fixture-image", action="append", default=[],
+                        help="load an already cached, exact fixture digest into Kind before deployment (repeatable)")
     parser.add_argument("--timeout-seconds", type=int, default=2700,
                         help="total run budget before bounded diagnostics and cleanup (default: 2700)")
     args = parser.parse_args(argv)
