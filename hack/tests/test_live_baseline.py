@@ -156,8 +156,11 @@ class LiveSampleCLI(unittest.TestCase):
 
 class LiveBenchmarkCLI(unittest.TestCase):
     def test_campaign_rejects_foreign_or_empty_api_node_roster_before_build_or_benchmark(self) -> None:
-        for node_names in (["foreign-control-plane"], []):
-            with self.subTest(node_names=node_names), tempfile.TemporaryDirectory(prefix="live-cluster-identity-") as temporary:
+        cases = [(["foreign-control-plane"], [], "node roster"), ([], [], "node roster"),
+                 (["phpa-live-baseline-test-control-plane"], [{"metadata": {"namespace": "default", "name": "php-apache"},
+                   "spec": {"scaleTargetRef": {"kind": "Deployment", "name": "unrelated-workload"}}}], "native HPA fixture")]
+        for node_names, hpas, expected_error in cases:
+            with self.subTest(node_names=node_names, hpas=hpas), tempfile.TemporaryDirectory(prefix="live-cluster-identity-") as temporary:
                 directory = Path(temporary)
                 kubeconfig = directory / "private-kubeconfig"
                 kubeconfig.write_text("isolated fixture")
@@ -171,7 +174,7 @@ if name=='kubectl':
  values={'namespace':{'metadata':{'uid':'cluster'}},'nodes':{'items':nodes},
  'deployment':{'metadata':{'uid':'target'},'spec':{'replicas':1}},
  'service':{'metadata':{'uid':'service'},'spec':{'clusterIP':'10.0.0.1'}},
- 'hpa':{'items':[]},'predictivehpas':{'items':[]},'configmaps':{'items':[]},
+ 'hpa':{'items':json.loads(os.environ['LIVE_NATIVE_HPAS'])},'predictivehpas':{'items':[]},'configmaps':{'items':[]},
  'pods':{'items':[{'metadata':{'namespace':'default','labels':{'run':'php-apache'}},'status':{'phase':'Running','containerStatuses':[{'imageID':'sha256:workload'}]}}]}}
  print(json.dumps(values[resource]))
 elif name=='kind':
@@ -196,7 +199,8 @@ else: raise RuntimeError(name)
                 result = subprocess.run([sys.executable, str(ROOT / "hack/run_live_campaign.py"), "--pattern", "step",
                     "--context", "kind-phpa-live-baseline-test", "--kubeconfig", str(kubeconfig), "--output", str(output)],
                     env={**os.environ, "PATH": str(directory) + os.pathsep + os.environ.get("PATH", ""),
-                         "LIVE_IDENTITY_TEST_DIR": str(directory), "LIVE_API_NODE_NAMES": json.dumps(node_names)},
+                         "LIVE_IDENTITY_TEST_DIR": str(directory), "LIVE_API_NODE_NAMES": json.dumps(node_names),
+                         "LIVE_NATIVE_HPAS": json.dumps(hpas)},
                     capture_output=True, text=True, timeout=30)
                 self.assertEqual(3, result.returncode, result.stderr)
                 report = json.loads((output / "campaign-status.json").read_text())
@@ -205,7 +209,7 @@ else: raise RuntimeError(name)
                 self.assertTrue((output / "campaign-plan.json").is_file())
                 self.assertFalse((directory / "build-invoked").exists())
                 self.assertFalse((directory / "benchmark-invoked").exists())
-                self.assertIn("node roster", report["error"])
+                self.assertIn(expected_error, report["error"])
 
     @unittest.skipIf(os.name == "nt", "Windows TerminateProcess cannot exercise POSIX process groups")
     def test_campaign_reaps_descendants_after_command_leader_exits_normally(self) -> None:

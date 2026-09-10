@@ -145,6 +145,9 @@ class Campaign:
         monitoring = self.get("monitoring-config", "configmaps", "-n", "monitoring")
         def targeting(item: dict) -> bool:
             return item["metadata"].get("namespace", "default") == "default" and item.get("spec", {}).get("scaleTargetRef", {}).get("name") == "php-apache"
+        if any(item["metadata"].get("namespace", "default") == "default"
+               and item["metadata"]["name"] == "php-apache" for item in hpas["items"]):
+            raise ValueError("An existing native HPA fixture default/php-apache would be deleted by the benchmark")
         if any(targeting(item) for item in hpas["items"]):
             raise ValueError("A native HPA competes for the baseline target")
         policies = phpas["items"]
