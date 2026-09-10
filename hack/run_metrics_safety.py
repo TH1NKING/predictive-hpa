@@ -217,6 +217,33 @@ class Runner:
         self.write("fixture-images.json", {"images": records})
         return requested
 
+    def load_fixture_image(self, index, ref, platform):
+        archive = self.private / f"fixture-{index}.tar"
+        node_archive = f"/run/{self.private.name}-fixture-{index}.tar"
+        self.command(f"fixture-save-{index}", ["docker", "image", "save", "--output", str(archive), ref], timeout=180)
+        archive_hash, archive_size = digest(archive), archive.stat().st_size
+        self.command(f"fixture-copy-{index}", ["docker", "cp", str(archive), f"{self.node_id}:{node_archive}"], timeout=180)
+        repository = ref.rsplit("@", 1)[0]
+        if "/" not in repository:
+            repository = "docker.io/library/" + repository
+        elif not any(character in repository.split("/", 1)[0] for character in (".", ":")) and not repository.startswith("localhost/"):
+            repository = "docker.io/" + repository
+        # A Docker cache may contain only the host platform of a multi-platform
+        # index. Preserve that index and import the actual node's platform;
+        # Kind's all-platform import would require unrelated cached platforms.
+        self.command(f"fixture-import-{index}", ["docker", "exec", self.node_id, "ctr", "-n", "k8s.io",
+                                                "images", "import", "--local", "--platform", platform,
+                                                "--digests", "--base-name", repository, node_archive], timeout=180)
+        runtime = json.loads(self.command(f"fixture-runtime-{index}", ["docker", "exec", self.node_id,
+                                                                      "crictl", "inspecti", ref]))
+        runtime_id = runtime.get("status", {}).get("id")
+        if not isinstance(runtime_id, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", runtime_id):
+            raise RuntimeError("Imported fixture reference has no valid CRI image identity")
+        self.write(f"fixture-import-{index}.json", {"image": ref, "platform": platform,
+                                                   "archive_sha256": archive_hash, "archive_size_bytes": archive_size,
+                                                   "runtime_config_digest": runtime_id, "node_container_id": self.node_id})
+        self.command(f"fixture-archive-cleanup-{index}", ["docker", "exec", self.node_id, "rm", "--", node_archive])
+
     def inspect_node(self):
         nodes = json.loads(self.command("node-identity", ["docker", "inspect", self.node_name]))
         if len(nodes) != 1:
@@ -309,13 +336,19 @@ class Runner:
         nodes = json.loads(self.kubectl("nodes-ready", "get", "nodes", "-o", "json"))["items"]
         if [n["metadata"]["name"] for n in nodes] != [self.node_name]:
             raise RuntimeError("Unexpected node roster in dedicated cluster")
+        if fixture_images:
+            info = nodes[0].get("status", {}).get("nodeInfo", {})
+            architecture = info.get("architecture")
+            if (info.get("operatingSystem") != "linux" or not isinstance(architecture, str)
+                    or not re.fullmatch(r"[a-z0-9_]+", architecture)):
+                raise RuntimeError("Fixture import requires the dedicated node's Linux OS and architecture")
+            fixture_platform = "linux/" + architecture
         self.command("kind-load", ["kind", "load", "docker-image", self.image, "--name", self.args.cluster_name], timeout=180)
         runtime = json.loads(self.command("runtime-image", ["docker", "exec", self.node_name, "crictl", "inspecti", self.image]))
         runtime_ids = self.verify_image_identity(image_id, runtime)
         self.guard()
         for index, ref in enumerate(fixture_images, 1):
-            self.command(f"fixture-load-{index}", ["kind", "load", "docker-image", ref,
-                                                 "--name", self.args.cluster_name], timeout=180)
+            self.load_fixture_image(index, ref, fixture_platform)
             self.guard()
         self.kubectl("monitoring-apply", "apply", "-f", str(self.source / "config/benchmark/metrics-safety-monitoring.yaml"))
         for deployment in ("prometheus", "kube-state-metrics"):

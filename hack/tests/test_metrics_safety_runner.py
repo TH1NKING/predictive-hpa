@@ -98,7 +98,8 @@ class CommandEnvironment:
             elif "kube-system" in argv:
                 result = json.dumps({"metadata": {"uid": "cluster-original"}})
             elif "nodes" in argv:
-                result = json.dumps({"items": [{"metadata": {"name": "phpa-metrics-safety-test-control-plane"}}]})
+                result = json.dumps({"items": [{"metadata": {"name": "phpa-metrics-safety-test-control-plane"},
+                    "status": {"nodeInfo": {"operatingSystem": "linux", "architecture": "amd64"}}}]})
             elif "pods" in argv:
                 result = json.dumps({"items": [{"metadata": {"name": "manager-" + str(i)},
                     "spec": {"containers": [{"name": "manager", "image": "placeholder"}]},
@@ -153,22 +154,66 @@ class ManifestImageEnvironment(CommandEnvironment):
         return result
 
 
+class PlatformFixtureEnvironment(CommandEnvironment):
+    """Cached images contain the owned node platform but omit another architecture."""
+
+    def __init__(self, refs=(PROMETHEUS_FIXTURE_IMAGE,)):
+        super().__init__()
+        self.refs = refs
+        self.archive_bytes = {ref: ("fixture archive for " + ref).encode() for ref in refs}
+
+    def __call__(self, argv, **kwargs):
+        result = super().__call__(argv, **kwargs)
+        if argv[:3] == ["docker", "image", "inspect"] and argv[-1] in self.refs:
+            result.stdout = json.dumps([{"Id": "sha256:" + "7" * 64, "RepoDigests": [argv[-1]]}])
+        elif argv[:3] == ["kind", "load", "docker-image"] and argv[3] in self.refs:
+            result.returncode, result.stderr = 1, "All-platform import failed: linux/arm64 blob is absent"
+        elif argv[:3] == ["docker", "image", "save"]:
+            Path(argv[argv.index("--output") + 1]).write_bytes(self.archive_bytes[argv[-1]])
+        elif argv[0] == "docker" and "images" in argv and "import" in argv:
+            if "--all-platforms" in argv or "--platform" not in argv or argv[argv.index("--platform") + 1] != "linux/amd64":
+                result.returncode, result.stderr = 1, "Import did not select the owned node platform"
+        elif argv[0] == "docker" and "inspecti" in argv and argv[-1] in self.refs:
+            result.stdout = json.dumps({"status": {"id": "sha256:" + "7" * 64, "repoDigests": [argv[-1]]}})
+        return result
+
+
 class MetricsSafetyRunnerTests(unittest.TestCase):
+    def test_preload_imports_only_owned_node_platform_when_other_architecture_is_absent(self):
+        module = importlib.util.module_from_spec(SPEC)
+        SPEC.loader.exec_module(module)
+        environment = PlatformFixtureEnvironment()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "evidence"
+            with patch.object(subprocess, "Popen", side_effect=command_processes(environment)), contextlib.redirect_stdout(io.StringIO()):
+                code = module.main(["--cluster-name", "phpa-metrics-safety-test", "--output", str(output),
+                    "--preload-fixture-image", PROMETHEUS_FIXTURE_IMAGE])
+            summary = json.loads((output / "summary.json").read_text())
+            self.assertEqual(0, code, summary)
+            self.assertTrue(summary["passed"])
+            self.assertTrue(environment.deleted)
+            imports = [argv for argv in environment.commands if argv[0] == "docker" and "images" in argv and "import" in argv]
+            self.assertEqual(1, len(imports))
+            self.assertEqual("node-original", imports[0][2])
+            self.assertEqual("linux/amd64", imports[0][imports[0].index("--platform") + 1])
+            proof = json.loads((output / "fixture-import-1.json").read_text())
+            expected_archive = environment.archive_bytes[PROMETHEUS_FIXTURE_IMAGE]
+            self.assertEqual(PROMETHEUS_FIXTURE_IMAGE, proof["image"])
+            self.assertEqual("linux/amd64", proof["platform"])
+            self.assertEqual(hashlib.sha256(expected_archive).hexdigest(), proof["archive_sha256"])
+            self.assertEqual(len(expected_archive), proof["archive_size_bytes"])
+            self.assertEqual("sha256:" + "7" * 64, proof["runtime_config_digest"])
+            self.assertEqual("node-original", proof["node_container_id"])
+
     def test_declared_cached_fixture_image_is_loaded_before_monitoring_apply(self):
         module = importlib.util.module_from_spec(SPEC)
         SPEC.loader.exec_module(module)
-        environment = CommandEnvironment()
-
-        def command(argv, **kwargs):
-            result = environment(argv, **kwargs)
-            if argv[:3] == ["docker", "image", "inspect"] and argv[-1] == PROMETHEUS_FIXTURE_IMAGE:
-                result.stdout = json.dumps([{"Id": "sha256:" + "7" * 64, "RepoDigests": [PROMETHEUS_FIXTURE_IMAGE]}])
-            return result
+        environment = PlatformFixtureEnvironment()
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "evidence"
             stderr = io.StringIO()
-            with patch.object(subprocess, "Popen", side_effect=command_processes(command)), \
+            with patch.object(subprocess, "Popen", side_effect=command_processes(environment)), \
                     contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
                 try:
                     code = module.main(["--cluster-name", "phpa-metrics-safety-test", "--output", str(output),
@@ -185,18 +230,101 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
                 "docker_image_id": "sha256:" + "7" * 64}], fixtures["images"])
             calls = environment.commands
             inspections = [i for i, argv in enumerate(calls) if argv[:3] == ["docker", "image", "inspect"] and argv[-1] == PROMETHEUS_FIXTURE_IMAGE]
-            loads = [i for i, argv in enumerate(calls) if argv[:3] == ["kind", "load", "docker-image"] and PROMETHEUS_FIXTURE_IMAGE in argv]
+            saves = [i for i, argv in enumerate(calls) if argv[:3] == ["docker", "image", "save"] and argv[-1] == PROMETHEUS_FIXTURE_IMAGE]
+            copies = [i for i, argv in enumerate(calls) if argv[:2] == ["docker", "cp"]]
+            imports = [i for i, argv in enumerate(calls) if argv[0] == "docker" and "images" in argv and "import" in argv]
+            fixture_runtime = [i for i, argv in enumerate(calls) if argv[0] == "docker" and "inspecti" in argv and argv[-1] == PROMETHEUS_FIXTURE_IMAGE]
             self.assertEqual(1, len(inspections))
-            self.assertEqual(1, len(loads))
+            for indexes in (saves, copies, imports, fixture_runtime):
+                self.assertEqual(1, len(indexes))
             build = next(i for i, argv in enumerate(calls) if argv[:2] == ["docker", "build"])
             monitoring = next(i for i, argv in enumerate(calls) if argv[0] == "kubectl" and "apply" in argv
                 and any(arg.endswith("metrics-safety-monitoring.yaml") for arg in argv))
             self.assertLess(inspections[0], build)
-            self.assertLess(loads[0], monitoring)
             runtime = next(i for i, argv in enumerate(calls) if argv[0] == "docker" and "inspecti" in argv)
-            self.assertLess(runtime, loads[0])
-            self.assertEqual(["kind", "load", "docker-image", PROMETHEUS_FIXTURE_IMAGE,
-                "--name", "phpa-metrics-safety-test"], calls[loads[0]])
+            order = [runtime, saves[0], copies[0], imports[0], fixture_runtime[0], monitoring]
+            self.assertEqual(sorted(order), order)
+            self.assertTrue(calls[copies[0]][-1].startswith("node-original:"))
+            node_archive = calls[copies[0]][-1].split(":", 1)[1]
+            imported = calls[imports[0]]
+            self.assertEqual("node-original", imported[2])
+            self.assertIn("--local", imported)
+            self.assertIn("--digests", imported)
+            self.assertEqual("linux/amd64", imported[imported.index("--platform") + 1])
+            self.assertEqual("quay.io/prometheus/prometheus", imported[imported.index("--base-name") + 1])
+            self.assertEqual(node_archive, imported[-1])
+            removed = [i for i, argv in enumerate(calls) if argv[:3] == ["docker", "exec", "node-original"]
+                and "rm" in argv and node_archive in argv]
+            self.assertEqual(1, len(removed))
+            self.assertLess(fixture_runtime[0], removed[0])
+            self.assertLess(removed[0], monitoring)
+
+    def test_node_platform_is_required_only_when_fixture_preload_is_requested(self):
+        for preload in (False, True):
+            with self.subTest(preload=preload):
+                module = importlib.util.module_from_spec(SPEC)
+                SPEC.loader.exec_module(module)
+                environment = PlatformFixtureEnvironment()
+
+                def command(argv, **kwargs):
+                    result = environment(argv, **kwargs)
+                    if argv[0] == "kubectl" and "nodes" in argv:
+                        nodes = json.loads(result.stdout)
+                        del nodes["items"][0]["status"]
+                        result.stdout = json.dumps(nodes)
+                    return result
+
+                with tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "evidence"
+                    arguments = ["--cluster-name", "phpa-metrics-safety-test", "--output", str(output)]
+                    if preload:
+                        arguments += ["--preload-fixture-image", PROMETHEUS_FIXTURE_IMAGE]
+                    with patch.object(subprocess, "Popen", side_effect=command_processes(command)), contextlib.redirect_stdout(io.StringIO()):
+                        code = module.main(arguments)
+                    summary = json.loads((output / "summary.json").read_text())
+                    self.assertEqual(1 if preload else 0, code, summary)
+                    self.assertTrue(summary["cluster_deleted"])
+                    self.assertIsNone(summary["cleanup_error"])
+                    self.assertFalse(any(argv[:3] == ["docker", "image", "save"] or argv[:2] == ["docker", "cp"]
+                        for argv in environment.commands))
+
+    def test_failed_platform_import_or_runtime_check_still_deletes_the_owned_node(self):
+        for scenario in ("import-failed", "invalid-runtime-identity", "archive-removal-failed"):
+            with self.subTest(scenario=scenario):
+                module = importlib.util.module_from_spec(SPEC)
+                SPEC.loader.exec_module(module)
+                environment = PlatformFixtureEnvironment()
+
+                def command(argv, **kwargs):
+                    result = environment(argv, **kwargs)
+                    if scenario == "import-failed" and argv[0] == "docker" and "images" in argv and "import" in argv:
+                        result.returncode, result.stderr = 1, "Selected platform import failed"
+                    elif scenario == "invalid-runtime-identity" and argv[0] == "docker" and "inspecti" in argv and argv[-1] == PROMETHEUS_FIXTURE_IMAGE:
+                        result.stdout = json.dumps({"status": {"id": "not-a-digest", "repoDigests": []}})
+                    elif scenario == "archive-removal-failed" and argv[:3] == ["docker", "exec", "node-original"] and "rm" in argv:
+                        result.returncode, result.stderr = 1, "Could not remove copied archive"
+                    return result
+
+                with tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "evidence"
+                    with patch.object(subprocess, "Popen", side_effect=command_processes(command)), contextlib.redirect_stdout(io.StringIO()):
+                        code = module.main(["--cluster-name", "phpa-metrics-safety-test", "--output", str(output),
+                            "--preload-fixture-image", PROMETHEUS_FIXTURE_IMAGE])
+                    summary = json.loads((output / "summary.json").read_text())
+                    self.assertEqual(1, code, summary)
+                    self.assertIsNotNone(summary["run_error"])
+                    self.assertTrue(summary["cluster_deleted"])
+                    self.assertIsNone(summary["cleanup_error"])
+                    copies = [argv for argv in environment.commands if argv[:2] == ["docker", "cp"]]
+                    self.assertEqual(1, len(copies))
+                    self.assertTrue(copies[0][-1].startswith("node-original:"))
+                    # Failed imports need not run the success-path rm: deleting
+                    # the owned node also removes its copied temporary archive.
+                    self.assertTrue(environment.deleted)
+                    self.assertIsNone(environment.cluster)
+                    self.assertFalse(any(argv[0] == "kubectl" and "apply" in argv and any(
+                        arg.endswith("metrics-safety-monitoring.yaml") for arg in argv) for argv in environment.commands))
+                    self.assertTrue((output / "artifact-manifest.json").is_file())
 
     def test_fixture_preload_rejects_undeclared_refs_before_build_or_kind_creation(self):
         invalid = ("quay.io/prometheus/prometheus:latest", "quay.io/prometheus/prometheus@sha256:" + "9" * 64,
@@ -252,30 +380,26 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
     def test_repeated_fixture_preloads_are_deduplicated_in_first_requested_order(self):
         module = importlib.util.module_from_spec(SPEC)
         SPEC.loader.exec_module(module)
-        environment = CommandEnvironment()
         ordered = [BUSYBOX_FIXTURE_IMAGE, PROMETHEUS_FIXTURE_IMAGE]
-
-        def command(argv, **kwargs):
-            result = environment(argv, **kwargs)
-            if argv[:3] == ["docker", "image", "inspect"] and argv[-1] in ordered:
-                result.stdout = json.dumps([{"Id": "sha256:" + "7" * 64, "RepoDigests": [argv[-1]]}])
-            return result
+        environment = PlatformFixtureEnvironment(ordered)
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "evidence"
             arguments = ["--cluster-name", "phpa-metrics-safety-test", "--output", str(output)]
             for image in (*ordered, BUSYBOX_FIXTURE_IMAGE, PROMETHEUS_FIXTURE_IMAGE):
                 arguments += ["--preload-fixture-image", image]
-            with patch.object(subprocess, "Popen", side_effect=command_processes(command)), contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(subprocess, "Popen", side_effect=command_processes(environment)), contextlib.redirect_stdout(io.StringIO()):
                 code = module.main(arguments)
             summary = json.loads((output / "summary.json").read_text())
             self.assertEqual(0, code, summary)
             self.assertTrue(environment.deleted)
             fixtures = json.loads((output / "fixture-images.json").read_text())
             self.assertEqual(ordered, [row["image"] for row in fixtures["images"]])
-            loads = [argv[3] for argv in environment.commands if argv[:3] == ["kind", "load", "docker-image"] and argv[3] in ordered]
+            saves = [argv[-1] for argv in environment.commands if argv[:3] == ["docker", "image", "save"]]
+            runtime_checks = [argv[-1] for argv in environment.commands if argv[0] == "docker" and "inspecti" in argv and argv[-1] in ordered]
             inspections = [argv[-1] for argv in environment.commands if argv[:3] == ["docker", "image", "inspect"] and argv[-1] in ordered]
-            self.assertEqual(ordered, loads)
+            self.assertEqual(ordered, saves)
+            self.assertEqual(ordered, runtime_checks)
             self.assertEqual(ordered, inspections)
 
     def test_success_builds_current_dockerfile_records_evidence_and_deletes_owned_cluster(self):
