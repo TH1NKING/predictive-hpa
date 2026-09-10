@@ -75,6 +75,10 @@ k6_runner_render() {
     echo "ERROR: latency-step.js requires LATENCY_DIAGNOSTIC=true" >&2
     return 1
   fi
+  if [ "$script" = baseline.js ] && [ "${LIVE_BASELINE:-false}" != true ]; then
+    echo "ERROR: baseline.js requires LIVE_BASELINE=true" >&2
+    return 1
+  fi
   command -v jq >/dev/null || { echo "ERROR: jq is required to render runner manifests" >&2; return 1; }
   mkdir -p "$output_dir" || return 1
   local name="${K6_RUNNER_NAME:-phpa-k6-$(date -u +%Y%m%d%H%M%S)-$$-$RANDOM}"
@@ -102,6 +106,9 @@ k6_runner_render() {
     if [ "$entry" = LATENCY_GATE_TIMEOUT_SECONDS=180 ] && \
         [ "$script" = latency-step.js ] && [ "${LATENCY_DIAGNOSTIC:-false}" = true ]; then
       gate_enabled=true
+    elif [[ "$entry" =~ ^BASELINE_PATTERN=(step|ramp)$ ]] && \
+        [ "$script" = baseline.js ] && [ "${LIVE_BASELINE:-false}" = true ]; then
+      :
     elif ! [[ "$entry" =~ ^(RPS|PROBE_RPS|PROBE_DURATION_SECONDS|PROBE_REPLICAS|CALIBRATION_RPS|CALIBRATION_DURATION_SECONDS)=[1-9][0-9]*$ ]] && \
        ! [[ "$entry" =~ ^PROBE_TOKEN=[A-Za-z0-9_-]+$ ]]; then
       echo "ERROR: unsupported runner environment argument '$entry'" >&2

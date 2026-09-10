@@ -1,0 +1,817 @@
+{
+  "calibration": {
+    "verified_files": 81,
+    "archive_sha256": "3b16fd7b97ae76e6827adf010ba3c2e5012db25618d083741720f8b48ab5c4a7",
+    "qualified_rps": 25,
+    "results": [
+      {
+        "replicas": 1,
+        "requests": 2250,
+        "http200": 165,
+        "http200_pct": 7.333333333333333,
+        "p95_ms": 10000.8320966,
+        "dropped": 1,
+        "passed": false
+      },
+      {
+        "replicas": 5,
+        "requests": 2250,
+        "http200": 2250,
+        "http200_pct": 100.0,
+        "p95_ms": 81.77571764999999,
+        "dropped": 0,
+        "passed": true
+      }
+    ]
+  },
+  "campaigns": [
+    {
+      "pattern": "step",
+      "slots": [
+        {
+          "slot": 1,
+          "assigned_mode": "Current",
+          "status": "success",
+          "experiment_id": "20260910_182812_step_phpa_current_r1",
+          "mode": "Current",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 3378,
+          "http200_pct": 75.10004446420632,
+          "p95_ms": 10000.6483106,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2091.0824394226074,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2081.0687215328217,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 28.389866828918457,
+          "first_ready_interval": [
+            29.011748790740967,
+            31.062615871429443
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 2,
+          "assigned_mode": "Predictive",
+          "status": "success",
+          "experiment_id": "20260910_183937_step_phpa_r1",
+          "mode": "Predictive",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 2731,
+          "http200_pct": 60.71587372165407,
+          "p95_ms": 10000.654029450001,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2033.0873036384583,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2023.1223194599152,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.48235011100769,
+          "first_ready_interval": [
+            59.089877128601074,
+            61.13366723060608
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 3,
+          "assigned_mode": "Hybrid",
+          "status": "success",
+          "experiment_id": "20260910_185104_step_phpa_hybrid_r1",
+          "mode": "Hybrid",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 2673,
+          "http200_pct": 59.42641173855046,
+          "p95_ms": 10000.727040300002,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 1735.1318073272705,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 1729.1409969329834,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.46147394180298,
+          "first_ready_interval": [
+            59.065593004226685,
+            61.105034828186035
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 4,
+          "assigned_mode": "Predictive",
+          "status": "success",
+          "experiment_id": "20260910_190231_step_phpa_r2",
+          "mode": "Predictive",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 2890,
+          "http200_pct": 64.25077812361049,
+          "p95_ms": 10000.675235699999,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2210.938279390335,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2196.891714811325,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.51778197288513,
+          "first_ready_interval": [
+            59.104259967803955,
+            61.16907787322998
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 5,
+          "assigned_mode": "Hybrid",
+          "status": "success",
+          "experiment_id": "20260910_191357_step_phpa_hybrid_r2",
+          "mode": "Hybrid",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 3505,
+          "http200_pct": 77.92352156514006,
+          "p95_ms": 10000.65732635,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2327.143779039383,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2325.1402158737183,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 28.48380708694458,
+          "first_ready_interval": [
+            29.115381956100464,
+            31.16296410560608
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 6,
+          "assigned_mode": "Current",
+          "status": "success",
+          "experiment_id": "20260910_192522_step_phpa_current_r2",
+          "mode": "Current",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 3623,
+          "http200_pct": 80.54690973766118,
+          "p95_ms": 10000.64878095,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2333.1941854953766,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2327.1824476718903,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 28.478800058364868,
+          "first_ready_interval": [
+            29.109246015548706,
+            31.154267072677612
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 7,
+          "assigned_mode": "Hybrid",
+          "status": "success",
+          "experiment_id": "20260910_193647_step_phpa_hybrid_r3",
+          "mode": "Hybrid",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 2778,
+          "http200_pct": 61.760782570031125,
+          "p95_ms": 10000.78318215,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2095.165027618408,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2085.1638956069946,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.47779083251953,
+          "first_ready_interval": [
+            59.06794190406799,
+            61.12334895133972
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 8,
+          "assigned_mode": "Current",
+          "status": "success",
+          "experiment_id": "20260910_194812_step_phpa_current_r3",
+          "mode": "Current",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 3438,
+          "http200_pct": 76.43397065362383,
+          "p95_ms": 10000.67319825,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2241.1580407619476,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2235.173449754715,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 28.45927882194519,
+          "first_ready_interval": [
+            29.081745862960815,
+            31.128599882125854
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 9,
+          "assigned_mode": "Predictive",
+          "status": "success",
+          "experiment_id": "20260910_195936_step_phpa_r3",
+          "mode": "Predictive",
+          "pattern": "step",
+          "startup": "warm",
+          "requests": 4498,
+          "http200": 2789,
+          "http200_pct": 62.00533570475767,
+          "p95_ms": 10000.813637750001,
+          "dropped": 1,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2033.118353843689,
+              "covered_seconds": 541.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2023.1205866336823,
+              "covered_seconds": 541.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.47413682937622,
+          "first_ready_interval": [
+            59.07521390914917,
+            61.11724781990051
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        }
+      ]
+    },
+    {
+      "pattern": "ramp",
+      "slots": [
+        {
+          "slot": 1,
+          "assigned_mode": "Current",
+          "status": "success",
+          "experiment_id": "20260910_201104_ramp_phpa_current_r1",
+          "mode": "Current",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 3768,
+          "http200_pct": 83.75194487663926,
+          "p95_ms": 10000.6221505,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 1997.807651758194,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 1991.911949634552,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.59797286987305,
+          "first_ready_interval": [
+            59.012489795684814,
+            61.06826400756836
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 2,
+          "assigned_mode": "Predictive",
+          "status": "success",
+          "experiment_id": "20260910_202329_ramp_phpa_r1",
+          "mode": "Predictive",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 3851,
+          "http200_pct": 85.59679928873084,
+          "p95_ms": 10000.519620000001,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2187.949754714966,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2176.1264774799347,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.44580388069153,
+          "first_ready_interval": [
+            59.06281280517578,
+            61.11079382896423
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 3,
+          "assigned_mode": "Hybrid",
+          "status": "success",
+          "experiment_id": "20260910_203554_ramp_phpa_hybrid_r1",
+          "mode": "Hybrid",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 4159,
+          "http200_pct": 92.44276505890198,
+          "p95_ms": 10000.2156325,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2302.1267383098602,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2296.0974972248077,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.399080991744995,
+          "first_ready_interval": [
+            59.01702809333801,
+            61.06682205200195
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 4,
+          "assigned_mode": "Predictive",
+          "status": "success",
+          "experiment_id": "20260910_204819_ramp_phpa_r2",
+          "mode": "Predictive",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 3906,
+          "http200_pct": 86.8192931762614,
+          "p95_ms": 10000.484722799998,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2238.0861196517944,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2228.204520702362,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.475741147994995,
+          "first_ready_interval": [
+            59.0895881652832,
+            61.151633977890015
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 5,
+          "assigned_mode": "Hybrid",
+          "status": "success",
+          "experiment_id": "20260910_210044_ramp_phpa_hybrid_r2",
+          "mode": "Hybrid",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 4198,
+          "http200_pct": 93.30962436096911,
+          "p95_ms": 10000.130809600001,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2334.0836062431335,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2322.143492460251,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.49081802368164,
+          "first_ready_interval": [
+            59.107239961624146,
+            61.16979908943176
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 6,
+          "assigned_mode": "Current",
+          "status": "success",
+          "experiment_id": "20260910_211309_ramp_phpa_current_r2",
+          "mode": "Current",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 4153,
+          "http200_pct": 92.30940208935318,
+          "p95_ms": 10000.2220547,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2152.1253926754,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2146.1288516521454,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.483407974243164,
+          "first_ready_interval": [
+            59.10598707199097,
+            61.15680909156799
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 7,
+          "assigned_mode": "Hybrid",
+          "status": "success",
+          "experiment_id": "20260910_212533_ramp_phpa_hybrid_r3",
+          "mode": "Hybrid",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 4146,
+          "http200_pct": 92.15381195821294,
+          "p95_ms": 10000.3165817,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2318.2171697616577,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2314.2256178855896,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.48706078529358,
+          "first_ready_interval": [
+            57.092405796051025,
+            59.13799786567688
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 8,
+          "assigned_mode": "Current",
+          "status": "success",
+          "experiment_id": "20260910_213757_ramp_phpa_current_r3",
+          "mode": "Current",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 4247,
+          "http200_pct": 94.39875527895087,
+          "p95_ms": 10000.0103537,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2184.1565980911255,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2180.1612782478333,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.4940619468689,
+          "first_ready_interval": [
+            57.11258912086487,
+            59.1505970954895
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        },
+        {
+          "slot": 9,
+          "assigned_mode": "Predictive",
+          "status": "success",
+          "experiment_id": "20260910_215021_ramp_phpa_r3",
+          "mode": "Predictive",
+          "pattern": "ramp",
+          "startup": "warm",
+          "requests": 4499,
+          "http200": 3895,
+          "http200_pct": 86.57479439875527,
+          "p95_ms": 10000.4772384,
+          "dropped": 0,
+          "replicas": {
+            "requested": {
+              "covered_pod_seconds": 2120.1184146404266,
+              "covered_seconds": 600.0,
+              "complete": true
+            },
+            "ready": {
+              "covered_pod_seconds": 2108.11172246933,
+              "covered_seconds": 600.0,
+              "complete": true
+            }
+          },
+          "first_scale_seconds": 58.49536490440369,
+          "first_ready_interval": [
+            59.1048858165741,
+            61.155879974365234
+          ],
+          "criteria_passed": false,
+          "input_hashes_verified": 16
+        }
+      ]
+    }
+  ],
+  "identity": {
+    "implementation_commit": "3ebbbf12729c7dc6070415c6d99abda2ac4b0def",
+    "controller_binary_sha256": "abc0181d1918f0d2299ebe79f050a916e084c6823025a5f202806d0b6001a27e",
+    "go_version": "1.26.2",
+    "kubernetes_version": "1.35.0",
+    "scrape_seconds": 15,
+    "cpu_rate_window_seconds": 60,
+    "requeue_seconds": 30,
+    "archive_sha256": "a431b9cb19bd8f7a1be6291e27304a3343ee3642649251ba7f441de18b2cc59e",
+    "verified_archive_files": 1718
+  },
+  "exploratory-current-warm": {
+    "experiment_id": "20260910_181029_step_phpa_current_r1",
+    "mode": "Current",
+    "pattern": "step",
+    "startup": "warm",
+    "requests": 4498,
+    "http200": 3344,
+    "http200_pct": 74.34415295686972,
+    "p95_ms": 10000.741177,
+    "dropped": 1,
+    "replicas": {
+      "requested": {
+        "covered_pod_seconds": 2180.9258925914764,
+        "covered_seconds": 541.0,
+        "complete": true
+      },
+      "ready": {
+        "covered_pod_seconds": 2169.034231901169,
+        "covered_seconds": 541.0,
+        "complete": true
+      }
+    },
+    "first_scale_seconds": 28.229768991470337,
+    "first_ready_interval": [
+      28.848564863204956,
+      30.89431095123291
+    ],
+    "criteria_passed": false,
+    "input_hashes_verified": 16,
+    "startup_detail": {
+      "mode": "warm",
+      "controller_started_at": "2026-09-10T10:10:30.049346747Z",
+      "gate": {
+        "protocol_version": "live-baseline-v1",
+        "startup_mode": "warm",
+        "released_at": "2026-09-10T10:12:01.218223+00:00",
+        "target_uid": "d9223fef-52f1-4f9b-b092-55514da54571",
+        "phpa_uid": "74bcc50d-85de-4adc-ac7f-e8c0e4614398",
+        "anchor": {
+          "reconcileID": "c2341b46-a9e1-484c-8bf2-a2ec7c78e0aa",
+          "reconcileStartedAt": "2026-09-10T10:12:00.481724977Z",
+          "query": {
+            "controller": "predictivehpa",
+            "controllerGroup": "autoscaling.brian.io",
+            "controllerKind": "PredictiveHPA",
+            "PredictiveHPA": {
+              "name": "predictivehpa-sample",
+              "namespace": "default"
+            },
+            "namespace": "default",
+            "name": "predictivehpa-sample",
+            "reconcileID": "c2341b46-a9e1-484c-8bf2-a2ec7c78e0aa",
+            "reconcileStartedAt": "2026-09-10T10:12:00.481724977Z",
+            "observationStartedAt": "2026-09-10T10:12:00.481761648Z",
+            "observationFinishedAt": "2026-09-10T10:12:00.497271265Z",
+            "queryStartedAt": "2026-09-10T10:12:00.487717341Z",
+            "queryFinishedAt": "2026-09-10T10:12:00.492276172Z",
+            "queryDurationSeconds": 0.004558834,
+            "queryInstantAt": "2026-09-10T10:12:00.487Z",
+            "latestEvaluationAt": "2026-09-10T10:12:00.487Z",
+            "sourceTimestamp": "2026-09-10T10:11:39.335000064Z",
+            "samples": 4,
+            "cpuRateWindowSeconds": 60,
+            "observationSpacingSeconds": 15,
+            "queryError": ""
+          },
+          "decision": {
+            "controller": "predictivehpa",
+            "controllerGroup": "autoscaling.brian.io",
+            "controllerKind": "PredictiveHPA",
+            "PredictiveHPA": {
+              "name": "predictivehpa-sample",
+              "namespace": "default"
+            },
+            "namespace": "default",
+            "name": "predictivehpa-sample",
+            "reconcileID": "c2341b46-a9e1-484c-8bf2-a2ec7c78e0aa",
+            "reconcileStartedAt": "2026-09-10T10:12:00.481724977Z",
+            "decisionAt": "2026-09-10T10:12:00.499120646Z",
+            "stabilizationEvaluatedAt": "2026-09-10T10:12:00.49911749Z",
+            "stabilizationHistoryEntries": 2,
+            "stabilizationHistoryOldestAt": "2026-09-10T10:11:30.478351517Z",
+            "coldStartProtection": false,
+            "coldStartProtectedUntil": "2026-09-10T10:12:00.459334287Z",
+            "decisionMode": "Current",
+            "decisionCPU%": 0.013150658619287851,
+            "rawPredictedCPU%": 0.013261507499821079,
+            "currentCPU%": 0.013150658619287851,
+            "predictedCPU%": 0.013261507499821079,
+            "currentReplicas": 1,
+            "desiredReplicas": 1,
+            "finalDesired": 1,
+            "stabilized": false,
+            "skipReason": "DesiredEqualsCurrent",
+            "samples": 4,
+            "latestEvaluationAt": "2026-09-10T10:12:00.487Z"
+          },
+          "finish": {
+            "controller": "predictivehpa",
+            "controllerGroup": "autoscaling.brian.io",
+            "controllerKind": "PredictiveHPA",
+            "PredictiveHPA": {
+              "name": "predictivehpa-sample",
+              "namespace": "default"
+            },
+            "namespace": "default",
+            "name": "predictivehpa-sample",
+            "reconcileID": "c2341b46-a9e1-484c-8bf2-a2ec7c78e0aa",
+            "reconcileStartedAt": "2026-09-10T10:12:00.481724977Z",
+            "reconcileFinishedAt": "2026-09-10T10:12:00.502655103Z",
+            "reconcileDurationSeconds": 0.020930128,
+            "reconcileError": "",
+            "requeueAfterSeconds": 30
+          }
+        }
+      },
+      "controller_start_to_onset_seconds": 122.27865409851074,
+      "first_accepted_controller_observation_seconds": -31.830729007720947,
+      "first_observed_metrics_ready_interval_seconds": [
+        -93.16548705101013,
+        -91.12595295906067
+      ]
+    }
+  },
+  "cold-current-step": {
+    "experiment_id": "20260910_220316_step_phpa_current_r1",
+    "mode": "Current",
+    "pattern": "step",
+    "startup": "cold",
+    "requests": 4498,
+    "http200": 2894,
+    "http200_pct": 64.33970653623832,
+    "p95_ms": 10000.63295025,
+    "dropped": 1,
+    "replicas": {
+      "requested": {
+        "covered_pod_seconds": 2065.06276345253,
+        "covered_seconds": 541.0,
+        "complete": true
+      },
+      "ready": {
+        "covered_pod_seconds": 2057.0690381526947,
+        "covered_seconds": 541.0,
+        "complete": true
+      }
+    },
+    "first_scale_seconds": 57.55799913406372,
+    "first_ready_interval": [
+      58.205965995788574,
+      60.25490212440491
+    ],
+    "criteria_passed": false,
+    "input_hashes_verified": 16,
+    "startup_detail": {
+      "mode": "cold",
+      "controller_started_at": "2026-09-10T14:03:17.364073554Z",
+      "gate": {
+        "protocol_version": "live-baseline-v1",
+        "startup_mode": "cold",
+        "released_at": "2026-09-10T14:03:18.499827+00:00",
+        "target_uid": "d9223fef-52f1-4f9b-b092-55514da54571",
+        "phpa_uid": "3bc48293-9a4a-42cb-937f-66b3aea0d3de",
+        "anchor": null,
+        "controller_started_at": "2026-09-10T14:03:17.364073554Z"
+      },
+      "controller_start_to_onset_seconds": 32.89692687988281,
+      "first_accepted_controller_observation_seconds": -2.490048885345459,
+      "first_observed_metrics_ready_interval_seconds": [
+        -3.80045485496521,
+        -1.7518010139465332
+      ]
+    }
+  }
+}

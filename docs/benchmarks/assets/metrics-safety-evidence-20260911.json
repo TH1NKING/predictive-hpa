@@ -1,0 +1,1686 @@
+{
+  "protocol": "metrics-safety-public-evidence-v1",
+  "meaning": "One successful functional acceptance after eight retained failures; not a performance or hosted-CI result",
+  "source": {
+    "commit": "09b6a1dc6b90f329ef5538617de1c20a88c4ccc4",
+    "git_status": "",
+    "snapshot_sha256": "284e5b6348ffe0f699e943cc12475044eb29bfc8839a23cf5d54f876c8ac53a8"
+  },
+  "archive": {
+    "name": "fault-evidence.tar.gz",
+    "sha256": "60d82d1825309c9b9b093e16908dc7369765c94bf913245a1a416cc370392c2f",
+    "size_bytes": 506166,
+    "original_manifest_sha256": "ba330d4fa93e35ca094f52043720474e0adb34db8fc8922d84293570fb181c94",
+    "evidence_files": 346,
+    "successful_attempt": 9
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "source_commit": "a4f2473776fca4a95ca0eb9efe4b96c119dd534f",
+      "passed": false,
+      "cluster_created": false,
+      "cluster_deleted": false,
+      "cluster_uid": null,
+      "failure_category": "go_module_download",
+      "diagnostic_error_count": 0,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-1/summary.json"
+    },
+    {
+      "attempt": 2,
+      "source_commit": "a4f2473776fca4a95ca0eb9efe4b96c119dd534f",
+      "passed": false,
+      "cluster_created": false,
+      "cluster_deleted": false,
+      "cluster_uid": null,
+      "failure_category": "go_module_download",
+      "diagnostic_error_count": 0,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-2/summary.json"
+    },
+    {
+      "attempt": 3,
+      "source_commit": "a4f2473776fca4a95ca0eb9efe4b96c119dd534f",
+      "passed": false,
+      "cluster_created": false,
+      "cluster_deleted": false,
+      "cluster_uid": null,
+      "failure_category": "base_registry_connection",
+      "diagnostic_error_count": 0,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-3/summary.json"
+    },
+    {
+      "attempt": 4,
+      "source_commit": "a4f2473776fca4a95ca0eb9efe4b96c119dd534f",
+      "passed": false,
+      "cluster_created": false,
+      "cluster_deleted": false,
+      "cluster_uid": null,
+      "failure_category": "base_registry_connection",
+      "diagnostic_error_count": 0,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-4/summary.json"
+    },
+    {
+      "attempt": 5,
+      "source_commit": "a4f2473776fca4a95ca0eb9efe4b96c119dd534f",
+      "passed": false,
+      "cluster_created": true,
+      "cluster_deleted": true,
+      "cluster_uid": "6ceb2e67-49d2-47ed-be64-f0a623a551cb",
+      "failure_category": "manifest_config_identity",
+      "diagnostic_error_count": 5,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-5/summary.json"
+    },
+    {
+      "attempt": 6,
+      "source_commit": "1fe2943bb5e310bff585bfa18b106cd7dcd86af1",
+      "passed": false,
+      "cluster_created": true,
+      "cluster_deleted": true,
+      "cluster_uid": "68c638cb-7465-453b-92ee-75716cfc7c8a",
+      "failure_category": "prometheus_image_pull",
+      "diagnostic_error_count": 5,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-6/summary.json"
+    },
+    {
+      "attempt": 7,
+      "source_commit": "bd0578b9f85af16f3c8cb4e72f0541079f4b6eb4",
+      "passed": false,
+      "cluster_created": true,
+      "cluster_deleted": true,
+      "cluster_uid": "2b0613e0-760a-400a-93af-3c8539aefec6",
+      "failure_category": "all_platform_cache_import",
+      "diagnostic_error_count": 5,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-7/summary.json"
+    },
+    {
+      "attempt": 8,
+      "source_commit": "142fc8c8b0be5dfd67c9ddae737998cf3d5846ce",
+      "passed": false,
+      "cluster_created": true,
+      "cluster_deleted": true,
+      "cluster_uid": "ed0ab369-cf76-4507-9793-98b6bcaf240c",
+      "failure_category": "container_archive_visibility",
+      "diagnostic_error_count": 5,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-8/summary.json"
+    },
+    {
+      "attempt": 9,
+      "source_commit": "09b6a1dc6b90f329ef5538617de1c20a88c4ccc4",
+      "passed": true,
+      "cluster_created": true,
+      "cluster_deleted": true,
+      "cluster_uid": "a517301c-5659-43ab-92c1-ca22d246ed0a",
+      "failure_category": null,
+      "diagnostic_error_count": 0,
+      "cleanup_error": null,
+      "summary_artifact": "fault-acceptance-9/summary.json"
+    }
+  ],
+  "successful_run": {
+    "cluster_name": "phpa-metrics-safety-20260910-entry9",
+    "context": "kind-phpa-metrics-safety-20260910-entry9",
+    "started_at": "2026-09-10T16:02:19.901913+00:00",
+    "run_error": null,
+    "diagnostic_errors": [],
+    "cleanup_error": null,
+    "passed": true,
+    "cluster_deleted": true,
+    "finished_at": "2026-09-10T16:12:41.406226+00:00",
+    "node_container_id": "2ca83617c401900538ad5362e2525b688b897e918802c30133c610d4fecadcd6",
+    "cluster_uid": "a517301c-5659-43ab-92c1-ca22d246ed0a"
+  },
+  "functional_checks": {
+    "finished_at": "2026-09-10T16:12:39.252689+00:00",
+    "context": "kind-phpa-metrics-safety-20260910-entry9",
+    "cluster_uid": "a517301c-5659-43ab-92c1-ca22d246ed0a",
+    "checks": [
+      {
+        "check": "Idle web stays below 20% while same-prefix canary exceeds 100%",
+        "at": "2026-09-10T16:04:21.370247+00:00",
+        "passed": true
+      },
+      {
+        "check": "Idle target eventually downscales to one after protection",
+        "at": "2026-09-10T16:05:48.108498+00:00",
+        "passed": true
+      },
+      {
+        "check": "Rolling update returns complete fresh metrics",
+        "at": "2026-09-10T16:06:25.260311+00:00",
+        "passed": true
+      },
+      {
+        "check": "Rolling update remains isolated from canary CPU",
+        "at": "2026-09-10T16:06:25.333098+00:00",
+        "passed": true
+      },
+      {
+        "check": "Real target CPU triggers an actual Scale increase",
+        "at": "2026-09-10T16:07:21.482663+00:00",
+        "passed": true
+      },
+      {
+        "check": "Successor leader establishes cold-start protection",
+        "at": "2026-09-10T16:08:44.349843+00:00",
+        "passed": true
+      },
+      {
+        "check": "New leader retained capacity during 30s observation",
+        "at": "2026-09-10T16:09:14.835418+00:00",
+        "passed": true,
+        "replicas": 5
+      },
+      {
+        "check": "Target can shrink after successor protection expires",
+        "at": "2026-09-10T16:10:15.890744+00:00",
+        "passed": true
+      },
+      {
+        "check": "Prometheus outage sets MetricsReady False",
+        "at": "2026-09-10T16:10:41.515681+00:00",
+        "passed": true
+      },
+      {
+        "check": "Outage holds Scale and clears obsolete CPU for 35s",
+        "at": "2026-09-10T16:11:17.297664+00:00",
+        "passed": true
+      },
+      {
+        "check": "Fresh source recovers metrics and scaling",
+        "at": "2026-09-10T16:12:38.911859+00:00",
+        "passed": true
+      }
+    ],
+    "passed": true,
+    "error": null,
+    "cleanup_error": null
+  },
+  "manager_image": {
+    "image": "metrics-safety/predictive-hpa:source-284e5b6348ffe0f699e9",
+    "docker_image_id": "sha256:7fcfb7caa80cdaa2b6d8b66efabf3e7c51ebd4794fdd26b70ab1c7d19e2a0915",
+    "dockerfile_sha256": "e3c8edb193f5ef14ebe73cda9036745dbbb8b69028e6f9ac21ea990c40b0414c"
+  },
+  "manager_image_identity": {
+    "docker_image_id": "sha256:7fcfb7caa80cdaa2b6d8b66efabf3e7c51ebd4794fdd26b70ab1c7d19e2a0915",
+    "runtime_config_digest": "sha256:857eeeeb339afc878320caee6c7630eddb9b9319c2574a9662849c15d651d484",
+    "verified_manifest_digests": [
+      "sha256:7fcfb7caa80cdaa2b6d8b66efabf3e7c51ebd4794fdd26b70ab1c7d19e2a0915"
+    ],
+    "accepted_pod_image_ids": [
+      "sha256:7fcfb7caa80cdaa2b6d8b66efabf3e7c51ebd4794fdd26b70ab1c7d19e2a0915",
+      "sha256:857eeeeb339afc878320caee6c7630eddb9b9319c2574a9662849c15d651d484"
+    ]
+  },
+  "cached_fixture_images": [
+    {
+      "image": "quay.io/prometheus/prometheus@sha256:c0b857aead0d5793aa566adb8f49a9983d6f6031652098759d521a330cfa050f",
+      "pinned_digest": "sha256:c0b857aead0d5793aa566adb8f49a9983d6f6031652098759d521a330cfa050f",
+      "docker_image_id": "sha256:c0b857aead0d5793aa566adb8f49a9983d6f6031652098759d521a330cfa050f"
+    },
+    {
+      "image": "busybox@sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47",
+      "pinned_digest": "sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47",
+      "docker_image_id": "sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47"
+    }
+  ],
+  "fixture_imports": [
+    {
+      "image": "quay.io/prometheus/prometheus@sha256:c0b857aead0d5793aa566adb8f49a9983d6f6031652098759d521a330cfa050f",
+      "platform": "linux/amd64",
+      "archive_sha256": "192147ce16882261fcb058fd75ecb8a778ecc4fc9866b3811f8d099b92a18a2f",
+      "archive_size_bytes": 152934912,
+      "runtime_config_digest": "sha256:eb76b4fb57766a23611a3d1347c60218136b6918d6047d02808147b09a1a6f6c",
+      "node_container_id": "2ca83617c401900538ad5362e2525b688b897e918802c30133c610d4fecadcd6"
+    },
+    {
+      "image": "busybox@sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47",
+      "platform": "linux/amd64",
+      "archive_sha256": "0d5a03a21a139839cc668af054ea2b8256e171ac5c8f4980ca4ac64ee2579ccf",
+      "archive_size_bytes": 736256,
+      "runtime_config_digest": "sha256:8c811b4aec35f259572d0f79207bc0678df4c736eeec50bc9fec37ed936a472a",
+      "node_container_id": "2ca83617c401900538ad5362e2525b688b897e918802c30133c610d4fecadcd6"
+    }
+  ],
+  "environment": {
+    "shared_cluster_identity_unchanged": true,
+    "expected_shared_uid": "5ef8888a-dfe3-4b9b-b247-731010abe051",
+    "observed_shared_uid": "5ef8888a-dfe3-4b9b-b247-731010abe051",
+    "owned_clusters_absent": true,
+    "owned_cluster_names_checked": 10,
+    "private_files_removed": true,
+    "finished_at": "2026-09-10T16:14:22.505227+00:00"
+  },
+  "regression": {
+    "linux_harness": {
+      "total": 85,
+      "passed": 82,
+      "skipped_node": 3,
+      "seconds": 52.961
+    },
+    "linux_analysis": {
+      "total": 81,
+      "passed": 81,
+      "seconds": 3.724
+    },
+    "windows_acceptance_cli": {
+      "total": 23,
+      "passed": 19,
+      "skipped_posix": 4,
+      "seconds": 24.561
+    }
+  },
+  "limits": [
+    "Normal Dockerfile with prepared base cache; not a completely cold installation",
+    "Fixed Prometheus and Busybox caches imported for linux/amd64; other architectures not executed",
+    "Other images and Go dependencies can still require network access",
+    "The GitHub Actions workflow was added but not executed on a hosted runner in this task",
+    "Full raw command/observation data requires the retained archive; only compact evidence and all file hashes are in Git"
+  ],
+  "files": {
+    "base-image-cache.json": {
+      "sha256": "d6cf1b22fa4083de39f2cb130acc18614e8b1a793d94fcbcb52b1968a151027f",
+      "size_bytes": 8647
+    },
+    "baseline-cleanup.json": {
+      "sha256": "e39133b223ad30f7534da474485648f004daa497ce4f37ae0a7abf968a06e20a",
+      "size_bytes": 422
+    },
+    "fault-acceptance-1.log": {
+      "sha256": "16b7f18939a1246cbb2fbe593da948d6d204d7a06f261fe047f4badbecc8e999",
+      "size_bytes": 16292
+    },
+    "fault-acceptance-1/001-clusters-before.json": {
+      "sha256": "61dc93a2e1a205f662dd096ae646e398befd33298761b065306c1f93fdfb0728",
+      "size_bytes": 190
+    },
+    "fault-acceptance-1/002-containers-before.json": {
+      "sha256": "becb6694627104ba55d3611cc93be909b51502f6f143c2df9e011c7e6379eeb0",
+      "size_bytes": 257
+    },
+    "fault-acceptance-1/003-kind-version.json": {
+      "sha256": "d35c84832dd3def2e350db38e307e769734737f327b81effcb7e494cd9347056",
+      "size_bytes": 204
+    },
+    "fault-acceptance-1/004-helm-version.json": {
+      "sha256": "f0333a4981fe505957a1f495fa5de385d724903901425a857b7401361351db8a",
+      "size_bytes": 202
+    },
+    "fault-acceptance-1/005-docker-version.json": {
+      "sha256": "f7be03a53b6bf3c4b638b347cd21fdf13698692d97bbcd93e836a8fa1ce7024a",
+      "size_bytes": 967
+    },
+    "fault-acceptance-1/006-kubectl-version.json": {
+      "sha256": "8dc7d13058c1ce22329d94bbb728bd0c8a45faa421b2637141831b265fe96f7e",
+      "size_bytes": 605
+    },
+    "fault-acceptance-1/007-git-head.json": {
+      "sha256": "78ce5631b550e9a7f0fbea4f8e604330684f9252d53d1d20b1bdb1973e8080e5",
+      "size_bytes": 224
+    },
+    "fault-acceptance-1/008-git-status.json": {
+      "sha256": "5b40bbe59811e622895d5d4ba516d395cd9ab77bdd49e603e2d7ee303016ecbf",
+      "size_bytes": 189
+    },
+    "fault-acceptance-1/009-git-files.json": {
+      "sha256": "3b2519b5d3c3a299bab62114f1d8514fb05065ae4ae38fa974efa260d47ae0d6",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-1/010-docker-build.json": {
+      "sha256": "261b87152a66dfdc110f389abb498cebcb389080852ae78d3e608e4ed6a64f6c",
+      "size_bytes": 32251
+    },
+    "fault-acceptance-1/artifact-manifest.json": {
+      "sha256": "8a49e5679e600263f5e8cf77b1b83fc1d59548fe7e69612f48ba2f13d68d5bb9",
+      "size_bytes": 1169
+    },
+    "fault-acceptance-1/source.json": {
+      "sha256": "b10ebd16a49c8077d5f7d719fd263d274733bdcbdfb6b6c5152fb0010ea353e8",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-1/summary.json": {
+      "sha256": "16b7f18939a1246cbb2fbe593da948d6d204d7a06f261fe047f4badbecc8e999",
+      "size_bytes": 16292
+    },
+    "fault-acceptance-2.log": {
+      "sha256": "fc9d9a8814019647fb612608724cfcaa5e445b9fdce012ed8cc5e7fa681f44b1",
+      "size_bytes": 4552
+    },
+    "fault-acceptance-2/001-clusters-before.json": {
+      "sha256": "abaf36c22182c20b7ff3984ed914c65a5d6a04a2f9366733284b7857b521bdf2",
+      "size_bytes": 190
+    },
+    "fault-acceptance-2/002-containers-before.json": {
+      "sha256": "eaf5bd3632a7b6b798bfd13525fd9f01de255d9f7db2f6c271d6482eba14c627",
+      "size_bytes": 258
+    },
+    "fault-acceptance-2/003-kind-version.json": {
+      "sha256": "7c5c643be615e2f9a5123c72bcae5777c140fc207954f351c512130ebf6103d8",
+      "size_bytes": 204
+    },
+    "fault-acceptance-2/004-helm-version.json": {
+      "sha256": "29c405330c53e57f3d97a6d17ea3a0aab2080bfc27b885b6c091a08ae22344b9",
+      "size_bytes": 202
+    },
+    "fault-acceptance-2/005-docker-version.json": {
+      "sha256": "94d27b1e676c3470feb2afc016dc6c7c83978f6209340975e306b9886658f654",
+      "size_bytes": 967
+    },
+    "fault-acceptance-2/006-kubectl-version.json": {
+      "sha256": "2bfbd008e7ff2d7d8b035263b1f2c32375469d11fc67f57d795bfb707b6ace48",
+      "size_bytes": 605
+    },
+    "fault-acceptance-2/007-git-head.json": {
+      "sha256": "a48205ff61c760d3059487483787265ead79d41925505906f058c6067f4711fe",
+      "size_bytes": 224
+    },
+    "fault-acceptance-2/008-git-status.json": {
+      "sha256": "a0f04a1579e8dbd0c6369398cc47de10915edc199b9fd07b502ff27419ebcf98",
+      "size_bytes": 189
+    },
+    "fault-acceptance-2/009-git-files.json": {
+      "sha256": "0b5d0a3bc19dfab4fe761b2e020f2ea6aa80f92940e46dcc6e4f5f81f7f61962",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-2/010-docker-build.json": {
+      "sha256": "03619ae29d01a533b104be1ccc2600dfae2edcb363421549669c18bbbb4ba482",
+      "size_bytes": 8767
+    },
+    "fault-acceptance-2/artifact-manifest.json": {
+      "sha256": "3c82d8d18690407d1cc2b7554ef61ddcb961f8c2d133397fd8fbd89e0860481e",
+      "size_bytes": 1169
+    },
+    "fault-acceptance-2/source.json": {
+      "sha256": "b10ebd16a49c8077d5f7d719fd263d274733bdcbdfb6b6c5152fb0010ea353e8",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-2/summary.json": {
+      "sha256": "fc9d9a8814019647fb612608724cfcaa5e445b9fdce012ed8cc5e7fa681f44b1",
+      "size_bytes": 4552
+    },
+    "fault-acceptance-3.log": {
+      "sha256": "4da08cb0a0375747dc2fbe1fd12603a422feb3ff139633f3e95e9bc6504e9d56",
+      "size_bytes": 1669
+    },
+    "fault-acceptance-3/001-clusters-before.json": {
+      "sha256": "914d807e9ba719173c7ccc451f7b9929a57b5108a75a1356852dbb9a71739b2a",
+      "size_bytes": 190
+    },
+    "fault-acceptance-3/002-containers-before.json": {
+      "sha256": "9dedf8b9d571333b91fb2c469cf749b964a1155b190f7c562461e38f3146a6f1",
+      "size_bytes": 258
+    },
+    "fault-acceptance-3/003-kind-version.json": {
+      "sha256": "f1407ea2b32402d76c6cda82d924b9ca3841132ae94a5be7d719a4de0b4ad7ea",
+      "size_bytes": 204
+    },
+    "fault-acceptance-3/004-helm-version.json": {
+      "sha256": "fc1a29ad1af3bdfe7f62e3868d659201b2ca78614c5956b2f6d5a6e858c7e591",
+      "size_bytes": 202
+    },
+    "fault-acceptance-3/005-docker-version.json": {
+      "sha256": "576f8d4a08f1b7b342e45e0d382ad837648cbebe520a7be3cfd616d329372306",
+      "size_bytes": 967
+    },
+    "fault-acceptance-3/006-kubectl-version.json": {
+      "sha256": "84a9bfed1f50becf6878155217acf7d424dccdef811cfc666b196790d08ddcff",
+      "size_bytes": 605
+    },
+    "fault-acceptance-3/007-git-head.json": {
+      "sha256": "1d8d47f8d7bd7ebb1942432a7bfaacdf235e2cffba7ff76869cc90af586197b4",
+      "size_bytes": 224
+    },
+    "fault-acceptance-3/008-git-status.json": {
+      "sha256": "d849a7c19731cca15b42a227c7feab4f9f0dada682d135704820d510997083a9",
+      "size_bytes": 189
+    },
+    "fault-acceptance-3/009-git-files.json": {
+      "sha256": "8c7d6b5ddfb27e241c042aa099f9facc501246704520de81e589e4c823c2b8e6",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-3/010-docker-build.json": {
+      "sha256": "1adad76c2fa28080683e4ef85345420f144a3dd256d131015f6b37bdf85c1338",
+      "size_bytes": 3001
+    },
+    "fault-acceptance-3/artifact-manifest.json": {
+      "sha256": "22ccb51fce8e2e2e32df62d6b2047edd489d3889ac190f608d8935fbb81b4573",
+      "size_bytes": 1169
+    },
+    "fault-acceptance-3/source.json": {
+      "sha256": "b10ebd16a49c8077d5f7d719fd263d274733bdcbdfb6b6c5152fb0010ea353e8",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-3/summary.json": {
+      "sha256": "4da08cb0a0375747dc2fbe1fd12603a422feb3ff139633f3e95e9bc6504e9d56",
+      "size_bytes": 1669
+    },
+    "fault-acceptance-4.log": {
+      "sha256": "3c9849ec4e7c928d0a60341982831d5b7a15dd67e907b214b0feb1db9333a9bb",
+      "size_bytes": 1562
+    },
+    "fault-acceptance-4/001-clusters-before.json": {
+      "sha256": "73694d96d6758d01e2521d8d088aee573219f62406d186b7972d48ece140ee62",
+      "size_bytes": 190
+    },
+    "fault-acceptance-4/002-containers-before.json": {
+      "sha256": "3a1a9f36ec710f2734fefef73703aa6e2d2198b15ecc4c45b7f2d8df999044fe",
+      "size_bytes": 258
+    },
+    "fault-acceptance-4/003-kind-version.json": {
+      "sha256": "274e7a094c0ebed3cae04f01a62deae404d4e704009d7148bc60cf4572d23123",
+      "size_bytes": 204
+    },
+    "fault-acceptance-4/004-helm-version.json": {
+      "sha256": "355d538ee468ca8e8595872745048f74b7b689841f850a832d693d6c89d8f9e8",
+      "size_bytes": 202
+    },
+    "fault-acceptance-4/005-docker-version.json": {
+      "sha256": "85ddf792719a4c3436edcea465c2b67e39cb189495257c9502da4f49f6250b48",
+      "size_bytes": 967
+    },
+    "fault-acceptance-4/006-kubectl-version.json": {
+      "sha256": "bb84098dc7813d868b3bace33473d990108e138cda7f62f0643b61b252c09e97",
+      "size_bytes": 605
+    },
+    "fault-acceptance-4/007-git-head.json": {
+      "sha256": "25a36562c12873ab51ebde29c3af719ac96624c1cd00613ef9f8e9b169c682d1",
+      "size_bytes": 224
+    },
+    "fault-acceptance-4/008-git-status.json": {
+      "sha256": "79214bd1e43f3aee0b6aa963e59690fe4b03917cbec67958b1e4d117a2cdabd1",
+      "size_bytes": 189
+    },
+    "fault-acceptance-4/009-git-files.json": {
+      "sha256": "815af574946083fa126099635483b2f7e7a5f96e4c162c43b2220fc2f9a037f7",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-4/010-docker-build.json": {
+      "sha256": "84969a7df0f68a22ffd4c8053e01aae97cfd5dd81134c8dd2e2a175a8bf6d267",
+      "size_bytes": 2787
+    },
+    "fault-acceptance-4/artifact-manifest.json": {
+      "sha256": "4531a19b688ad79a1cc0c5a8c365862e806271c0655c9b81f2fa5a7e7162f7c0",
+      "size_bytes": 1169
+    },
+    "fault-acceptance-4/source.json": {
+      "sha256": "b10ebd16a49c8077d5f7d719fd263d274733bdcbdfb6b6c5152fb0010ea353e8",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-4/summary.json": {
+      "sha256": "3c9849ec4e7c928d0a60341982831d5b7a15dd67e907b214b0feb1db9333a9bb",
+      "size_bytes": 1562
+    },
+    "fault-acceptance-5.log": {
+      "sha256": "eea5b1111de99d494453d3f1aaf9c58c4abdd3c432bfb9759a279bd8fc81a166",
+      "size_bytes": 1274
+    },
+    "fault-acceptance-5/001-clusters-before.json": {
+      "sha256": "b7352c48bd2e4dd79c5d4a947060506e033d3a10a77b542bac6a03c426cc18a4",
+      "size_bytes": 190
+    },
+    "fault-acceptance-5/002-containers-before.json": {
+      "sha256": "3077264ec3e2605d0d1a0bc700619754cd675ced517d2450d4fb8ce7190bc838",
+      "size_bytes": 258
+    },
+    "fault-acceptance-5/003-kind-version.json": {
+      "sha256": "53a78964c75643af18e5e44d1443cf00e3a7848214524caaae191416a2b705ce",
+      "size_bytes": 204
+    },
+    "fault-acceptance-5/004-helm-version.json": {
+      "sha256": "0dd0b3b3fc8185a6e3ed82431fb9cec515976b478cbbfaaad976367715675f3a",
+      "size_bytes": 202
+    },
+    "fault-acceptance-5/005-docker-version.json": {
+      "sha256": "93d459c8aacfba71c3c7f2fd900096385b9f321f7ba753af16d6cb34d7e4849a",
+      "size_bytes": 967
+    },
+    "fault-acceptance-5/006-kubectl-version.json": {
+      "sha256": "99acc7f41de8d9efa5f90dbe54f1a47a3352bc9a69e0cde80bf10024d2b10d16",
+      "size_bytes": 605
+    },
+    "fault-acceptance-5/007-git-head.json": {
+      "sha256": "6fcbc316a8452c370e58d89e0c86df67149e09cf7eee3233cbd8a0fc2d2a4a89",
+      "size_bytes": 224
+    },
+    "fault-acceptance-5/008-git-status.json": {
+      "sha256": "147b51c7a73519723cb5fb2b7b8a9c16a3fc42f8f2a015acbbbb3baa51fb7591",
+      "size_bytes": 189
+    },
+    "fault-acceptance-5/009-git-files.json": {
+      "sha256": "6c07f71da54846bad7a887fe2208cfd7d96210b55fc99efd513702bbe33b093f",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-5/010-docker-build.json": {
+      "sha256": "e6ec43d10d319b6c828857a3013212bb674d321be1a33ea33dfafb2c6becedc3",
+      "size_bytes": 2394
+    },
+    "fault-acceptance-5/011-docker-image.json": {
+      "sha256": "3f5382d123e80aee92dfa5fefe022df8a2a486dc39a78dd3ea908e738ae0afac",
+      "size_bytes": 3656
+    },
+    "fault-acceptance-5/012-kind-create.json": {
+      "sha256": "840a600894ffa9c7f864d9f7f10fea576db8796d6ba0affe2b1e140472cbe97f",
+      "size_bytes": 1647
+    },
+    "fault-acceptance-5/013-node-identity.json": {
+      "sha256": "5a4def5b25932c38b224bcb9bcf9337a7350ff6a7870490286c6a324bed3477f",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-5/014-cluster-identity.json": {
+      "sha256": "74b242c9c8031c01f30a6ba85f6ed910e283c7a96d37a8ff7d64546052c209f4",
+      "size_bytes": 900
+    },
+    "fault-acceptance-5/015-nodes-ready.json": {
+      "sha256": "348e2e31e0ffcccf431ed25dcf99c39dc2351360af83cf0c58b670699a3b1590",
+      "size_bytes": 9539
+    },
+    "fault-acceptance-5/016-kind-load.json": {
+      "sha256": "20145828876a41d7c08c1fea9bb1308b797d12293f51d4c945710dbd8a31eb7a",
+      "size_bytes": 553
+    },
+    "fault-acceptance-5/017-runtime-image.json": {
+      "sha256": "b5f10f39a4734a57080f742e2839291dbc047bbce0a6df3954f1c7bd735e6c58",
+      "size_bytes": 5404
+    },
+    "fault-acceptance-5/018-node-identity.json": {
+      "sha256": "c135d65de8a2b1087e876f31643fe3aea6eac3d381cc2f0af35bacdb49878f77",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-5/019-cluster-identity.json": {
+      "sha256": "d44a6687c142c5da80f0226a8717caa2bb7765c51948bfe7c32ec2c3eeffeb4e",
+      "size_bytes": 900
+    },
+    "fault-acceptance-5/020-final-pods.json": {
+      "sha256": "731814783078548d6e69dfd6d0f5f4025c282df808ab37749c3fcae2338289c6",
+      "size_bytes": 125402
+    },
+    "fault-acceptance-5/021-final-deployments.json": {
+      "sha256": "37a6058ed76ed95b3edf2a4f68f7d950ed369602a188f262756a7a17467a0b16",
+      "size_bytes": 19812
+    },
+    "fault-acceptance-5/022-final-phpas.json": {
+      "sha256": "43829da286c8358bb3963c51c7acf551ed74848b9a7a0fe7a261d211a087214d",
+      "size_bytes": 516
+    },
+    "fault-acceptance-5/023-final-events.json": {
+      "sha256": "5918e435e64b3bdf618819c9ac4838c61ec23f15dc020397fd2ae9711e7298ea",
+      "size_bytes": 86440
+    },
+    "fault-acceptance-5/024-final-leases.json": {
+      "sha256": "7e2e29f307a5bc6a3ceecb152a73c42826cc2a4e36b958c9dc9dee816020374a",
+      "size_bytes": 532
+    },
+    "fault-acceptance-5/025-final-manager-logs.json": {
+      "sha256": "7721dc080942ec526beb0768bfb42de6dd06d290b7fe5b9cbbd0ce7e86b5e9a4",
+      "size_bytes": 754
+    },
+    "fault-acceptance-5/026-final-prometheus-targets.json": {
+      "sha256": "57672a4074581fefa5f32a75b14ae8a092a76153a257f08e556a6295453da3dd",
+      "size_bytes": 601
+    },
+    "fault-acceptance-5/027-final-prometheus-buildinfo.json": {
+      "sha256": "6b0cdc69ce58ab6e86a32ad5a90ae0f7cbc6543580873eb97dc950df4005cd2b",
+      "size_bytes": 612
+    },
+    "fault-acceptance-5/028-final-prometheus-config.json": {
+      "sha256": "e3645d58c49c78f0b8dadb5224524c67ba3ba2b4321c367236dff407aff2588c",
+      "size_bytes": 606
+    },
+    "fault-acceptance-5/029-containers-cleanup.json": {
+      "sha256": "71fad34234751f3910b36f57c64017ca487265c742e55df8801cbfe0c3ae827e",
+      "size_bytes": 272
+    },
+    "fault-acceptance-5/030-node-identity.json": {
+      "sha256": "48f9eb81055364dd07f08b04377825d9101f3da2722996735e3205727b55ff49",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-5/031-cleanup-cluster-identity.json": {
+      "sha256": "15dce175b8f4b53704f385f34cf7c58082732ea3c87a25c206edbc0168706991",
+      "size_bytes": 900
+    },
+    "fault-acceptance-5/032-kind-delete.json": {
+      "sha256": "e41cc16efadcb70b3553b89416ac75d9b440dd736bb5b6ead77d03ffe076201c",
+      "size_bytes": 455
+    },
+    "fault-acceptance-5/033-clusters-after.json": {
+      "sha256": "55892f31414031793557dd0498f8ee06a97941a1218a4953e2a453507c6a42fe",
+      "size_bytes": 190
+    },
+    "fault-acceptance-5/034-containers-after.json": {
+      "sha256": "381ae52e24ceeff61604db9d4b09ccc744382865b6819a77ec4642f62fe931c8",
+      "size_bytes": 258
+    },
+    "fault-acceptance-5/artifact-manifest.json": {
+      "sha256": "cab2eb57905eba64306256a52a4cbca75bf6ad48f170269fbb47b74d532ffb2f",
+      "size_bytes": 3748
+    },
+    "fault-acceptance-5/image.json": {
+      "sha256": "effbdc045e9b8fbda21d46f7f0f7145b46178fbb30604f3d3912a554f46c0bd5",
+      "size_bytes": 262
+    },
+    "fault-acceptance-5/ownership.json": {
+      "sha256": "8d451774b55b5dda857b178118001dbc3f4cc88b70de99f39461e60340fce5e1",
+      "size_bytes": 331
+    },
+    "fault-acceptance-5/source.json": {
+      "sha256": "b10ebd16a49c8077d5f7d719fd263d274733bdcbdfb6b6c5152fb0010ea353e8",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-5/summary.json": {
+      "sha256": "eea5b1111de99d494453d3f1aaf9c58c4abdd3c432bfb9759a279bd8fc81a166",
+      "size_bytes": 1274
+    },
+    "fault-acceptance-6.log": {
+      "sha256": "50467b89a5cc82f1fcb76a1f860e4bca7b197f3ee53f94c4818c633b482863dc",
+      "size_bytes": 1388
+    },
+    "fault-acceptance-6/001-clusters-before.json": {
+      "sha256": "458471e6703d065cce687fdd60dceec4eb29b718612f01b57fd68c85c5440fea",
+      "size_bytes": 190
+    },
+    "fault-acceptance-6/002-containers-before.json": {
+      "sha256": "59de9031af52fe25d400ff16cb0af2b4c6b2129c55398693dbb5e4bf06af7d20",
+      "size_bytes": 258
+    },
+    "fault-acceptance-6/003-kind-version.json": {
+      "sha256": "024850e9a1a6d64dc05242118ccfe73cc5956c12db705919823dc10f86b5e4b6",
+      "size_bytes": 204
+    },
+    "fault-acceptance-6/004-helm-version.json": {
+      "sha256": "a2839e3a97d63ce5e4a505bbaac3cdfbdce7907e56263e1173bda32c642d37b1",
+      "size_bytes": 202
+    },
+    "fault-acceptance-6/005-docker-version.json": {
+      "sha256": "4f39679959c7199c48ce77047ec324674b9dbd98c2444e85bb42a34a02a645e5",
+      "size_bytes": 967
+    },
+    "fault-acceptance-6/006-kubectl-version.json": {
+      "sha256": "ddd7b8ee98ecefc325aa8f5171d8858bd4b6fc33d6d102d4ef7ad7b773c914a0",
+      "size_bytes": 605
+    },
+    "fault-acceptance-6/007-git-head.json": {
+      "sha256": "4d34f70be3d9f100ecbdc091ce1dcde310cf7f8e04f828f17d424d3e63006398",
+      "size_bytes": 224
+    },
+    "fault-acceptance-6/008-git-status.json": {
+      "sha256": "e3168c674e583d90effa1593bffada37f0193e353296fc6dadb6d7a02dad6660",
+      "size_bytes": 189
+    },
+    "fault-acceptance-6/009-git-files.json": {
+      "sha256": "229bb0fb48e44601e886ff278481b0dea4b0563deb61110dab80da96fa44ac1e",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-6/010-docker-build.json": {
+      "sha256": "a44a249f78f9c0faea544a34570b71260812bb2fcd38982d31623b423f596783",
+      "size_bytes": 2383
+    },
+    "fault-acceptance-6/011-docker-image.json": {
+      "sha256": "a88346aeb86c590f27f0f59d272f4f666bd0a596ad71d2fd8f0240a999bf6365",
+      "size_bytes": 3908
+    },
+    "fault-acceptance-6/012-kind-create.json": {
+      "sha256": "3c7851f4817e337627295ac2bce70b75c86d1b0225a52cf4a9ce1c97f6c28533",
+      "size_bytes": 1715
+    },
+    "fault-acceptance-6/013-node-identity.json": {
+      "sha256": "1040a0a24ea6bd170c9648250f0ad9c9b35159df7b62f37a4653614ba894332b",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-6/014-cluster-identity.json": {
+      "sha256": "19fd0bec027bc6ec21ad0d2b891881c3208c13fdeaaf38da5f670bf620ca7354",
+      "size_bytes": 900
+    },
+    "fault-acceptance-6/015-nodes-ready.json": {
+      "sha256": "e5c2c0c4b74b5c05dee470da1f0c7451b7d2943fd5bc1d0748c447f1053fb24b",
+      "size_bytes": 9539
+    },
+    "fault-acceptance-6/016-kind-load.json": {
+      "sha256": "0b672fea941fbc386b34b73cf9767bfb50ccba1d27cba125280cf2a0c0ee3841",
+      "size_bytes": 553
+    },
+    "fault-acceptance-6/017-runtime-image.json": {
+      "sha256": "6243a2d3e2f6462435d77a2580c834d71e3b00c05cdbddfdbe22096dcebe8fad",
+      "size_bytes": 5404
+    },
+    "fault-acceptance-6/018-image-manifest.json": {
+      "sha256": "736a960795676b306c41c12d8777818f5ea53ed6fbc5b1db407381d1e370e1a1",
+      "size_bytes": 3559
+    },
+    "fault-acceptance-6/019-image-config.json": {
+      "sha256": "152a685b97774880928a0f1e6bfab5723208d17fa968004599d3df8d1d3a020e",
+      "size_bytes": 3689
+    },
+    "fault-acceptance-6/020-node-identity.json": {
+      "sha256": "9a887b4e8df8fcbcb19d5645bf0c21df5ca41270dc2e533935085fc1de342a8b",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-6/021-cluster-identity.json": {
+      "sha256": "6ac318f3b244489922d57d356ce472e1cad649af3c7811d9e6c5ccae9d46e504",
+      "size_bytes": 900
+    },
+    "fault-acceptance-6/022-monitoring-apply.json": {
+      "sha256": "d8757d25c62cae32c6a70bb26980d7ae5a783caf5c4115d8518ff46eb1a2c679",
+      "size_bytes": 1029
+    },
+    "fault-acceptance-6/023-prometheus-ready.json": {
+      "sha256": "d7f6c4e78b48277db97b20db064dcde926406e2dcce148f1d0f992f7529d4f72",
+      "size_bytes": 652
+    },
+    "fault-acceptance-6/024-node-identity.json": {
+      "sha256": "d873b22d47397b7d0c8c63288593af2b61613c472df43dd28b5d63726790d304",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-6/025-cluster-identity.json": {
+      "sha256": "42b4daee4a226d96a9cbc5e8d592c34bcc8766a107eefd4150ec0d81e12d145b",
+      "size_bytes": 900
+    },
+    "fault-acceptance-6/026-final-pods.json": {
+      "sha256": "9afcd3d5ec54accb17f99f21882c5a9c733fbbab57accba56bd52e0440ebcce1",
+      "size_bytes": 148873
+    },
+    "fault-acceptance-6/027-final-deployments.json": {
+      "sha256": "72be2da241dea9426aaf9d69856efc60d69392ec123d6fd1a348d2095e81fb1b",
+      "size_bytes": 34577
+    },
+    "fault-acceptance-6/028-final-phpas.json": {
+      "sha256": "ae82b19b5ff3d760851f22139984c602b6549117e6a3ce100d822518c4375b0d",
+      "size_bytes": 516
+    },
+    "fault-acceptance-6/029-final-events.json": {
+      "sha256": "17fd64c21c6ee4fd0886898f9d7cbcd365bb23c2a9dca1d4a2f85ee80ebf80a7",
+      "size_bytes": 109128
+    },
+    "fault-acceptance-6/030-final-leases.json": {
+      "sha256": "ab2f152a1f007183cd7387631efeade94aca6137d245dbba9ec6cdb344d87711",
+      "size_bytes": 532
+    },
+    "fault-acceptance-6/031-final-manager-logs.json": {
+      "sha256": "b383af52e19eb0b859997d61998cca6a9c651534771a9409176f2812f9d7c305",
+      "size_bytes": 754
+    },
+    "fault-acceptance-6/032-final-prometheus-targets.json": {
+      "sha256": "244184081e9f68c4174651cab14219d6a4bc8c5e309a1ff9a4a6ef758c6997f5",
+      "size_bytes": 663
+    },
+    "fault-acceptance-6/033-final-prometheus-buildinfo.json": {
+      "sha256": "cd708b50fb0adbf2692aa46fe534a9062ca0ff900490a41ff0d20e739db53c85",
+      "size_bytes": 674
+    },
+    "fault-acceptance-6/034-final-prometheus-config.json": {
+      "sha256": "2f2c032865cb464ba65fcedb6b717cc2ca73021f918e06921d634d59b8aa38c5",
+      "size_bytes": 668
+    },
+    "fault-acceptance-6/035-containers-cleanup.json": {
+      "sha256": "ebabcf7ba131f39cbed615dc84198a8e3c63cfea85c6f5dd188430108fcc4982",
+      "size_bytes": 272
+    },
+    "fault-acceptance-6/036-node-identity.json": {
+      "sha256": "c39aabf4ab99961c4f13e5ce18ce73d46094f49afd759b529a7877c9ab1c165d",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-6/037-cleanup-cluster-identity.json": {
+      "sha256": "d3432d7ea5c0fb1f9dc22e8f58e784b2d9e8ccb3e49dbc2e9958ccb1710ecb99",
+      "size_bytes": 900
+    },
+    "fault-acceptance-6/038-kind-delete.json": {
+      "sha256": "43978302c601eeab127daea09de6e813f865b658ac262175d9568cf9d2d554ee",
+      "size_bytes": 455
+    },
+    "fault-acceptance-6/039-clusters-after.json": {
+      "sha256": "94094dd1b79620611edf35ea357eabd210659a8ea4460406c9f7680392dc33a0",
+      "size_bytes": 190
+    },
+    "fault-acceptance-6/040-containers-after.json": {
+      "sha256": "28d79aecc77d12e7943928bbe495ad8db425956d97fadd8065710288721d1664",
+      "size_bytes": 258
+    },
+    "fault-acceptance-6/artifact-manifest.json": {
+      "sha256": "23e0a7e090efff21f6c83ae936530a2ad702bc8556f8bafe400e9e7be23a2ebb",
+      "size_bytes": 4628
+    },
+    "fault-acceptance-6/image-config.json": {
+      "sha256": "857eeeeb339afc878320caee6c7630eddb9b9319c2574a9662849c15d651d484",
+      "size_bytes": 3077
+    },
+    "fault-acceptance-6/image-identity.json": {
+      "sha256": "7d16ae1cff0b3716e15650355cfc0de95006e7d619c88188c923c3089a11d6e4",
+      "size_bytes": 509
+    },
+    "fault-acceptance-6/image-manifest.json": {
+      "sha256": "7fcfb7caa80cdaa2b6d8b66efabf3e7c51ebd4794fdd26b70ab1c7d19e2a0915",
+      "size_bytes": 2939
+    },
+    "fault-acceptance-6/image.json": {
+      "sha256": "076ba0e539d41c587e91f34ddd85e84cbd7dacbefd4e29ca05792f7dc1440f5d",
+      "size_bytes": 262
+    },
+    "fault-acceptance-6/ownership.json": {
+      "sha256": "80a7ca94a809585c7a0445e539171abe8abf7a52c53179c0c74b8f1470d96955",
+      "size_bytes": 331
+    },
+    "fault-acceptance-6/source.json": {
+      "sha256": "af1dd53561f6cba6e39c7101ef120b577afba781917fbd5959806dae87f80137",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-6/summary.json": {
+      "sha256": "50467b89a5cc82f1fcb76a1f860e4bca7b197f3ee53f94c4818c633b482863dc",
+      "size_bytes": 1388
+    },
+    "fault-acceptance-7.log": {
+      "sha256": "07020148c7bb336785c7ac604cad4c71b2398fec25ce4c5b3b49661731ca7a59",
+      "size_bytes": 1901
+    },
+    "fault-acceptance-7/001-clusters-before.json": {
+      "sha256": "aee0351b64d46b78f6c310deee2937809c85afb5a6f86854bdae2987d62024a5",
+      "size_bytes": 190
+    },
+    "fault-acceptance-7/002-containers-before.json": {
+      "sha256": "016c9014cdaa9d282adc94498178e54b6842ccf659f3b6b56c5f79f81e5843ec",
+      "size_bytes": 258
+    },
+    "fault-acceptance-7/003-kind-version.json": {
+      "sha256": "2f2927e401fde25964875ebf10f5f82c9272e9f453c91a97bcbb14f4387dea0c",
+      "size_bytes": 204
+    },
+    "fault-acceptance-7/004-helm-version.json": {
+      "sha256": "0cfe243d9598aecad4590275ac8f381a0d108943eaffa87ab5a1eead625e7f9e",
+      "size_bytes": 202
+    },
+    "fault-acceptance-7/005-docker-version.json": {
+      "sha256": "3e0ff3e17bb695e6c0d4f6b08b48958b67248186fbfee6e85a935064a4d3ad48",
+      "size_bytes": 967
+    },
+    "fault-acceptance-7/006-kubectl-version.json": {
+      "sha256": "a932c829e01d98da5f37b30d1aadea36716ee5b14848c1d1cdf23e36ed314a6b",
+      "size_bytes": 605
+    },
+    "fault-acceptance-7/007-git-head.json": {
+      "sha256": "24a4f0554044cbb208b821d55147af70d7b4922853957e4e8bb829f29aceb8f1",
+      "size_bytes": 224
+    },
+    "fault-acceptance-7/008-git-status.json": {
+      "sha256": "b123eff86c232a4e5aa954d6b95787e99d1de446e8eb69b2b73e750ed11ffef6",
+      "size_bytes": 189
+    },
+    "fault-acceptance-7/009-git-files.json": {
+      "sha256": "c1f57f457903b3b841c77cfe0cecc8e49d2e93b49ad0ef7194bfbd2cb1405f43",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-7/010-fixture-cache-1.json": {
+      "sha256": "3b6cc7452be119f23a6a0e5270b18431b04427587d4ac7a0ba2d768f59843ab1",
+      "size_bytes": 4221
+    },
+    "fault-acceptance-7/011-fixture-cache-2.json": {
+      "sha256": "2a59227679391e285c4888e93a04f1168ba74a5684e782dcece5453a38e7a529",
+      "size_bytes": 1816
+    },
+    "fault-acceptance-7/012-docker-build.json": {
+      "sha256": "2d3320b76e53cfae266be7a5a85bf74126fa3e7f4958d02b47238ae3131b168d",
+      "size_bytes": 2383
+    },
+    "fault-acceptance-7/013-docker-image.json": {
+      "sha256": "d214152444e37b0ca69ff21910364e0d9fedb593182c598ef6004016c96cdfa5",
+      "size_bytes": 4160
+    },
+    "fault-acceptance-7/014-kind-create.json": {
+      "sha256": "1ae13ab5c75f28f7ce49c3e6344d84f5b72699d31b0d84b55524ee4c2df537cf",
+      "size_bytes": 1647
+    },
+    "fault-acceptance-7/015-node-identity.json": {
+      "sha256": "f2420414009281a675c397d1aee76836c6317ae3fbad292b8511eb621752ea91",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-7/016-cluster-identity.json": {
+      "sha256": "c04d7836d66b1f4540d3c493596308d7a3bf5499976c437744ab1b488e78578c",
+      "size_bytes": 900
+    },
+    "fault-acceptance-7/017-nodes-ready.json": {
+      "sha256": "25084fc617eb6c0c65e6b5bc74e24143c5d113c3066179fb4837c38533adb611",
+      "size_bytes": 9539
+    },
+    "fault-acceptance-7/018-kind-load.json": {
+      "sha256": "26561f66ece1021bce827d55e12fc7d5f31716a1e0cb618b9736ace26e41dc6c",
+      "size_bytes": 553
+    },
+    "fault-acceptance-7/019-runtime-image.json": {
+      "sha256": "74d8cf49954b2a20a79b4d17e3a41b2a3018d5be6121e8be2323b8eed08f5ee3",
+      "size_bytes": 5404
+    },
+    "fault-acceptance-7/020-image-manifest.json": {
+      "sha256": "537c4788741ba5ab331e7adad48e0f8943ad1e31bc5b7458a0400e9d7b5965a4",
+      "size_bytes": 3559
+    },
+    "fault-acceptance-7/021-image-config.json": {
+      "sha256": "beda1c96bdb1ee392997fb5d108356fb387a01a56a0fc0d607938f6ab2e6e720",
+      "size_bytes": 3689
+    },
+    "fault-acceptance-7/022-node-identity.json": {
+      "sha256": "65d42c2193375b541d60d80e16ddad240e6683cacdf268e6eb9269b88584dd9e",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-7/023-cluster-identity.json": {
+      "sha256": "f6e1f44fb6397d71a0eb1a50a2c4ae46024fdba264e63d4c6327877e45e8e1fb",
+      "size_bytes": 900
+    },
+    "fault-acceptance-7/024-fixture-load-1.json": {
+      "sha256": "d54453b0c8ecb05c667472548af9bb080ddcb131adfe18a4ffa300e303936760",
+      "size_bytes": 1705
+    },
+    "fault-acceptance-7/025-node-identity.json": {
+      "sha256": "b49e11d18ec1107d742cdb94bc59a7385cef53f0ad8cfb8fbc10d402fb7d8c48",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-7/026-cluster-identity.json": {
+      "sha256": "bb1b0763ee895b4632bf816db0e9c33585103e648039dd6f06f2d49608f8816d",
+      "size_bytes": 900
+    },
+    "fault-acceptance-7/027-final-pods.json": {
+      "sha256": "b94a64c1967e318d653d78abb8a6512d838b8c49826a034cd9d8aeb4df36852d",
+      "size_bytes": 125402
+    },
+    "fault-acceptance-7/028-final-deployments.json": {
+      "sha256": "dac11a052fcfb5b2ff4f5fd770f85059ca14dd07202daefc4c153ee4ae902ac9",
+      "size_bytes": 19812
+    },
+    "fault-acceptance-7/029-final-phpas.json": {
+      "sha256": "00a86ecaffdf4d1ea88ff48f01722274b1536251dd8bd80fc65f3c95344246ff",
+      "size_bytes": 516
+    },
+    "fault-acceptance-7/030-final-events.json": {
+      "sha256": "a50631ea3e87d523485371ee98b441c1e353d2f0cffba9bea7a23ad6b5a7a077",
+      "size_bytes": 82385
+    },
+    "fault-acceptance-7/031-final-leases.json": {
+      "sha256": "e1dfadd42a53bddccc036d9b12aef124ad3766097d82070790ca81a49a7c3798",
+      "size_bytes": 532
+    },
+    "fault-acceptance-7/032-final-manager-logs.json": {
+      "sha256": "9abbcb1c2801a9eb0e39052f028de9b34fbc54dcb05ecbae0a6573eb687318a7",
+      "size_bytes": 754
+    },
+    "fault-acceptance-7/033-final-prometheus-targets.json": {
+      "sha256": "93d0dcb597d0081500cf15934bbe4de670a0f454256bc11eacc11e08978c07bd",
+      "size_bytes": 601
+    },
+    "fault-acceptance-7/034-final-prometheus-buildinfo.json": {
+      "sha256": "76a417201c69818d8dc2c29ee3d0104b18e5ada9b168653e4ecb51876cdec542",
+      "size_bytes": 612
+    },
+    "fault-acceptance-7/035-final-prometheus-config.json": {
+      "sha256": "d1e0c398a7c99b45faef1d93687905e42233836e3110905b3edb8fda09aef437",
+      "size_bytes": 606
+    },
+    "fault-acceptance-7/036-containers-cleanup.json": {
+      "sha256": "9e0b64799381f2e552de56ee6ced086ffcc6da5608d9ed8119f8c386181464c6",
+      "size_bytes": 272
+    },
+    "fault-acceptance-7/037-node-identity.json": {
+      "sha256": "6c7e8ca5804e53562a0a02fc0bf8075132e1a406086ebaccbe9f222241e02e30",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-7/038-cleanup-cluster-identity.json": {
+      "sha256": "6c4fc8ba3a2189b368b93457ed7e42e3f6e27d01fbd700808a69d377b6947184",
+      "size_bytes": 900
+    },
+    "fault-acceptance-7/039-kind-delete.json": {
+      "sha256": "d53d2984fe89a602eb386ddb811a95b37bfe62f32feb7124b8e8159bae943489",
+      "size_bytes": 455
+    },
+    "fault-acceptance-7/040-clusters-after.json": {
+      "sha256": "fb2ffd7118174da519e8d3b46cf4ff99bd10c0d53c3026747442383203e3b242",
+      "size_bytes": 190
+    },
+    "fault-acceptance-7/041-containers-after.json": {
+      "sha256": "970562f8a2cba5e7dc2c5fca825898433456c838dd305ef7f6667e8ee2ff6af0",
+      "size_bytes": 258
+    },
+    "fault-acceptance-7/artifact-manifest.json": {
+      "sha256": "82f89e59119ec99a6dddf17c0b73e9056622c859a4b4f1d2e7c52ff767926da7",
+      "size_bytes": 4820
+    },
+    "fault-acceptance-7/fixture-images.json": {
+      "sha256": "429c396f93231e7b5d0f2afe396d946be18319f8684cbcac60a65d83e9725759",
+      "size_bytes": 659
+    },
+    "fault-acceptance-7/image-config.json": {
+      "sha256": "857eeeeb339afc878320caee6c7630eddb9b9319c2574a9662849c15d651d484",
+      "size_bytes": 3077
+    },
+    "fault-acceptance-7/image-identity.json": {
+      "sha256": "7d16ae1cff0b3716e15650355cfc0de95006e7d619c88188c923c3089a11d6e4",
+      "size_bytes": 509
+    },
+    "fault-acceptance-7/image-manifest.json": {
+      "sha256": "7fcfb7caa80cdaa2b6d8b66efabf3e7c51ebd4794fdd26b70ab1c7d19e2a0915",
+      "size_bytes": 2939
+    },
+    "fault-acceptance-7/image.json": {
+      "sha256": "e6c3105739ca708632ec3774b5dac3fe33dc06df4dab563ce8d941bcb4e05761",
+      "size_bytes": 262
+    },
+    "fault-acceptance-7/ownership.json": {
+      "sha256": "d59f9697d2375fefae1b67eab75174ea928e0b78b162b16614243f1d69b580c6",
+      "size_bytes": 331
+    },
+    "fault-acceptance-7/source.json": {
+      "sha256": "be5fc2d8c2bce00921f53e4cad0a2306848f95a3994236e693d214d537c9988c",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-7/summary.json": {
+      "sha256": "07020148c7bb336785c7ac604cad4c71b2398fec25ce4c5b3b49661731ca7a59",
+      "size_bytes": 1901
+    },
+    "fault-acceptance-8.log": {
+      "sha256": "c02577df773082da5ddca7fe35381bad0e8668d5048d7e681a81fe5773eeec28",
+      "size_bytes": 1337
+    },
+    "fault-acceptance-8/001-clusters-before.json": {
+      "sha256": "716f46ec24c70b84b1cf2dcd46d9c0a8ae2c67d88ec09340cb99c90aa9e1b5ca",
+      "size_bytes": 190
+    },
+    "fault-acceptance-8/002-containers-before.json": {
+      "sha256": "2c16401fb60a12344db1a119b2a53f35135e8616fbf3e85466d40111dd2b87fd",
+      "size_bytes": 258
+    },
+    "fault-acceptance-8/003-kind-version.json": {
+      "sha256": "872dbec3272a522bb75d9f88a0268ab2c1277adb00fa0d873ec43836ac949130",
+      "size_bytes": 204
+    },
+    "fault-acceptance-8/004-helm-version.json": {
+      "sha256": "d0137e44f8bb6dfd2dc3fa2c354422aa126a53dec048e913372b6bd20091fb1d",
+      "size_bytes": 202
+    },
+    "fault-acceptance-8/005-docker-version.json": {
+      "sha256": "cd2047866452aff8cae6557c55a417e69678a0174134dbf7645f0c918b396336",
+      "size_bytes": 967
+    },
+    "fault-acceptance-8/006-kubectl-version.json": {
+      "sha256": "4c8bdfe55df3b0d2d8e4e4a89b64c5947ea0944a74f171b9030a9e2d8309c2d7",
+      "size_bytes": 605
+    },
+    "fault-acceptance-8/007-git-head.json": {
+      "sha256": "d8814cd2ce5024aff994660eea8fded5a94744c16509170f7c159d3c94ba6b21",
+      "size_bytes": 224
+    },
+    "fault-acceptance-8/008-git-status.json": {
+      "sha256": "2775aaacec48889093450fd7b24ec6149e347bd515a05975a34134a0a050b5f4",
+      "size_bytes": 189
+    },
+    "fault-acceptance-8/009-git-files.json": {
+      "sha256": "a4c93738c037c6c7027b49532c39957255211f3a65e622c60fba66d778233cb1",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-8/010-fixture-cache-1.json": {
+      "sha256": "d14699d6d8ab78fa51dc0ca8decdf8af64bbef68d324684a1bf399752d4682d0",
+      "size_bytes": 4221
+    },
+    "fault-acceptance-8/011-fixture-cache-2.json": {
+      "sha256": "24f5ccad6fb6a251846c2de644a04982f61610ec193d2b34dda7eb5312ab0db3",
+      "size_bytes": 1816
+    },
+    "fault-acceptance-8/012-docker-build.json": {
+      "sha256": "a1bef3a5e1b815e390ded23eaa0b978168240113cdc7ed4f0a067c3e6c935303",
+      "size_bytes": 2383
+    },
+    "fault-acceptance-8/013-docker-image.json": {
+      "sha256": "95393b4cd17cbde5b981e42e90e58eb19c5ec268bd98f13ddcc6e56be63bb21a",
+      "size_bytes": 4412
+    },
+    "fault-acceptance-8/014-kind-create.json": {
+      "sha256": "7da3ba6630ea307d05f685c14417606a2859bac959afd68db81547b4e0bbd419",
+      "size_bytes": 1647
+    },
+    "fault-acceptance-8/015-node-identity.json": {
+      "sha256": "15b98081c8d84ec4a1bfcc1fdc1176a0bfa9a2c4fc2fa2b314ebc1f582a4dd10",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-8/016-cluster-identity.json": {
+      "sha256": "fa60302c0105bf119776015b4c20edf9b8119e4af894578dee106c6ff8f115ec",
+      "size_bytes": 901
+    },
+    "fault-acceptance-8/017-nodes-ready.json": {
+      "sha256": "80e9f3b0a472a1146d159e16f6f64b0d6b075347214cd51be45d46ac1636a306",
+      "size_bytes": 9539
+    },
+    "fault-acceptance-8/018-kind-load.json": {
+      "sha256": "c76c7aeaaca0d1c08e79c436d007a761be54f01499916d4b01219cafba486f41",
+      "size_bytes": 553
+    },
+    "fault-acceptance-8/019-runtime-image.json": {
+      "sha256": "0e85f15f8ad01432cbc736afc7ab93db5191f9fb19b07c73decce68e826a38e4",
+      "size_bytes": 5404
+    },
+    "fault-acceptance-8/020-image-manifest.json": {
+      "sha256": "3315b6754769be951aae190a9740e3655b614431ebc29a0349b789f32c77de9b",
+      "size_bytes": 3559
+    },
+    "fault-acceptance-8/021-image-config.json": {
+      "sha256": "a634f268aab60b2f587aaa45c54327cfc5835cc8aa0f09c28653a9e19eda6180",
+      "size_bytes": 3689
+    },
+    "fault-acceptance-8/022-node-identity.json": {
+      "sha256": "7d77a6e519da3d4c6d460f518b846c607dad2d6d0cef11c3f41e589d0c09fbb1",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-8/023-cluster-identity.json": {
+      "sha256": "27223a5e629bd4f3d24abeb6f3d550fdcd8634c603779333caa1cd5bc2b03f97",
+      "size_bytes": 901
+    },
+    "fault-acceptance-8/024-fixture-save-1.json": {
+      "sha256": "6a627c96a4fa256c07bcd0d757419d385375c5bef7a598122b003cd7420929e7",
+      "size_bytes": 362
+    },
+    "fault-acceptance-8/025-fixture-copy-1.json": {
+      "sha256": "1f9da4135c65c9ef3d2f446d1c53f171b2715eeb9de2b6d03340036fe3351d63",
+      "size_bytes": 342
+    },
+    "fault-acceptance-8/026-fixture-import-1.json": {
+      "sha256": "225ef07151055c80318d83ea3285b80a9dbbcd6df65816e0038cc6b67d158c4d",
+      "size_bytes": 706
+    },
+    "fault-acceptance-8/027-node-identity.json": {
+      "sha256": "177aa9b9cb4a9742511cc2a4c3c83640584241130b341e413a1247cdd3c67902",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-8/028-cluster-identity.json": {
+      "sha256": "8d0520d65f554808e8389fd516a904055a8de536d9d90045f4ce70088a164f9e",
+      "size_bytes": 901
+    },
+    "fault-acceptance-8/029-final-pods.json": {
+      "sha256": "af3b9b48ca14c0df3ec4bf4d4880a2945d73e5d0c18a9ac169ab13cebbc39fcc",
+      "size_bytes": 125400
+    },
+    "fault-acceptance-8/030-final-deployments.json": {
+      "sha256": "e6136462a2b6d62988629a1384cb63ae3f54e74328e0985ef7e7ccff0af46c5d",
+      "size_bytes": 19812
+    },
+    "fault-acceptance-8/031-final-phpas.json": {
+      "sha256": "ebfd034da06a2a101d5c0bb0a39799749e4cb7a53044beb26e4e3db26550ef2f",
+      "size_bytes": 516
+    },
+    "fault-acceptance-8/032-final-events.json": {
+      "sha256": "8867a16a6cc1118f58f20d8cb3976b2033fbb1fbadecec4934f0c560b67c527c",
+      "size_bytes": 85248
+    },
+    "fault-acceptance-8/033-final-leases.json": {
+      "sha256": "6e42f1876ce1862085224b44e56367a69f3d5c0b3393a097b643a5ee9354ae4d",
+      "size_bytes": 532
+    },
+    "fault-acceptance-8/034-final-manager-logs.json": {
+      "sha256": "0498c204a16e4d4f71a69f1997f9a888424a96e8dc17cc6c172847f242513448",
+      "size_bytes": 754
+    },
+    "fault-acceptance-8/035-final-prometheus-targets.json": {
+      "sha256": "8a24d9aebdfab49a67d2ed6339a6b398c61f7b191d221037ebb7156b755bc20e",
+      "size_bytes": 601
+    },
+    "fault-acceptance-8/036-final-prometheus-buildinfo.json": {
+      "sha256": "01f8190460e387d6aea4e46a29661b5b92f2c4380cb84895a59350d0a7c412cc",
+      "size_bytes": 612
+    },
+    "fault-acceptance-8/037-final-prometheus-config.json": {
+      "sha256": "98fbd010ebf479d72b49dedaacf188258f98edf1fe1fc5b8bf42ff6346bc80ae",
+      "size_bytes": 606
+    },
+    "fault-acceptance-8/038-containers-cleanup.json": {
+      "sha256": "6256a148667aa4f59ad1b85b63f4d68bef00bbe8d1ec3c12832c52218001a63e",
+      "size_bytes": 272
+    },
+    "fault-acceptance-8/039-node-identity.json": {
+      "sha256": "a49017ea2f8d99b070aa158f0ada33f2572fbe8193819b5c1d3de32bf03984a2",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-8/040-cleanup-cluster-identity.json": {
+      "sha256": "82bf4fbb32cd8bb516007f88d747daabd0b1568f62f4dd2e9d3a047f3ec1b2e3",
+      "size_bytes": 901
+    },
+    "fault-acceptance-8/041-kind-delete.json": {
+      "sha256": "5bff7c05c1b4aa8ceedc3cc420925f2c85e797c3775d8b7040e5d5ef8744138b",
+      "size_bytes": 455
+    },
+    "fault-acceptance-8/042-clusters-after.json": {
+      "sha256": "6a78afe9e7e329409cfddb730831f3aa74ac65cfe5a77fe8a10d48738fc10b34",
+      "size_bytes": 190
+    },
+    "fault-acceptance-8/043-containers-after.json": {
+      "sha256": "de864c74912882b1b9fb520b529172ca67a3557b412d3c2b68bcf9544efa6701",
+      "size_bytes": 258
+    },
+    "fault-acceptance-8/artifact-manifest.json": {
+      "sha256": "ea62f2256652f843dbbf2ee1927cba3042069a0235929d2a46c7f8fec422fe1f",
+      "size_bytes": 5020
+    },
+    "fault-acceptance-8/fixture-images.json": {
+      "sha256": "429c396f93231e7b5d0f2afe396d946be18319f8684cbcac60a65d83e9725759",
+      "size_bytes": 659
+    },
+    "fault-acceptance-8/image-config.json": {
+      "sha256": "857eeeeb339afc878320caee6c7630eddb9b9319c2574a9662849c15d651d484",
+      "size_bytes": 3077
+    },
+    "fault-acceptance-8/image-identity.json": {
+      "sha256": "7d16ae1cff0b3716e15650355cfc0de95006e7d619c88188c923c3089a11d6e4",
+      "size_bytes": 509
+    },
+    "fault-acceptance-8/image-manifest.json": {
+      "sha256": "7fcfb7caa80cdaa2b6d8b66efabf3e7c51ebd4794fdd26b70ab1c7d19e2a0915",
+      "size_bytes": 2939
+    },
+    "fault-acceptance-8/image.json": {
+      "sha256": "e959978a046194f48506e410a6365ef31257d08c519d0f805da913a824ad288f",
+      "size_bytes": 262
+    },
+    "fault-acceptance-8/ownership.json": {
+      "sha256": "e7a9df225224fb9fdbb1f90e7e3659b23cec1eb032924fe7c104cefe9bc46e5b",
+      "size_bytes": 331
+    },
+    "fault-acceptance-8/source.json": {
+      "sha256": "ab28dad5b61be7c12abdfa32ce9f03727aab6249d37d8a72732982bd1ff636e2",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-8/summary.json": {
+      "sha256": "c02577df773082da5ddca7fe35381bad0e8668d5048d7e681a81fe5773eeec28",
+      "size_bytes": 1337
+    },
+    "fault-acceptance-9.log": {
+      "sha256": "a74bd6fe191b017eb203a60cd923f69c2ac33bc3d4a4d5dc01ee06da7b379ccc",
+      "size_bytes": 488
+    },
+    "fault-acceptance-9/001-clusters-before.json": {
+      "sha256": "93cb8f4b075b586328e96446cb040ba43a58ba63b2a43a53bf934710b55dd639",
+      "size_bytes": 190
+    },
+    "fault-acceptance-9/002-containers-before.json": {
+      "sha256": "e75c42e16fbfcdaf40d785eeefcbe2d7e959e64253e5cae306e9b3c5bb9f26f1",
+      "size_bytes": 258
+    },
+    "fault-acceptance-9/003-kind-version.json": {
+      "sha256": "30535941c918b8304e53ac046d66d459056f9f3bb4aeb5a64ee12ed4bbe26bde",
+      "size_bytes": 204
+    },
+    "fault-acceptance-9/004-helm-version.json": {
+      "sha256": "39733e97b29169ed254276e8455ec37784fac955610b3cc85058da61b83b6883",
+      "size_bytes": 202
+    },
+    "fault-acceptance-9/005-docker-version.json": {
+      "sha256": "b15348c1c03dc97dd59160ade676e7a05c2016073bf4fb765fab633ab87e203f",
+      "size_bytes": 967
+    },
+    "fault-acceptance-9/006-kubectl-version.json": {
+      "sha256": "81457faecc286a8a7766b5381e1af7828794e9729d0b088ab97be070f433065a",
+      "size_bytes": 605
+    },
+    "fault-acceptance-9/007-git-head.json": {
+      "sha256": "feb14aa885383abc1667b5c169e60e5063e9bf441c99b476b18443d2778fd004",
+      "size_bytes": 224
+    },
+    "fault-acceptance-9/008-git-status.json": {
+      "sha256": "5f6484532ed99c1f7ae3cec5c6940596045a063257877b105b18f92b4a95179a",
+      "size_bytes": 189
+    },
+    "fault-acceptance-9/009-git-files.json": {
+      "sha256": "bc6e1e8a111f185bea3c1b79d0198d9539a22e681190fad89876237829243cd6",
+      "size_bytes": 13872
+    },
+    "fault-acceptance-9/010-fixture-cache-1.json": {
+      "sha256": "0e34e61fcce0e5fc201931e3f7a2e6a2d4b82be6a3d82035b47ad1cde761b336",
+      "size_bytes": 4221
+    },
+    "fault-acceptance-9/011-fixture-cache-2.json": {
+      "sha256": "991c6719ff2630ee84d61d74d7e2dd06f509c8ddd385e342782d1502b016a1cd",
+      "size_bytes": 1816
+    },
+    "fault-acceptance-9/012-docker-build.json": {
+      "sha256": "8b77348e58068b804b7e44d4c7ba21481bf4c786427b82359f856eae28bfcdf0",
+      "size_bytes": 2383
+    },
+    "fault-acceptance-9/013-docker-image.json": {
+      "sha256": "dd303a45c14f52ce8c7a8922ffcdffbafabbd3491aff15ca80e5173f20aa8508",
+      "size_bytes": 4664
+    },
+    "fault-acceptance-9/014-kind-create.json": {
+      "sha256": "47d9d26199f158a226f05230544dce120a6041a680920ef7fab9cf02fa6a088c",
+      "size_bytes": 1715
+    },
+    "fault-acceptance-9/015-node-identity.json": {
+      "sha256": "bc305aad179d34cb59edd16d6cce62fd550f60b35bbcd46ae34c48de982f64ab",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-9/016-cluster-identity.json": {
+      "sha256": "f1b560b4405adbc8bf52a8d8fa615f26ddfef189dbcc72f3a45deba6ce5f2ad7",
+      "size_bytes": 900
+    },
+    "fault-acceptance-9/017-nodes-ready.json": {
+      "sha256": "633c42fb75db14e39e51c7e417a7c6334f8dcc583674c7fab20b6e33519d315c",
+      "size_bytes": 9539
+    },
+    "fault-acceptance-9/018-kind-load.json": {
+      "sha256": "80caf7d14669abecda0c6ec0266597a45393185803fb4f5850127f01f03bb89f",
+      "size_bytes": 553
+    },
+    "fault-acceptance-9/019-runtime-image.json": {
+      "sha256": "47d12c6739cefa430ebba55c3d4f059dc5625ec6fb715a4ae42eb1c2ba5ccb48",
+      "size_bytes": 5404
+    },
+    "fault-acceptance-9/020-image-manifest.json": {
+      "sha256": "75ffc61f34def7b910e1270246f3352d325e9c595763c0a8a81db2bbff9f2ea4",
+      "size_bytes": 3559
+    },
+    "fault-acceptance-9/021-image-config.json": {
+      "sha256": "d3459d005b47594d885fbaf5abd493fb3e07617030cb751c9c852fdd878105be",
+      "size_bytes": 3689
+    },
+    "fault-acceptance-9/022-node-identity.json": {
+      "sha256": "1d413365adec469a383a58c0191e3aee31ed31547e941ae7950cc35bf44aad42",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-9/023-cluster-identity.json": {
+      "sha256": "3f8b2e7d6d996d82b03d8e0fa29b0e722bc1bc5567fd353dfd61dde119a2548e",
+      "size_bytes": 900
+    },
+    "fault-acceptance-9/024-fixture-save-1.json": {
+      "sha256": "cad92edf25c198fa1444d8ab0f888a6061c83efbe2e31bff806caed5353b5a4d",
+      "size_bytes": 362
+    },
+    "fault-acceptance-9/025-fixture-import-1.json": {
+      "sha256": "a9a32dcc028e6aa9647ee0f60c0400d2f731c042b311b4c46263a2d719545ae0",
+      "size_bytes": 828
+    },
+    "fault-acceptance-9/026-fixture-runtime-1.json": {
+      "sha256": "53df1193d188c89fb6833447b03ee345a92dbc18829b9ffe051332328e89b0c6",
+      "size_bytes": 8683
+    },
+    "fault-acceptance-9/027-node-identity.json": {
+      "sha256": "444976714647e016b99d79310ad0b785beab50739eaa32c88da39c836fa932be",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-9/028-cluster-identity.json": {
+      "sha256": "3616fb15529a4e6dd06ce807bdab4c58c3a5501bdfa125c4ae483080fdf813a2",
+      "size_bytes": 900
+    },
+    "fault-acceptance-9/029-fixture-save-2.json": {
+      "sha256": "8b8a40b30402653258736f58105870b87f9fd068fb3e3632297c5639edc542a7",
+      "size_bytes": 340
+    },
+    "fault-acceptance-9/030-fixture-import-2.json": {
+      "sha256": "6638f3131e7ab308a93c6b2a1f35a3711132a79056d74edd4fd0b714dac2d282",
+      "size_bytes": 817
+    },
+    "fault-acceptance-9/031-fixture-runtime-2.json": {
+      "sha256": "0fd8d9296451a18d6e8d44f948dc85c068063c9bd820437d002f7ced9f96adf1",
+      "size_bytes": 1813
+    },
+    "fault-acceptance-9/032-node-identity.json": {
+      "sha256": "a4050b85ba88875bd08e55760da00c2174a2acb32fb5cc8cbc52bc5d326b4083",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-9/033-cluster-identity.json": {
+      "sha256": "a9e563cce32aa1dad1596e34ec985115242a867bb44f87627bd47c8db81574a5",
+      "size_bytes": 900
+    },
+    "fault-acceptance-9/034-monitoring-apply.json": {
+      "sha256": "bea74e8d66cd3e3a85c8127143a60d3b80662454c595e06641ca88c234fe2b62",
+      "size_bytes": 1029
+    },
+    "fault-acceptance-9/035-prometheus-ready.json": {
+      "sha256": "24bf2eb035cfce930523e9649959c937edcec093d9e3885dc1ced48000588f97",
+      "size_bytes": 565
+    },
+    "fault-acceptance-9/036-kube-state-metrics-ready.json": {
+      "sha256": "69f5db1211ab9679139a27df5f5d1c311fcbbcd73cc5c6fa3cfc085ca3963000",
+      "size_bytes": 589
+    },
+    "fault-acceptance-9/037-prometheus-targets.json": {
+      "sha256": "ed7589dd410769c34a2f8895ed680c6c4f00270256f6eb68a210549491974f14",
+      "size_bytes": 3862
+    },
+    "fault-acceptance-9/038-prometheus-targets.json": {
+      "sha256": "91b1be46e1155a3311b797b5469e0eeb1b74e8fb247bd59ec0aacb3cba6874e6",
+      "size_bytes": 3735
+    },
+    "fault-acceptance-9/039-cadvisor.json": {
+      "sha256": "c1f319689abf531c835064d6d12242012d38745688d657aae74446e8d0e66ed5",
+      "size_bytes": 2185
+    },
+    "fault-acceptance-9/040-pod-owner.json": {
+      "sha256": "d1afdfdad2dd6525f3d5ed6156a6958c87d57793643bf0f53d8d14bd7ce39eb1",
+      "size_bytes": 1352
+    },
+    "fault-acceptance-9/041-replicaset-owner.json": {
+      "sha256": "0f4043cc2883a89b485ac56031bf446aed14ac1f72a2ba48ae1506f715b89fe4",
+      "size_bytes": 1256
+    },
+    "fault-acceptance-9/042-cpu-requests.json": {
+      "sha256": "59cbbc0e955aebf65241a2dd8d5c01b5cbb31776a12b485fec36c46ca03d89f9",
+      "size_bytes": 1501
+    },
+    "fault-acceptance-9/043-helm-lint.json": {
+      "sha256": "0e0021ae2092468440fe12fd6e3b9a8b8ffbf503b3e6ae12817f72b696d6aa50",
+      "size_bytes": 851
+    },
+    "fault-acceptance-9/044-helm-template.json": {
+      "sha256": "401fd55869a1847651b03b5b6df5f65741a17463911134bb32a0c08f8ef0c46a",
+      "size_bytes": 19260
+    },
+    "fault-acceptance-9/045-node-identity.json": {
+      "sha256": "f9f87f3806e24b9ba67d15d66669f748b8f2817aacf6b7e95e6550a683ce5d31",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-9/046-cluster-identity.json": {
+      "sha256": "97fcbb32ba45c4552149bcbe7d03a71cf1e0dbed34e2797bbbc8f81fdf422caa",
+      "size_bytes": 900
+    },
+    "fault-acceptance-9/047-helm-install.json": {
+      "sha256": "781483d21ac6488dd9d479e4758c11af3d88e222b128f4d04124dd7b737fb882",
+      "size_bytes": 2286
+    },
+    "fault-acceptance-9/048-managers-ready.json": {
+      "sha256": "216f4de5760fed2c865d095151864b4afca9d54ef8ae8a8770c61784312c3442",
+      "size_bytes": 512
+    },
+    "fault-acceptance-9/049-manager-images.json": {
+      "sha256": "4ad9cd799b847fd32175361f44c7fbd005da0bce8f2bf4d46ee0c4c02b44c8f0",
+      "size_bytes": 22494
+    },
+    "fault-acceptance-9/050-acceptance.json": {
+      "sha256": "7e4699c2476e3805848b396ae09f8acdb0e42dad6958ad1138fca41e17668293",
+      "size_bytes": 2612
+    },
+    "fault-acceptance-9/051-node-identity.json": {
+      "sha256": "966abf23dbad57b84ff1c0ee015ad821e64a3c44e4e4e2734cb6db62a6c41fb4",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-9/052-cluster-identity.json": {
+      "sha256": "418562e0a8f73618c3c08165f5cf108bebc64ac60de9124fed7e43c5aafb9713",
+      "size_bytes": 900
+    },
+    "fault-acceptance-9/053-final-pods.json": {
+      "sha256": "c3cb0fedf59d00bd73bf05d5286fb3a443f33c1ea87f3d101a104cfe3309b516",
+      "size_bytes": 213988
+    },
+    "fault-acceptance-9/054-final-deployments.json": {
+      "sha256": "fb7fc8081b922ba136276f943ecf731d9e1e1ccd73651c8894971ca250561d37",
+      "size_bytes": 51532
+    },
+    "fault-acceptance-9/055-final-phpas.json": {
+      "sha256": "c13df795f8d83efebef72b231de88ff586480be9df089d29ff388ffad3b088cf",
+      "size_bytes": 6881
+    },
+    "fault-acceptance-9/056-final-events.json": {
+      "sha256": "a6f12187be6c0ee14b9eee38bda91ff1ed669ab0d8bd94afd0861525beab52aa",
+      "size_bytes": 240580
+    },
+    "fault-acceptance-9/057-final-leases.json": {
+      "sha256": "d7a246804aa4d55992faf7c5389c0e1829d88749f87007bcc3f7940ec9f4b7b9",
+      "size_bytes": 1373
+    },
+    "fault-acceptance-9/058-final-manager-logs.json": {
+      "sha256": "b0741dde9c1ec992555f499202b5ce59c846e237cf69ecf2711a85e65d6aaebf",
+      "size_bytes": 177682
+    },
+    "fault-acceptance-9/059-final-prometheus-targets.json": {
+      "sha256": "9873af7a6af59d223b6fb3bc6ac9c163a7686ac4dfbb789a37ff29414942417b",
+      "size_bytes": 3735
+    },
+    "fault-acceptance-9/060-final-prometheus-buildinfo.json": {
+      "sha256": "a5084b4e7ad6281eeaa5aedd552a55e244de672633e77d725f5728b7ca43fe35",
+      "size_bytes": 657
+    },
+    "fault-acceptance-9/061-final-prometheus-config.json": {
+      "sha256": "e47f9e019e6867e68554a78d808067f516490351df9c344ef981ff1177b20c66",
+      "size_bytes": 3031
+    },
+    "fault-acceptance-9/062-containers-cleanup.json": {
+      "sha256": "432c5f7d2538ba64de65ccad383a2a50c03bbc6dd3cf2c49c20e30ba677bf110",
+      "size_bytes": 272
+    },
+    "fault-acceptance-9/063-node-identity.json": {
+      "sha256": "d3dbbc29beb44f1029318cd7fde783986b9dc2b49db4df6b4ee248f3c51598a4",
+      "size_bytes": 9793
+    },
+    "fault-acceptance-9/064-cleanup-cluster-identity.json": {
+      "sha256": "63f6496993b37da2b0357f73f35de25fba3bda6befc64e8c57c57c86f11251ee",
+      "size_bytes": 900
+    },
+    "fault-acceptance-9/065-kind-delete.json": {
+      "sha256": "8ab634bab1bd0c640b594cc555909e166736e6ee19a5d3f00a3cdb1ea933ade2",
+      "size_bytes": 455
+    },
+    "fault-acceptance-9/066-clusters-after.json": {
+      "sha256": "98dbd2b46d551b921117f7af9a4e485ff8ceeb72f4d61f0d2fc8d249d70cfdf0",
+      "size_bytes": 190
+    },
+    "fault-acceptance-9/067-containers-after.json": {
+      "sha256": "585e5170352a736ecfb12b6cad31dc7442badb87e947a141f1c3202803eae606",
+      "size_bytes": 258
+    },
+    "fault-acceptance-9/acceptance/commands.ndjson": {
+      "sha256": "a8c6f432bbcb1833a56048c60bd87b80316f03871a76a2967504175d64212eaa",
+      "size_bytes": 2677990
+    },
+    "fault-acceptance-9/acceptance/observations.ndjson": {
+      "sha256": "799b5d0a76a48d2173020d0b920fc63613ad645dd413e38d7b6934cdb66aa25a",
+      "size_bytes": 1044063
+    },
+    "fault-acceptance-9/acceptance/summary.json": {
+      "sha256": "70d455b894685b5d61ed910567b6c3bffd3201814f6b345c45c1afebb15ae3c7",
+      "size_bytes": 1925
+    },
+    "fault-acceptance-9/artifact-manifest.json": {
+      "sha256": "7f3941278ece661fa1d4e00a257bd39794ba0090c86e1811482930179cf13f78",
+      "size_bytes": 7907
+    },
+    "fault-acceptance-9/fixture-images.json": {
+      "sha256": "429c396f93231e7b5d0f2afe396d946be18319f8684cbcac60a65d83e9725759",
+      "size_bytes": 659
+    },
+    "fault-acceptance-9/fixture-import-1.json": {
+      "sha256": "e94a66b195c8a0a4142b80690e23d8294da1b784742edd150aeb772c31d94c54",
+      "size_bytes": 464
+    },
+    "fault-acceptance-9/fixture-import-2.json": {
+      "sha256": "5f8f9b0d223ac7e57b1a3dacb8c607a2a55c37252734fe2bc152fc37b9c5b593",
+      "size_bytes": 439
+    },
+    "fault-acceptance-9/image-config.json": {
+      "sha256": "857eeeeb339afc878320caee6c7630eddb9b9319c2574a9662849c15d651d484",
+      "size_bytes": 3077
+    },
+    "fault-acceptance-9/image-identity.json": {
+      "sha256": "7d16ae1cff0b3716e15650355cfc0de95006e7d619c88188c923c3089a11d6e4",
+      "size_bytes": 509
+    },
+    "fault-acceptance-9/image-manifest.json": {
+      "sha256": "7fcfb7caa80cdaa2b6d8b66efabf3e7c51ebd4794fdd26b70ab1c7d19e2a0915",
+      "size_bytes": 2939
+    },
+    "fault-acceptance-9/image.json": {
+      "sha256": "22700231b4d34af3c2d682a6087813d2897c084dc5bcd5951d7b5a6f13710a95",
+      "size_bytes": 262
+    },
+    "fault-acceptance-9/ownership.json": {
+      "sha256": "27113a9750fb114a115ec533a8515e44bb57f6765b5b6743c777303eb3b634dd",
+      "size_bytes": 331
+    },
+    "fault-acceptance-9/source.json": {
+      "sha256": "22ff4269152e96d3a9c84050d61ae1a93d440f103d9748be9dce16684327cc46",
+      "size_bytes": 32931
+    },
+    "fault-acceptance-9/summary.json": {
+      "sha256": "a74bd6fe191b017eb203a60cd923f69c2ac33bc3d4a4d5dc01ee06da7b379ccc",
+      "size_bytes": 488
+    },
+    "fault-final-environment.json": {
+      "sha256": "cb649fd013ac7593275c3809aaf0efb0a5c5b285708f680e6be233cc2a4f2894",
+      "size_bytes": 10324
+    },
+    "final-a4-analysis.log": {
+      "sha256": "110ecfb11ed4978ca3c639b688ff5ab0b81feb845750d53e1fd2e99d809e796e",
+      "size_bytes": 180
+    },
+    "final-a4-harness.log": {
+      "sha256": "00a40eb05cb51a1ea105786eac3d7e98bd666f0a72f804b2b36d08af4ee42f0d",
+      "size_bytes": 187
+    },
+    "final-image-identity-analysis.log": {
+      "sha256": "5d3bb2dca010898957df41287818e98358943a98127980446ecd5779aa65fff9",
+      "size_bytes": 180
+    },
+    "final-image-identity-harness.log": {
+      "sha256": "86c3dd4f57439c73ec914ebd781435bd42fb1ea0c41d703272747fddba95b3bc",
+      "size_bytes": 190
+    },
+    "final-platform-analysis.log": {
+      "sha256": "48dbdd5e7083939bceb2f6e79258d58c4f0e3b51daa12d89c72d0a12b29e938c",
+      "size_bytes": 180
+    },
+    "final-platform-harness.log": {
+      "sha256": "5206f5d65787acd1eb2dc0365c0e9ec112d89c8a454cc0cb3548b77b07a60f45",
+      "size_bytes": 197
+    },
+    "final-preload-analysis.log": {
+      "sha256": "d6c39b2caf3e95e2cbb2f21fbb392eefe34af0d1c109e4275fd73eaebc96f0da",
+      "size_bytes": 180
+    },
+    "final-preload-harness.log": {
+      "sha256": "9afbe9f1a7450ea861abbe8a93c168839c3d3c7dc0faf3cbe292ea2574f31abc",
+      "size_bytes": 194
+    },
+    "final-stream-analysis.log": {
+      "sha256": "7e7f8dd786180d0f0f32c66d98ebf8bf73bba155c1d1bfad98fd2ce32439c034",
+      "size_bytes": 180
+    },
+    "final-stream-harness.log": {
+      "sha256": "520ef83dd8982e79a27c27aff965b1779517644d1ff33624a7f9afa105fc08e8",
+      "size_bytes": 197
+    },
+    "host-network-build.json": {
+      "sha256": "f06738d7bc39f4c99edcc2b0e6ba08ac5487c4e5aa5c8de2e362e555ca4c715f",
+      "size_bytes": 735
+    },
+    "host-network-build.log": {
+      "sha256": "74d50c8ae085731d65cdc823ce6b5bb92a84ff687d64d29acdbdfb8bbb4456a5",
+      "size_bytes": 2032
+    }
+  },
+  "independent_audit": {
+    "byte_and_identity_checks": 1021,
+    "issues": [],
+    "source_files_matched_to_git": 272,
+    "raw_observations_reviewed": 115,
+    "successful_verifier_commands": 290,
+    "secondary_audit_sha256": "a05d24de823fa83a4ed09b9acd1344227a10434896340b89c5c120132503b297",
+    "timing_limits": [
+      "The 30-second leader and 35-second outage windows use interval sampling, not continuous state observation",
+      "During the outage observation requested Scale remained 3; early Ready counts were still 1 before becoming 3",
+      "Removed fixture tar bytes cannot be rehashed; retained archive and stdin receipts were compared"
+    ]
+  }
+}
