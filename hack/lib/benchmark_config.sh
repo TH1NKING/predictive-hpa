@@ -6,11 +6,26 @@
 BENCHMARK_CONFIG_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 benchmark_config_init() {
+  LIVE_BASELINE="${LIVE_BASELINE-false}"
+  LIVE_BASELINE_STARTUP_MODE="${LIVE_BASELINE_STARTUP_MODE-warm}"
+  case "$LIVE_BASELINE" in
+    true|false) ;;
+    *) echo "ERROR: LIVE_BASELINE must be true or false" >&2; return 1 ;;
+  esac
+  case "$LIVE_BASELINE_STARTUP_MODE" in
+    warm|cold) ;;
+    *) echo "ERROR: LIVE_BASELINE_STARTUP_MODE must be warm or cold" >&2; return 1 ;;
+  esac
+  export LIVE_BASELINE LIVE_BASELINE_STARTUP_MODE
   LATENCY_DIAGNOSTIC="${LATENCY_DIAGNOSTIC-false}"
   case "$LATENCY_DIAGNOSTIC" in
     true|false) ;;
     *) echo "ERROR: LATENCY_DIAGNOSTIC must be true or false" >&2; return 1 ;;
   esac
+  if [ "$LIVE_BASELINE" = true ] && [ "$LATENCY_DIAGNOSTIC" = true ]; then
+    echo "ERROR: LIVE_BASELINE and LATENCY_DIAGNOSTIC are separate observation protocols" >&2
+    return 1
+  fi
   METRIC_PIPELINE_DIAGNOSTIC="${METRIC_PIPELINE_DIAGNOSTIC-false}"
   METRIC_PIPELINE_SOURCE_NODE="${METRIC_PIPELINE_SOURCE_NODE-}"
   case "$METRIC_PIPELINE_DIAGNOSTIC" in
@@ -56,6 +71,9 @@ benchmark_config_init() {
       return 1
     fi
     export LATENCY_OFFSET_SECONDS LATENCY_GATE_TIMEOUT_SECONDS LATENCY_REQUEUE_SECONDS
+  elif [ "$LIVE_BASELINE" = true ]; then
+    BENCHMARK_PATTERNS="${BENCHMARK_PATTERNS-step ramp}"
+    BENCHMARK_CONTROLLERS="${BENCHMARK_CONTROLLERS-phpa_current phpa phpa_hybrid}"
   else
     BENCHMARK_PATTERNS="${BENCHMARK_PATTERNS-step ramp spike}"
     BENCHMARK_CONTROLLERS="${BENCHMARK_CONTROLLERS-native_hpa_300 native_hpa_60 phpa}"
@@ -86,6 +104,9 @@ benchmark_config_init() {
   fi
   seen=" "
   for member in "${BENCHMARK_PATTERN_VALUES[@]}"; do
+    if [ "$LIVE_BASELINE" = true ] && [ "$member" != step ] && [ "$member" != ramp ]; then
+      echo "ERROR: LIVE_BASELINE supports step and ramp" >&2; return 1
+    fi
     case "$member" in
       step|ramp|spike) ;;
       *) echo "ERROR: invalid benchmark pattern '$member'" >&2; return 1 ;;
@@ -98,6 +119,9 @@ benchmark_config_init() {
   done
   seen=" "
   for member in "${BENCHMARK_CONTROLLER_VALUES[@]}"; do
+    if [ "$LIVE_BASELINE" = true ] && [[ "$member" != phpa* ]]; then
+      echo "ERROR: LIVE_BASELINE requires a PredictiveHPA decision mode" >&2; return 1
+    fi
     case "$member" in
       native_hpa_300|native_hpa_60|phpa|phpa_current|phpa_hybrid) ;;
       *) echo "ERROR: invalid benchmark controller '$member'" >&2; return 1 ;;
@@ -146,6 +170,9 @@ benchmark_config_fingerprint() {
       if [ "$LATENCY_DIAGNOSTIC" = true ]; then
         printf '%s\n' hack/run_latency_diagnostic.py hack/analyze/latency.py
       fi
+      if [ "$LIVE_BASELINE" = true ]; then
+        printf '%s\n' hack/observe_live_baseline.py hack/run_live_campaign.py hack/analyze/live_baseline.py hack/analyze/latency.py
+      fi
       if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
         printf '%s\n' hack/analyze/metric_pipeline.py
       fi
@@ -173,6 +200,11 @@ benchmark_config_fingerprint() {
           "latency_gate_timeout_seconds=$LATENCY_GATE_TIMEOUT_SECONDS" \
           'latency_observer_interval_seconds=2' 'latency_phase_tolerance_seconds=2' \
           'latency_gate_clock_precision_seconds=1' 'latency_launch_rounding=ceil'
+      fi
+      if [ "$LIVE_BASELINE" = true ]; then
+        printf '%s\n' 'live_baseline=live-baseline-v1' "startup_mode=$LIVE_BASELINE_STARTUP_MODE" \
+          'readiness_gate_timeout_seconds=240' 'observer_interval_seconds=2' 'requeue_seconds=30'
+        printf '%s\n' "frozen_controller_binary_sha256=${LIVE_BASELINE_CONTROLLER_SHA256:-per-run-build}"
       fi
       if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
         printf '%s\n' 'metric_pipeline_diagnostic=metric-pipeline-v1' \

@@ -6,6 +6,8 @@
 
 目前的实验没有证明 PredictiveHPA 普遍优于原生 HPA。这里保留了不利结果、压测路径修正、同控制器消融和指标链路诊断，展示如何从现象提出问题，再用测试和实测缩小范围。它们是学习与工程实践的记录，适合结合控制器代码阅读。
 
+当前指标链路使用独立的 `live-baseline-v1` 实验入口：从控制器实际接受的观测核对输入，明确区分 warm/cold 启动，并以 k6 实际场景时钟计算完整观察窗口。复现方法和方案取舍见[当前版本基线讲解](live-baseline-guide.zh-CN.md)，验收范围见[本轮规范](live-baseline-followup.md)。Dockerfile、Helm 和故障场景的独立验证入口见[故障验收工作流](../metrics-safety-workflow.md)。
+
 ## 先读这三份
 
 1. [容量校准与控制器对照讲解](controlled-pilot-guide.zh-CN.md)：为什么先确认流量确实分发到各个 Pod，再选择单副本无法承载、扩容后可以承载的负载；为什么资源占用更少不一定更好。

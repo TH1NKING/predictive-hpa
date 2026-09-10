@@ -1,0 +1,85 @@
+name: Metrics Safety Acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'deploy/charts/predictive-hpa/**'
+      - 'config/benchmark/metrics-safety-*.yaml'
+      - 'hack/*metrics_safety.py'
+      - 'hack/tests/test_metrics_safety_runner.py'
+      - '.github/workflows/metrics-safety.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'deploy/charts/predictive-hpa/**'
+      - 'config/benchmark/metrics-safety-*.yaml'
+      - 'hack/*metrics_safety.py'
+      - 'hack/tests/test_metrics_safety_runner.py'
+      - '.github/workflows/metrics-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    env:
+      KIND_VERSION: v0.31.0
+      HELM_VERSION: v3.20.2
+      KUBECTL_VERSION: v1.35.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pinned cluster tools and verify download checksums
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools_dir=$(mktemp -d)
+          cd "$tools_dir"
+          curl --fail --location --retry 3 --max-time 120 --output kind-linux-amd64 "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          curl --fail --location --retry 3 --max-time 120 --output kind-linux-amd64.sha256sum "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64.sha256sum"
+          sha256sum --check kind-linux-amd64.sha256sum
+          curl --fail --location --retry 3 --max-time 120 --output "helm-${HELM_VERSION}-linux-amd64.tar.gz" "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl --fail --location --retry 3 --max-time 120 --output helm.sha256sum "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum"
+          sha256sum --check helm.sha256sum
+          tar -xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl --fail --location --retry 3 --max-time 120 --output kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          curl --fail --location --retry 3 --max-time 120 --output kubectl.sha256 "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"
+          printf '%s  kubectl\n' "$(cat kubectl.sha256)" | sha256sum --check
+          sudo install -m 0755 kind-linux-amd64 /usr/local/bin/kind
+          sudo install -m 0755 linux-amd64/helm /usr/local/bin/helm
+          sudo install -m 0755 kubectl /usr/local/bin/kubectl
+      - name: Verify acceptance runner failure and cleanup behavior
+        run: python -m unittest hack.tests.test_metrics_safety_runner
+      - name: Build Dockerfile, install Helm, run all 11 checks, and clean up
+        run: >-
+          python hack/run_metrics_safety.py
+          --cluster-name phpa-metrics-safety-${{ github.run_id }}-${{ github.run_attempt }}
+          --output benchmark-runs/metrics-safety-ci
+      - name: Upload successful and failed receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-safety-${{ github.run_id }}-${{ github.run_attempt }}
+          path: benchmark-runs/metrics-safety-ci/
+          if-no-files-found: warn
+          retention-days: 14

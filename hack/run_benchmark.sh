@@ -74,6 +74,10 @@ if [ "$LATENCY_DIAGNOSTIC" = true ] && { [ "$PATTERN" != step ] || [ "$CONTROLLE
   echo "ERROR: LATENCY_DIAGNOSTIC=true only supports step phpa_current" >&2
   exit 1
 fi
+if [ "$LIVE_BASELINE" = true ] && { [[ "$CONTROLLER" != phpa* ]] || [ "$PATTERN" = spike ]; }; then
+  echo "ERROR: LIVE_BASELINE requires step/ramp and a PredictiveHPA decision mode" >&2
+  exit 1
+fi
 benchmark_config_fingerprint
 DECISION_MODE=$(benchmark_decision_mode "$CONTROLLER")
 PHPA_SAMPLE="config/samples/autoscaling_v1alpha1_predictivehpa.yaml"
@@ -85,6 +89,7 @@ esac
 CAMPAIGN="${CAMPAIGN:-service-routing-v1}"
 CONTROLLER_PID=""
 LATENCY_OBSERVER_PID=""
+LIVE_OBSERVER_PID=""
 CONTROLLER_KUBECONFIG=""
 CONTROLLER_BINARY=""
 CONTROLLER_STARTUP_TIMEOUT=60
@@ -98,7 +103,7 @@ METRIC_ACCUMULATION_SECONDS=30
 # curve in a step native_hpa_300 dry-run (only first scale decision captured).
 POST_LOAD_TAIL_SECONDS=360
 PROM_URL="http://localhost:9090"
-if [ "$LATENCY_DIAGNOSTIC" = true ]; then
+if [ "$LATENCY_DIAGNOSTIC" = true ] || [ "$LIVE_BASELINE" = true ]; then
   if [ -x "$REPO_ROOT/hack/analyze/.venv/bin/python" ]; then
     BENCHMARK_PYTHON="${BENCHMARK_PYTHON:-$REPO_ROOT/hack/analyze/.venv/bin/python}"
   else
@@ -188,6 +193,10 @@ METRIC_PIPELINE_META
 if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
   printf '%s\n' 'metric_pipeline_protocol_version: "metric-pipeline-v1"' >> "$EXP_DIR/metadata.yaml"
 fi
+if [ "$LIVE_BASELINE" = true ]; then
+  printf 'live_baseline: true\nlive_baseline_protocol_version: "live-baseline-v1"\nstartup_mode: "%s"\n' \
+    "$LIVE_BASELINE_STARTUP_MODE" >> "$EXP_DIR/metadata.yaml"
+fi
 echo "  start_time_utc: $START_TIME_UTC"
 
 update_metadata() {
@@ -206,6 +215,25 @@ fail_experiment() {
   sed -i "s|^end_time_utc:.*|end_time_utc: \"$END_TIME_UTC\"|" "$EXP_DIR/metadata.yaml"
   sed -i "s|^end_time_unix:.*|end_time_unix: $END_TIME_UNIX|" "$EXP_DIR/metadata.yaml"
   exit "$exit_code"
+}
+
+stop_live_observer() {
+  [ -n "$LIVE_OBSERVER_PID" ] || return 0
+  local observer_pid="$LIVE_OBSERVER_PID" observer_result=0 stop_wait
+  LIVE_OBSERVER_PID=""
+  printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$EXP_DIR/live-baseline-stop"
+  for ((stop_wait=0; stop_wait<20; stop_wait++)); do
+    kill -0 "$observer_pid" 2>/dev/null || break
+    sleep 1
+  done
+  if kill -0 "$observer_pid" 2>/dev/null; then
+    kill -KILL "$observer_pid" 2>/dev/null || true
+    observer_result=3
+  fi
+  wait "$observer_pid" || observer_result=3
+  jq -e '.status == "success" and .owned_processes_stopped == true and .gate_released == true' \
+    "$EXP_DIR/live-baseline-status.json" >/dev/null 2>> "$EXP_DIR/live-baseline-observer.log" || observer_result=3
+  return "$observer_result"
 }
 
 stop_latency_observer() {
@@ -230,8 +258,9 @@ stop_latency_observer() {
 # Own only the controller process started below. Unexpected shell errors and
 # interrupts mark the run failed while retaining all partial local evidence.
 cleanup_benchmark() {
-  local status=$?
+  local status=$? controller_stopped=true
   trap - EXIT INT TERM
+  stop_live_observer || status=3
   stop_latency_observer || status=3
   if [ -n "$CONTROLLER_PID" ]; then
     kill -TERM "$CONTROLLER_PID" 2>/dev/null || true
@@ -239,8 +268,12 @@ cleanup_benchmark() {
       kill -0 "$CONTROLLER_PID" 2>/dev/null || break
       sleep 1
     done
-    kill -KILL "$CONTROLLER_PID" 2>/dev/null || true
+    if kill -0 "$CONTROLLER_PID" 2>/dev/null; then
+      kill -KILL "$CONTROLLER_PID" 2>/dev/null || true
+      if [ "$LIVE_BASELINE" = true ]; then status=3; fi
+    fi
     wait "$CONTROLLER_PID" 2>/dev/null || true
+    if kill -0 "$CONTROLLER_PID" 2>/dev/null; then controller_stopped=false; status=3; fi
   fi
   if [ -n "$CONTROLLER_KUBECONFIG" ]; then
     rm -f -- "$CONTROLLER_KUBECONFIG"
@@ -254,6 +287,15 @@ cleanup_benchmark() {
     update_metadata end_time_utc "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
     update_metadata end_time_unix "$(date +%s)"
     [ "$status" -ne 0 ] || status=2
+  fi
+  if [ "$LIVE_BASELINE" = true ]; then
+    if [ "$status" -ne 0 ]; then
+      sed -i 's|^  status: success|  status: failed|' "$EXP_DIR/metadata.yaml"
+      sed -i 's|^  failure_reason: ""|  failure_reason: "runtime or cleanup failed; inspect live runner receipts"|' "$EXP_DIR/metadata.yaml"
+    fi
+    jq -n --argjson exit_code "$status" --argjson controller_stopped "$controller_stopped" \
+      '{protocol_version:"live-baseline-v1",status:(if $exit_code == 0 then "success" else "failed" end),
+        exit_code:$exit_code,controller_process_stopped:$controller_stopped}' > "$EXP_DIR/live-runner-status.json"
   fi
   exit "$status"
 }
@@ -328,12 +370,26 @@ if [[ "$CONTROLLER" = phpa* ]]; then
   chmod 600 "$CONTROLLER_KUBECONFIG"
   k6_runner_kubectl config view --minify --flatten --raw > "$CONTROLLER_KUBECONFIG"
   CONTROLLER_BINARY=$(mktemp /tmp/phpa-benchmark-controller.XXXXXX)
-  if ! go build -o "$CONTROLLER_BINARY" ./cmd; then
+  if [ "$LIVE_BASELINE" = true ] && [ -n "${LIVE_BASELINE_CONTROLLER_BINARY:-}" ]; then
+    if ! [[ "${LIVE_BASELINE_CONTROLLER_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || \
+        [ "$(sha256sum -- "$LIVE_BASELINE_CONTROLLER_BINARY" | cut -d ' ' -f 1)" != "$LIVE_BASELINE_CONTROLLER_SHA256" ]; then
+      fail_experiment "frozen controller binary identity is missing or changed"
+    fi
+    cp -- "$LIVE_BASELINE_CONTROLLER_BINARY" "$CONTROLLER_BINARY"
+    chmod 700 "$CONTROLLER_BINARY"
+  elif ! go build -o "$CONTROLLER_BINARY" ./cmd; then
     fail_experiment "controller build failed"
   fi
   CONTROLLER_EXTRA_ARGS=()
   if [ "$LATENCY_DIAGNOSTIC" = true ]; then
     CONTROLLER_EXTRA_ARGS+=("--requeue-interval=${LATENCY_REQUEUE_SECONDS}s")
+  elif [ "$LIVE_BASELINE" = true ]; then
+    CONTROLLER_EXTRA_ARGS+=("--requeue-interval=30s")
+  fi
+  CONTROLLER_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+  if [ "$LIVE_BASELINE" = true ]; then
+    sha256sum "$CONTROLLER_BINARY" > "$EXP_DIR/controller-binary.sha256"
+    printf '%s\n' "$CONTROLLER_STARTED_AT" > "$EXP_DIR/controller-started-at.txt"
   fi
   KUBECONFIG="$CONTROLLER_KUBECONFIG" "$CONTROLLER_BINARY" "${CONTROLLER_EXTRA_ARGS[@]}" > "$CONTROLLER_LOG" 2>&1 &
   CONTROLLER_PID=$!
@@ -350,8 +406,34 @@ fi
 
 # === Step 6: metric accumulation pause ===
 echo ""
-echo "[6/11] metric accumulation pause (${METRIC_ACCUMULATION_SECONDS}s)"
-sleep "$METRIC_ACCUMULATION_SECONDS"
+if [ "$LIVE_BASELINE" = true ]; then
+  echo "[6/11] observe verified history and ${LIVE_BASELINE_STARTUP_MODE} startup gate"
+  "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/observe_live_baseline.py" observe \
+    --run-dir "$EXP_DIR" --context "$BENCHMARK_CONTEXT" --startup-mode "$LIVE_BASELINE_STARTUP_MODE" \
+    --decision-mode "$DECISION_MODE" --pattern "$PATTERN" --rps "$RPS" \
+    --controller-started-at "$CONTROLLER_STARTED_AT" \
+    --target-uid "$(jq -r .metadata.uid "$EXP_DIR/deployment-before.json")" \
+    --phpa-uid "$(jq -r .metadata.uid "$EXP_DIR/phpa-after-apply.json")" \
+    --source-sha256 "$BENCHMARK_SOURCE_SHA256" \
+    --binary-sha256 "$(cut -d ' ' -f 1 "$EXP_DIR/controller-binary.sha256")" \
+    > "$EXP_DIR/live-baseline-observer.log" 2>&1 &
+  LIVE_OBSERVER_PID=$!
+  LIVE_GATE_READY=false
+  for ((gate_wait=0; gate_wait<255; gate_wait++)); do
+    kill -0 "$LIVE_OBSERVER_PID" 2>/dev/null || fail_experiment "live observer failed before load; retained startup evidence" 3
+    kill -0 "$CONTROLLER_PID" 2>/dev/null || fail_experiment "controller exited before live readiness"
+    if [ -f "$EXP_DIR/live-baseline-gate.json" ] && \
+        jq -e '.protocol_version == "live-baseline-v1" and .released_at != null' "$EXP_DIR/live-baseline-gate.json" >/dev/null 2>&1; then
+      LIVE_GATE_READY=true
+      break
+    fi
+    sleep 1
+  done
+  [ "$LIVE_GATE_READY" = true ] || fail_experiment "live readiness gate timed out before load" 3
+else
+  echo "[6/11] metric accumulation pause (${METRIC_ACCUMULATION_SECONDS}s)"
+  sleep "$METRIC_ACCUMULATION_SECONDS"
+fi
 
 # === Step 7: run k6 load ===
 echo ""
@@ -359,6 +441,10 @@ echo "[7/11] run k6 pattern: $PATTERN"
 K6_JSON="$EXP_DIR/k6.json"
 K6_SCRIPT="${PATTERN}.js"
 K6_EXTRA_ARGS=()
+if [ "$LIVE_BASELINE" = true ]; then
+  K6_SCRIPT=baseline.js
+  K6_EXTRA_ARGS+=("BASELINE_PATTERN=$PATTERN")
+fi
 if [ "$LATENCY_DIAGNOSTIC" = true ]; then
   METRIC_PIPELINE_OBSERVER_ARGS=()
   if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
@@ -428,6 +514,17 @@ if [ "$LATENCY_DIAGNOSTIC" = true ]; then
   printf 'latency_collection_not_before_unix: %s\n' "$((TAIL_OBSERVATION_END_TIME_UNIX + 15))" \
     >> "$EXP_DIR/metadata.yaml"
 fi
+# The new baseline owns a scenario-clock schedule; legacy process-clock metadata
+# remains as separate historical output and is not used by the new analyzer.
+if [ "$LIVE_BASELINE" = true ]; then
+  "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/analyze/live_baseline.py" "$EXP_DIR" --schedule-only \
+    > "$EXP_DIR/live-baseline-schedule.log" 2>&1 || fail_experiment "live workload schedule evidence is missing or invalid" 3
+  if ! LIVE_OBSERVATION_END_CEILING=$(jq -er '.observation_end_unix | select(type == "number" and . > 0) | ceil' \
+      "$EXP_DIR/live-baseline-schedule.json"); then
+    fail_experiment "live workload observation boundary is invalid" 3
+  fi
+  TAIL_OBSERVATION_END_TIME_UNIX="$LIVE_OBSERVATION_END_CEILING"
+fi
 # Collect one more scrape after the fixed boundary so analysis can interpolate
 # at that boundary without extrapolating a stale replica value.
 TAIL_WAIT_SECONDS=$((TAIL_OBSERVATION_END_TIME_UNIX + 15 - $(date +%s)))
@@ -438,6 +535,10 @@ fi
 if [ "$LATENCY_DIAGNOSTIC" = true ]; then
   kill -0 "$LATENCY_OBSERVER_PID" 2>/dev/null || fail_experiment "latency observer exited during experiment" 3
   stop_latency_observer || fail_experiment "latency observer collection or cleanup failed" 3
+fi
+if [ "$LIVE_BASELINE" = true ]; then
+  kill -0 "$LIVE_OBSERVER_PID" 2>/dev/null || fail_experiment "live observer exited during experiment" 3
+  stop_live_observer || fail_experiment "live observer collection or cleanup failed" 3
 fi
 
 # === Step 8: record end time ===
