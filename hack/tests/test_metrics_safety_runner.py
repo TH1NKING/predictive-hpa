@@ -337,6 +337,8 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
 @unittest.skipUnless(os.name == "posix", "Process-group acceptance is exercised on Linux")
 class MetricsSafetyProcessTreeTests(unittest.TestCase):
     def run_interrupted_cli(self, mode):
+        finalization_stage = {"diagnostics-sigterm": "diagnostics", "delete-sigterm": "delete"}.get(mode)
+        nested_verifier = mode != "diagnostics-sigterm"
         with tempfile.TemporaryDirectory(prefix="fault-process-cli-") as directory:
             work = Path(directory)
             source, tools_dir = work / "source", work / "tools"
@@ -356,11 +358,24 @@ subprocess.Popen([sys.executable, "-c", code])
 while True:
     time.sleep(1)
 '''
+            if not nested_verifier:
+                verifier = '''import json, pathlib, sys
+output = pathlib.Path(sys.argv[sys.argv.index("--output") + 1])
+output.mkdir()
+(output / "summary.json").write_text(json.dumps({"passed": True, "checks": [{"passed": True}] * 11}))
+'''
             (source / "hack/verify_metrics_safety.py").write_text(verifier)
             tool_body = '''#!/usr/bin/env python3
-import importlib.util, json, os, pathlib, subprocess, sys
+import importlib.util, json, os, pathlib, subprocess, sys, time
 tool = pathlib.Path(sys.argv[0]).name
 args = [tool, *sys.argv[1:]]
+stage = os.environ.get("PHPA_FINALIZE_STAGE")
+if ((stage == "diagnostics" and tool == "kubectl" and "pods" in args and "-A" in args)
+        or (stage == "delete" and args[:3] == ["kind", "delete", "cluster"])):
+    pathlib.Path(os.environ["PHPA_FINALIZE_STARTED"]).write_text(str(os.getpid()))
+    deadline = time.monotonic() + 5
+    while not pathlib.Path(os.environ["PHPA_FINALIZE_RELEASE"]).exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
 if tool == "git":
     if "ls-files" in args:
         root = pathlib.Path(os.environ["PHPA_FAKE_SOURCE"])
@@ -391,6 +406,10 @@ sys.exit(result.returncode)
                 "PHPA_FAKE_SOURCE": str(source), "PHPA_FAKE_STATE": str(work / "cluster.json"),
                 "PHPA_TEST_MODULE": str(Path(__file__).resolve()),
                 "PHPA_CHILD_PID": str(child_pid), "PHPA_PARENT_PID": str(parent_pid)}
+            finalization_started, finalization_release = work / "finalization-started", work / "finalization-release"
+            if finalization_stage:
+                environment.update(PHPA_FINALIZE_STAGE=finalization_stage,
+                    PHPA_FINALIZE_STARTED=str(finalization_started), PHPA_FINALIZE_RELEASE=str(finalization_release))
             process = subprocess.Popen([sys.executable, str(source / "hack/run_metrics_safety.py"),
                 "--cluster-name", "phpa-metrics-safety-test", "--output", str(output),
                 "--timeout-seconds", "6" if mode == "timeout" else "30"],
@@ -406,20 +425,30 @@ sys.exit(result.returncode)
             finished, child_running = False, False
             stdout, stderr = "", ""
             try:
-                deadline = time.monotonic() + 5
-                while not child_pid.exists() and process.poll() is None and time.monotonic() < deadline:
-                    time.sleep(0.025)
-                self.assertTrue(child_pid.exists(), "Fake verifier did not start before the run budget")
-                if mode == "sigterm":
+                if nested_verifier:
+                    deadline = time.monotonic() + 5
+                    while not child_pid.exists() and process.poll() is None and time.monotonic() < deadline:
+                        time.sleep(0.025)
+                    self.assertTrue(child_pid.exists(), "Fake verifier did not start before the run budget")
+                if mode in ("sigterm", "delete-sigterm"):
                     process.send_signal(signal.SIGTERM)
+                if finalization_stage:
+                    deadline = time.monotonic() + 9
+                    while not finalization_started.exists() and process.poll() is None and time.monotonic() < deadline:
+                        time.sleep(0.025)
+                    self.assertTrue(finalization_started.exists(), "Finalization did not reach the selected command")
+                    process.send_signal(signal.SIGTERM)
+                    time.sleep(0.025)
+                    process.send_signal(signal.SIGINT)
+                    finalization_release.write_text("finish the bounded command")
                 try:
                     stdout, stderr = process.communicate(timeout=13)
                     finished = True
                 except subprocess.TimeoutExpired:
                     pass
-                child_running = alive(int(child_pid.read_text()))
+                child_running = alive(int(child_pid.read_text())) if child_pid.exists() else False
             finally:
-                for path in (child_pid, parent_pid):
+                for path in (child_pid, parent_pid, finalization_started):
                     if path.exists():
                         try:
                             os.kill(int(path.read_text()), signal.SIGKILL)
@@ -444,19 +473,28 @@ sys.exit(result.returncode)
                 (destination / (mode + ".json")).write_text(json.dumps(evidence, indent=2) + "\n")
             self.assertTrue(finished, "Public CLI did not return within its bounded shutdown grace")
             self.assertFalse(child_running, "Nested verifier process survived CLI shutdown")
-            self.assertNotEqual(0, process.returncode)
+            self.assertTrue(summary, "Finalization signal skipped summary.json")
             self.assertTrue(summary["cluster_deleted"], summary)
-            self.assertIsNotNone(summary["run_error"])
-            self.assertIn("nested stdout retained", receipt.get("stdout", ""))
-            self.assertIn("nested stderr retained", receipt.get("stderr", ""))
-            self.assertTrue(receipt["termination"]["forced_kill"])
-            self.assertTrue(receipt["termination"]["group_stopped"])
+            self.assertTrue((output / "artifact-manifest.json").is_file())
+            if nested_verifier:
+                self.assertNotEqual(0, process.returncode)
+                self.assertIsNotNone(summary["run_error"])
+                self.assertIn("nested stdout retained", receipt.get("stdout", ""))
+                self.assertIn("nested stderr retained", receipt.get("stderr", ""))
+                self.assertTrue(receipt["termination"]["forced_kill"])
+                self.assertTrue(receipt["termination"]["group_stopped"])
 
     def test_timeout_stops_nested_verifier_and_preserves_receipts(self):
         self.run_interrupted_cli("timeout")
 
     def test_sigterm_stops_nested_verifier_and_preserves_receipts(self):
         self.run_interrupted_cli("sigterm")
+
+    def test_signals_during_diagnostics_preserve_cleanup_and_summary(self):
+        self.run_interrupted_cli("diagnostics-sigterm")
+
+    def test_second_signals_during_delete_preserve_cleanup_and_summary(self):
+        self.run_interrupted_cli("delete-sigterm")
 
 
 if __name__ == "__main__":

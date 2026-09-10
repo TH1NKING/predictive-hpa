@@ -155,6 +155,98 @@ class LiveSampleCLI(unittest.TestCase):
 
 
 class LiveBenchmarkCLI(unittest.TestCase):
+    def test_campaign_rejects_foreign_or_empty_api_node_roster_before_build_or_benchmark(self) -> None:
+        for node_names in (["foreign-control-plane"], []):
+            with self.subTest(node_names=node_names), tempfile.TemporaryDirectory(prefix="live-cluster-identity-") as temporary:
+                directory = Path(temporary)
+                kubeconfig = directory / "private-kubeconfig"
+                kubeconfig.write_text("isolated fixture")
+                script = directory / "commands.py"
+                script.write_text("""import json,os,pathlib,sys
+name=sys.argv[1];args=sys.argv[2:];root=pathlib.Path(os.environ['LIVE_IDENTITY_TEST_DIR'])
+if name=='kubectl':
+ if 'config' in args: print('kind-phpa-live-baseline-test');sys.exit(0)
+ resource=args[args.index('get')+1]
+ nodes=[{'metadata':{'uid':'node-'+n,'name':n},'spec':{},'status':{'nodeInfo':{'bootID':'boot'},'capacity':{},'allocatable':{}}} for n in json.loads(os.environ['LIVE_API_NODE_NAMES'])]
+ values={'namespace':{'metadata':{'uid':'cluster'}},'nodes':{'items':nodes},
+ 'deployment':{'metadata':{'uid':'target'},'spec':{'replicas':1}},
+ 'service':{'metadata':{'uid':'service'},'spec':{'clusterIP':'10.0.0.1'}},
+ 'hpa':{'items':[]},'predictivehpas':{'items':[]},'configmaps':{'items':[]},
+ 'pods':{'items':[{'metadata':{'namespace':'default','labels':{'run':'php-apache'}},'status':{'phase':'Running','containerStatuses':[{'imageID':'sha256:workload'}]}}]}}
+ print(json.dumps(values[resource]))
+elif name=='kind':
+ if args==['get','clusters']: print('phpa-live-baseline-test')
+ elif args==['get','nodes','--name','phpa-live-baseline-test']: print('phpa-live-baseline-test-control-plane')
+ else: raise RuntimeError(args)
+elif name=='go':
+ (root/'build-invoked').write_text('unexpected build')
+ pathlib.Path(args[args.index('-o')+1]).write_bytes(b'fake binary')
+elif name=='bash':
+ (root/'benchmark-invoked').write_text('unexpected benchmark');sys.exit(3)
+else: raise RuntimeError(name)
+""", encoding="utf-8")
+                for name in ("kubectl", "kind", "go", "bash"):
+                    if os.name == "nt":
+                        (directory / (name + ".cmd")).write_text(f'@"{sys.executable}" "{script}" {name} %*\r\n')
+                    else:
+                        command = directory / name
+                        command.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(script))} {name} \"$@\"\n")
+                        command.chmod(0o755)
+                output = directory / "campaign"
+                result = subprocess.run([sys.executable, str(ROOT / "hack/run_live_campaign.py"), "--pattern", "step",
+                    "--context", "kind-phpa-live-baseline-test", "--kubeconfig", str(kubeconfig), "--output", str(output)],
+                    env={**os.environ, "PATH": str(directory) + os.pathsep + os.environ.get("PATH", ""),
+                         "LIVE_IDENTITY_TEST_DIR": str(directory), "LIVE_API_NODE_NAMES": json.dumps(node_names)},
+                    capture_output=True, text=True, timeout=30)
+                self.assertEqual(3, result.returncode, result.stderr)
+                report = json.loads((output / "campaign-status.json").read_text())
+                self.assertEqual("failed", report["status"])
+                self.assertEqual(["not_run"] * 9, [slot["status"] for slot in report["slots"]])
+                self.assertTrue((output / "campaign-plan.json").is_file())
+                self.assertFalse((directory / "build-invoked").exists())
+                self.assertFalse((directory / "benchmark-invoked").exists())
+                self.assertIn("node roster", report["error"])
+
+    @unittest.skipIf(os.name == "nt", "Windows TerminateProcess cannot exercise POSIX process groups")
+    def test_campaign_reaps_descendants_after_command_leader_exits_normally(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="live-normal-exit-") as temporary:
+            directory = Path(temporary)
+            kubeconfig = directory / "private-kubeconfig"
+            kubeconfig.write_text("isolated fixture")
+            child = directory / "child.py"
+            child.write_text("import os,pathlib,signal,time\n"
+                "root=pathlib.Path(os.environ['LIVE_SIGNAL_DIR'])\n"
+                "def stop(*_):\n (root/'child-stopped').write_text('terminated');raise SystemExit(0)\n"
+                "signal.signal(signal.SIGTERM,stop)\n"
+                "(root/'child-started').write_text(str(os.getpid()))\n"
+                "while True: time.sleep(1)\n")
+            command = directory / "kubectl"
+            command.write_text(f"#!{sys.executable}\nimport os,pathlib,subprocess,sys,time\n"
+                "root=pathlib.Path(os.environ['LIVE_SIGNAL_DIR'])\n"
+                "(root/'command-pid').write_text(str(os.getpid()))\n"
+                "subprocess.Popen([sys.executable,str(root/'child.py')])\n"
+                "while not (root/'child-started').exists(): time.sleep(0.02)\n"
+                "raise SystemExit(0)\n")
+            command.chmod(0o755)
+            output = directory / "campaign"
+            try:
+                result = subprocess.run([sys.executable, str(ROOT / "hack/run_live_campaign.py"), "--pattern", "step",
+                    "--context", "kind-phpa-live-baseline-test", "--kubeconfig", str(kubeconfig), "--output", str(output)],
+                    env={**os.environ, "PATH": str(directory) + os.pathsep + os.environ.get("PATH", ""), "LIVE_SIGNAL_DIR": str(directory)},
+                    capture_output=True, text=True, timeout=12)
+                self.assertEqual(3, result.returncode, result.stdout + result.stderr)
+                report = json.loads((output / "campaign-status.json").read_text())
+                self.assertEqual("failed", report["status"])
+                self.assertEqual(["not_run"] * 9, [slot["status"] for slot in report["slots"]])
+                self.assertTrue((directory / "child-stopped").exists(), "Successful command leader exit leaked its descendant")
+                self.assertIn("descendant", report["error"].lower())
+            finally:
+                if (directory / "command-pid").exists():
+                    try:
+                        os.killpg(int((directory / "command-pid").read_text()), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+
     @unittest.skipIf(os.name == "nt", "Windows TerminateProcess cannot exercise POSIX signal handlers")
     def test_campaign_sigterm_preserves_status_and_stops_owned_command_descendants(self) -> None:
         with tempfile.TemporaryDirectory(prefix="live-signal-") as temporary:
@@ -255,13 +347,16 @@ if name=='kubectl':
  resource=args[args.index('get')+1]
  values={
   'namespace':{'metadata':{'uid':'cluster'}},
-  'nodes':{'items':[{'metadata':{'uid':'node','name':'node'},'spec':{},'status':{'nodeInfo':{'bootID':'boot'},'capacity':{},'allocatable':{}}}]},
+  'nodes':{'items':[{'metadata':{'uid':'node','name':'phpa-live-baseline-test-control-plane'},'spec':{},'status':{'nodeInfo':{'bootID':'boot'},'capacity':{},'allocatable':{}}}]},
   'deployment':{'metadata':{'uid':'target'},'spec':{'replicas':1}},
   'service':{'metadata':{'uid':'service'},'spec':{'clusterIP':'10.0.0.1'}},
   'hpa':{'items':[]},'predictivehpas':{'items':[]},'configmaps':{'items':[]},
   'pods':{'items':[{'metadata':{'namespace':'default','labels':{'run':'php-apache'}},'status':{'phase':'Running','containerStatuses':[{'imageID':'sha256:workload'}]}}]}}
  print(json.dumps(values[resource]))
-elif name=='kind': print('phpa-live-baseline-test')
+elif name=='kind':
+ if args==['get','clusters']: print('phpa-live-baseline-test')
+ elif args==['get','nodes','--name','phpa-live-baseline-test']: print('phpa-live-baseline-test-control-plane')
+ else: raise RuntimeError(args)
 elif name=='go': pathlib.Path(args[args.index('-o')+1]).write_bytes(b'frozen test binary')
 elif name=='bash':
  output=pathlib.Path(os.environ['EXPERIMENTS_ROOT'])/'failed-slot'

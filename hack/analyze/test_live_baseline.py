@@ -87,6 +87,14 @@ class LiveBaselineCLI(unittest.TestCase):
                     "value": value, "tags": {"status": status, "expected_response": str(status == "200").lower()}}})
         points.append({"type": "Point", "metric": "dropped_iterations", "data": {"time": stamp(4), "value": 2}})
         write_rows(directory / "k6.json", points)
+        write_json(directory / "k6-summary.json", {"metrics": {
+            "http_reqs": {"count": 4}, "http_req_failed": {"passes": 1, "fails": 3, "value": 0.25},
+            "http_req_duration": {"p(95)": 895}, "baseline_request_attempt": {"count": 4},
+            "dropped_iterations": {"count": 2}}})
+        write_json(directory / "k6-runner.json", {"status": "success", "k6_exit_code": 0, "failure_reason": ""})
+        (directory / "k6-exit-code").write_text("0\n", encoding="utf-8")
+        (directory / "k6-start-time-unix").write_text(str(int(ONSET - 31)), encoding="utf-8")
+        (directory / "k6-end-time-unix").write_text(str(int(ONSET + 181)), encoding="utf-8")
         cycles = [anchor, cycle(9.2, desired=2, previous=1), cycle(29.2, desired=1, previous=2)]
         write_rows(directory / "controller.log", [part for item in cycles for part in item.values() if isinstance(part, dict)])
         rows = [state(offset, 2 if 10 <= offset < 30 else 1, 2 if 14 <= offset < 30 else 1)
@@ -119,6 +127,91 @@ class LiveBaselineCLI(unittest.TestCase):
             self.assertEqual([11.9, 14], [round(x, 1) for x in report["timing"]["first_observed_ready_growth_interval_seconds"]])
             self.assertEqual(5.5, report["controller_observations"]["accepted"][0]["source_age_at_observation_finish_seconds"])
             self.assertEqual("warm", report["startup"]["mode"])
+
+    def test_raw_k6_evidence_must_agree_with_the_independent_completion_summary(self) -> None:
+        for case in ("balanced_truncation", "summary_drops", "summary_failures", "summary_attempts", "summary_p95"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                self.fixture(directory)
+                if case == "balanced_truncation":
+                    points = [json.loads(line) for line in (directory / "k6.json").read_text().splitlines()]
+                    # Retain one complete request quartet and all recorded drops:
+                    # equal raw counters alone cannot prove complete collection.
+                    write_rows(directory / "k6.json", points[:4] + points[-1:])
+                else:
+                    summary = json.loads((directory / "k6-summary.json").read_text())
+                    if case == "summary_drops":
+                        summary["metrics"]["dropped_iterations"]["count"] = 3
+                    elif case == "summary_failures":
+                        summary["metrics"]["http_req_failed"] = {"passes": 0, "fails": 4, "value": 0}
+                    elif case == "summary_attempts":
+                        summary["metrics"]["baseline_request_attempt"]["count"] = 3
+                    else:
+                        summary["metrics"]["http_req_duration"]["p(95)"] = 300
+                    write_json(directory / "k6-summary.json", summary)
+                result = self.run_cli(directory)
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertFalse((directory / "live-baseline.json").exists())
+
+    def test_k6_completion_and_point_times_must_cover_the_declared_load_window(self) -> None:
+        for case in ("early_completion", "late_completion", "late_attempt", "response_after_exit", "late_process_start",
+                     "failed_exit", "failed_runner_cleanup", "missing_completion"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                self.fixture(directory)
+                if case in ("early_completion", "late_completion"):
+                    offset = 4 if case == "early_completion" else 223
+                    (directory / "k6-end-time-unix").write_text(str(int(ONSET + offset)), encoding="utf-8")
+                elif case in ("late_attempt", "response_after_exit"):
+                    points = [json.loads(line) for line in (directory / "k6.json").read_text().splitlines()]
+                    metric = "baseline_request_attempt" if case == "late_attempt" else "http_req_duration"
+                    next(point for point in points if point["metric"] == metric)["data"]["time"] = stamp(183)
+                    write_rows(directory / "k6.json", points)
+                elif case == "late_process_start":
+                    (directory / "k6-start-time-unix").write_text(str(int(ONSET - 29)), encoding="utf-8")
+                elif case == "failed_exit":
+                    (directory / "k6-exit-code").write_text("99\n", encoding="utf-8")
+                elif case == "missing_completion":
+                    (directory / "k6-end-time-unix").unlink()
+                else:
+                    write_json(directory / "k6-runner.json", {"status": "failed", "k6_exit_code": 0,
+                        "failure_reason": "Could not delete runner resources"})
+                result = self.run_cli(directory)
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertFalse((directory / "live-baseline.json").exists())
+
+    def test_response_drain_uses_recorded_exit_with_integer_timestamp_precision(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            self.fixture(directory)
+            (directory / "k6-end-time-unix").write_text(str(int(ONSET + 193)), encoding="utf-8")
+            points = [json.loads(line) for line in (directory / "k6.json").read_text().splitlines()]
+            next(point for point in points if point["metric"] == "http_req_duration")["data"]["time"] = stamp(193.7)
+            next(point for point in points if point["metric"] == "baseline_request_attempt")["data"]["time"] = stamp(181.005)
+            write_rows(directory / "k6.json", points)
+            report = self.report(directory)
+            self.assertEqual(ONSET + 193, report["k6"]["integrity"]["process_end_unix"])
+            self.assertEqual(0.01, report["k6"]["integrity"]["attempt_timestamp_tolerance_seconds"])
+            self.assertTrue({"k6-summary.json", "k6-runner.json", "k6-exit-code", "k6-start-time-unix", "k6-end-time-unix"}
+                <= report["lineage"]["input_files"].keys())
+
+    def test_nested_summary_values_allow_absent_zero_drop_and_optional_trend_count(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            self.fixture(directory)
+            summary = json.loads((directory / "k6-summary.json").read_text())
+            del summary["metrics"]["dropped_iterations"]
+            summary["metrics"]["baseline_request_attempt"] = {"min": (ONSET - 30) * 1000}
+            summary["metrics"]["http_req_failed"] = {"passes": 1, "fails": 3, "rate": 0.25}
+            summary["metrics"]["http_req_duration"]["p(95)"] = 894.99999999
+            summary["metrics"] = {name: {"values": values} for name, values in summary["metrics"].items()}
+            write_json(directory / "k6-summary.json", summary)
+            points = [json.loads(line) for line in (directory / "k6.json").read_text().splitlines()]
+            write_rows(directory / "k6.json", [point for point in points if point["metric"] != "dropped_iterations"])
+            report = self.report(directory)
+            self.assertEqual(0, report["k6"]["dropped_iterations"])
+            self.assertEqual(895, report["k6"]["duration_p95_ms"])
+            self.assertFalse(report["k6"]["integrity"]["summary_attempt_count_available"])
 
     def test_mismatched_identity_mode_or_unverified_warm_gate_is_rejected_without_output(self) -> None:
         for case in ("target_uid", "phpa_uid", "mode", "stale_generation", "missing_condition",

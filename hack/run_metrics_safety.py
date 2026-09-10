@@ -395,16 +395,24 @@ def main(argv=None):
         output.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
         parser.error("output directory already exists; retain failed evidence and choose a new path")
-    previous = signal.getsignal(signal.SIGTERM)
+    previous = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT)}
+    runner = None
 
     def interrupted(signum, frame):
-        raise KeyboardInterrupt("Received SIGTERM")
+        # A second signal must not interrupt bounded diagnostics, resource
+        # cleanup, or the final summary after the run has already stopped.
+        if runner is not None and runner.finalizing:
+            return
+        raise KeyboardInterrupt("Received " + signal.Signals(signum).name)
 
-    signal.signal(signal.SIGTERM, interrupted)
+    for number in previous:
+        signal.signal(number, interrupted)
     try:
-        return Runner(args, output).finish()
+        runner = Runner(args, output)
+        return runner.finish()
     finally:
-        signal.signal(signal.SIGTERM, previous)
+        for number, handler in previous.items():
+            signal.signal(number, handler)
 
 
 if __name__ == "__main__":

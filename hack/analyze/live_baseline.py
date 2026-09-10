@@ -69,6 +69,7 @@ def schedule(directory: Path, plan: dict) -> dict:
 
 
 def business_evidence(directory: Path, actual: dict) -> dict:
+    completion = completion_evidence(directory, actual)
     points = [row for row in records(directory / "k6.json") if row.get("type") == "Point"]
     counts = {name: 0 for name in ("http_reqs", "http_req_duration", "http_req_failed", "baseline_request_attempt")}
     for point in points:
@@ -78,8 +79,13 @@ def business_evidence(directory: Path, actual: dict) -> dict:
         value = data["value"]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
             raise ValueError("k6 metric values must be finite and nonnegative")
-        if epoch(data["time"]) < actual["load_onset_unix"]:
+        point_time = epoch(data["time"])
+        if point_time < actual["load_onset_unix"] - completion["attempt_timestamp_tolerance_seconds"]:
             raise ValueError("k6 request evidence precedes actual onset")
+        if point_time > completion["process_end_unix"] + completion["process_timestamp_precision_seconds"]:
+            raise ValueError("k6 request evidence follows the recorded process completion")
+        if name == "baseline_request_attempt" and point_time > actual["offered_load_end_unix"] + completion["attempt_timestamp_tolerance_seconds"]:
+            raise ValueError("k6 request attempt follows the offered load window")
         if name in counts:
             counts[name] += int(value) if name == "http_reqs" else 1
         if name == "http_req_duration" and "status" not in data.get("tags", {}):
@@ -95,7 +101,77 @@ def business_evidence(directory: Path, actual: dict) -> dict:
     result, warnings = load_k6(directory / "k6.json")
     if warnings:
         raise ValueError("; ".join(warnings))
+    result["integrity"] = {**summary_evidence(directory, result, counts["baseline_request_attempt"]), **completion}
     return result
+
+
+def completion_evidence(directory: Path, actual: dict) -> dict:
+    runner = read_json(directory / "k6-runner.json")
+    exit_code = (directory / "k6-exit-code").read_text(encoding="utf-8").strip()
+    if (exit_code != "0" or runner["status"] != "success" or type(runner["k6_exit_code"]) is not int
+            or runner["k6_exit_code"] != 0 or runner["failure_reason"] != ""):
+        raise ValueError("k6 runner did not report successful execution and cleanup")
+    times = []
+    for name in ("k6-start-time-unix", "k6-end-time-unix"):
+        value = (directory / name).read_text(encoding="utf-8").strip()
+        if not re.fullmatch(r"[1-9][0-9]{0,11}", value):
+            raise ValueError(f"Invalid integer process timestamp in {name}")
+        times.append(int(value))
+    start, end = times
+    # The shell records date +%s around k6. Its end timestamp can be rounded
+    # down by one second. Allow bounded runtime drain (10s request policy plus
+    # 30s executor grace), but use the actual process end to bound responses:
+    # under load a timeout callback need not run at the exact policy deadline.
+    if (start > actual["scenario_start_unix"] or end < start
+            or end + 1 < actual["offered_load_end_unix"]
+            or end > actual["offered_load_end_unix"] + 40 + 1):
+        raise ValueError("k6 process timestamps do not cover the offered load window and bounded drain")
+    return {"process_start_unix": start, "process_end_unix": end, "process_timestamp_precision_seconds": 1,
+        "attempt_timestamp_tolerance_seconds": 0.01, "maximum_drain_seconds": 40}
+
+
+def summary_evidence(directory: Path, raw: dict, attempt_count: int) -> dict:
+    metrics = read_json(directory / "k6-summary.json")["metrics"]
+    if not isinstance(metrics, dict):
+        raise ValueError("k6 summary metrics must be an object")
+
+    def values(name: str) -> dict:
+        metric = metrics[name]
+        if not isinstance(metric, dict):
+            raise ValueError(f"Invalid k6 summary metric {name}")
+        value = metric.get("values", metric)
+        if not isinstance(value, dict):
+            raise ValueError(f"Invalid k6 summary metric {name}")
+        return value
+
+    def number(value: object, label: str, *, integer: bool = False) -> float:
+        if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                or value < 0 or (integer and int(value) != value)):
+            raise ValueError(f"Invalid k6 summary {label}")
+        return value
+
+    requests = number(values("http_reqs")["count"], "request count", integer=True)
+    failed = values("http_req_failed")
+    # In a k6 Rate, passes count nonzero observations: for http_req_failed
+    # those are failures, despite the field's counterintuitive name.
+    failures = number(failed["passes"], "failure count", integer=True)
+    nonfailures = number(failed["fails"], "nonfailure count", integer=True)
+    rate = number(failed.get("value", failed.get("rate")), "failure rate")
+    dropped = number(values("dropped_iterations")["count"], "dropped count", integer=True) if "dropped_iterations" in metrics else 0
+    if (requests != raw["total_requests"] or failures != raw["failed_count"] or failures + nonfailures != requests
+            or not math.isclose(rate, failures / requests, rel_tol=0, abs_tol=1e-12)
+            or dropped != raw["dropped_iterations"]):
+        raise ValueError("k6 summary request, failure or dropped counts disagree with raw evidence")
+    has_attempt_count = "baseline_request_attempt" in metrics and "count" in values("baseline_request_attempt")
+    if has_attempt_count and number(values("baseline_request_attempt")["count"], "attempt count", integer=True) != attempt_count:
+        raise ValueError("k6 summary attempt count disagrees with raw evidence")
+    p95 = number(values("http_req_duration")["p(95)"], "all-request p95")
+    # extract.load_k6 rounds milliseconds to two decimal places; this only
+    # accommodates that serialization precision, not different percentile rules.
+    if not math.isclose(p95, raw["duration_p95_ms"], rel_tol=0, abs_tol=0.01):
+        raise ValueError("k6 summary all-request p95 disagrees with raw evidence")
+    return {"summary_requests": requests, "summary_failures": failures, "summary_dropped_iterations": dropped,
+        "summary_all_request_p95_ms": p95, "summary_attempt_count_available": has_attempt_count}
 
 
 def validate_evidence(metadata: dict, plan: dict, gate: dict, status: dict, rows: list[dict],
@@ -359,7 +435,9 @@ def analyze(directory: Path, plan: dict) -> dict:
 
 def input_manifest(directory: Path) -> dict:
     names = ("metadata.yaml", "live-baseline-plan.json", "live-baseline-gate.json", "live-baseline-status.json",
-        "live-runner-status.json", "live-observations.ndjson", "controller.log", "k6.json", "k6-warnings.log", "k6-stdout.log", "controller-binary.sha256")
+        "live-runner-status.json", "live-observations.ndjson", "controller.log", "k6.json", "k6-summary.json",
+        "k6-runner.json", "k6-exit-code", "k6-start-time-unix", "k6-end-time-unix",
+        "k6-warnings.log", "k6-stdout.log", "controller-binary.sha256")
     result = {}
     for name in names:
         path = directory / name

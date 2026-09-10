@@ -68,12 +68,20 @@ class Campaign:
                                            start_new_session=os.name != "nt")
             try:
                 code = self.active.wait(timeout=timeout)
+                if os.name != "nt":
+                    try:
+                        os.killpg(self.active.pid, 0)
+                    except ProcessLookupError:
+                        pass
+                    else:
+                        # A completed leader does not prove that its children
+                        # stopped. Retain the group handle until cleanup ends.
+                        self.stop_active()
+                        raise RuntimeError(f"{label} left descendants after its direct process exited")
+                self.active = None
             except (subprocess.TimeoutExpired, KeyboardInterrupt):
                 self.stop_active()
                 raise
-            finally:
-                if self.active is not None and self.active.poll() is not None:
-                    self.active = None
         if code:
             raise RuntimeError(f"{label} exited {code}; see {stem.name}.stderr")
         return stem.with_suffix(".stdout").read_text(encoding="utf-8")
@@ -122,6 +130,13 @@ class Campaign:
     def snapshot(self) -> dict:
         namespace = self.get("namespace", "namespace", "default")
         nodes = self.get("nodes", "nodes")
+        kind_nodes = [name.strip() for name in self.command("kind-nodes",
+            [shutil.which("kind") or "kind", "get", "nodes", "--name", self.args.context.removeprefix("kind-")]).splitlines()
+                      if name.strip()]
+        api_nodes = [node["metadata"]["name"] for node in nodes["items"]]
+        if (not api_nodes or not kind_nodes or len(set(api_nodes)) != len(api_nodes)
+                or len(set(kind_nodes)) != len(kind_nodes) or sorted(api_nodes) != sorted(kind_nodes)):
+            raise ValueError("API node roster does not match the nonempty node roster of the assigned local Kind cluster")
         deploy = self.get("deployment", "deployment", "php-apache", "-n", "default")
         service = self.get("service", "service", "php-apache", "-n", "default")
         hpas = self.get("hpas", "hpa", "-A")
@@ -153,6 +168,7 @@ class Campaign:
         if not workload_images:
             raise ValueError("Workload runtime image identity is unavailable")
         return {"namespace_uid": namespace["metadata"]["uid"],
+            "kind_nodes": sorted(kind_nodes),
             "nodes": sorted([{"uid": node["metadata"]["uid"], "name": node["metadata"]["name"],
                 "node_info": node["status"]["nodeInfo"], "capacity": node["status"]["capacity"],
                 "allocatable": node["status"]["allocatable"], "spec": node["spec"]} for node in nodes["items"]], key=lambda item: item["name"]),

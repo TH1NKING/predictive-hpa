@@ -46,6 +46,12 @@ tags always resolve to the same bytes.
 Every command has a timeout and a numbered JSON receipt, including failed
 commands. The run phase also has a 45-minute total budget, configurable with
 `--timeout-seconds`; bounded diagnostics and cleanup still run after it expires.
+On POSIX, each command has its own process group. A timeout or interruption sends
+TERM to that group, allows 3 seconds for exit, then uses KILL if necessary with a
+5-second bounded wait. Output files retain stdout/stderr even when descendants
+outlive their direct parent. Once final diagnostics and cleanup begin, SIGTERM
+and SIGINT no longer interrupt them or the summary/manifest writes; the entry
+restores the original signal handlers when it returns.
 `acceptance/` contains the existing script's observations and checks.
 Diagnostics collect workload objects, manager logs, Lease state, events and
 Prometheus targets/build information/configuration. `summary.json` distinguishes
