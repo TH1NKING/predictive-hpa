@@ -98,7 +98,7 @@ class Runner:
         if not termination["group_stopped"]:
             raise RuntimeError("Owned command process group remained after bounded termination")
 
-    def command(self, label, argv, timeout=45):
+    def command(self, label, argv, timeout=45, raw_stdout=False):
         if not self.finalizing:
             remaining = self.deadline - time.monotonic()
             if remaining <= 0:
@@ -112,7 +112,7 @@ class Runner:
         try:
             # Files prevent inherited stdout/stderr pipe descriptors from making
             # communicate() wait forever when a verifier leaves descendants.
-            with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
+            with stdout_path.open("w", encoding="utf-8", newline="") as stdout, stderr_path.open("w", encoding="utf-8", newline="") as stderr:
                 process = subprocess.Popen(argv, cwd=ROOT, stdout=stdout, stderr=stderr,
                                            start_new_session=os.name == "posix")
                 try:
@@ -126,7 +126,7 @@ class Runner:
                     raise RuntimeError(f"{label} left descendants after its direct process exited")
             if code:
                 raise RuntimeError(f"{label} failed with exit {code}: {stderr_path.read_text(encoding='utf-8', errors='replace').strip()}")
-            return stdout_path.read_text(encoding="utf-8", errors="replace")
+            return stdout_path.read_bytes() if raw_stdout else stdout_path.read_text(encoding="utf-8", errors="replace")
         except (subprocess.TimeoutExpired, OSError, RuntimeError) as error:
             receipt["error"] = str(error)
             raise
@@ -146,6 +146,51 @@ class Runner:
     def helm(self, label, *argv, timeout=240):
         return self.command(label, ["helm", "--kubeconfig", str(self.kubeconfig),
                                    "--kube-context", self.context, *argv], timeout)
+
+    def image_content(self, label, content_digest, expected_size=None):
+        raw = self.command(label, ["docker", "exec", self.node_id, "ctr", "-n", "k8s.io",
+                                   "content", "get", content_digest], raw_stdout=True)
+        # Keep exact bytes: JSON reserialization or newline conversion changes
+        # a content digest even when the parsed document appears equivalent.
+        (self.output / (label + ".json")).write_bytes(raw)
+        if len(raw) > 8 * 1024 * 1024 or (expected_size is not None and len(raw) != expected_size):
+            raise RuntimeError("Loaded image content size does not match its descriptor")
+        if "sha256:" + hashlib.sha256(raw).hexdigest() != content_digest:
+            raise RuntimeError("Loaded image content SHA256 does not match its digest")
+        document = json.loads(raw)
+        if not isinstance(document, dict):
+            raise RuntimeError("Loaded image content is not a JSON object")
+        return document
+
+    def verify_image_identity(self, image_id, runtime):
+        config_id = runtime["status"]["id"]
+        if any(not isinstance(value, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", value)
+               for value in (image_id, config_id)):
+            raise RuntimeError("Loaded manager image has an invalid Docker or CRI digest")
+        accepted_ids, manifest_ids = {config_id}, []
+        if image_id != config_id:
+            # The build ID may identify a manifest while CRI identifies its
+            # config. Prove that link from content, not an arbitrary repoDigest
+            # alias or a mutable image tag.
+            manifest = self.image_content("image-manifest", image_id)
+            if (type(manifest.get("schemaVersion")) is not int or manifest["schemaVersion"] != 2
+                    or manifest.get("mediaType") not in {
+                    "application/vnd.oci.image.manifest.v1+json",
+                    "application/vnd.docker.distribution.manifest.v2+json"}):
+                raise RuntimeError("Loaded image is not a supported version 2 image manifest")
+            config = manifest.get("config")
+            if (not isinstance(config, dict) or config.get("digest") != config_id
+                    or config.get("mediaType") not in {"application/vnd.oci.image.config.v1+json",
+                                                       "application/vnd.docker.container.image.v1+json"}
+                    or type(config.get("size")) is not int or not 0 < config["size"] <= 8 * 1024 * 1024):
+                raise RuntimeError("Loaded manager image config does not match the built Docker manifest")
+            self.image_content("image-config", config_id, config["size"])
+            accepted_ids.add(image_id)
+            manifest_ids.append(image_id)
+        self.write("image-identity.json", {"docker_image_id": image_id, "runtime_config_digest": config_id,
+                                           "verified_manifest_digests": manifest_ids,
+                                           "accepted_pod_image_ids": sorted(accepted_ids)})
+        return accepted_ids
 
     def inspect_node(self):
         nodes = json.loads(self.command("node-identity", ["docker", "inspect", self.node_name]))
@@ -240,12 +285,7 @@ class Runner:
             raise RuntimeError("Unexpected node roster in dedicated cluster")
         self.command("kind-load", ["kind", "load", "docker-image", self.image, "--name", self.args.cluster_name], timeout=180)
         runtime = json.loads(self.command("runtime-image", ["docker", "exec", self.node_name, "crictl", "inspecti", self.image]))
-        runtime_ids = {ref.split("@")[-1] for ref in
-                       [runtime["status"]["id"], *runtime["status"].get("repoDigests", [])]}
-        # Docker's classic store reports the config digest; its containerd image
-        # store may report the manifest digest. Both must be linked by CRI data.
-        if image_id not in runtime_ids:
-            raise RuntimeError("Loaded manager image does not match the built Docker image")
+        runtime_ids = self.verify_image_identity(image_id, runtime)
         self.guard()
         self.kubectl("monitoring-apply", "apply", "-f", str(self.source / "config/benchmark/metrics-safety-monitoring.yaml"))
         for deployment in ("prometheus", "kube-state-metrics"):

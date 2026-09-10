@@ -1,6 +1,7 @@
 """Public acceptance CLI behavior with the external command boundary simulated."""
 
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -111,6 +112,45 @@ class CommandEnvironment:
         return subprocess.CompletedProcess(argv, 0, result, "")
 
 
+class ManifestImageEnvironment(CommandEnvironment):
+    """Docker reports a manifest, while the external CRI reports its config ID."""
+
+    def __init__(self, media_type="application/vnd.oci.image.manifest.v1+json"):
+        super().__init__()
+        config_type = ("application/vnd.oci.image.config.v1+json" if "oci" in media_type
+                       else "application/vnd.docker.container.image.v1+json")
+        self.config_blob = json.dumps({"architecture": "amd64", "os": "linux",
+            "rootfs": {"type": "layers", "diff_ids": []}}, indent=2).replace("\n", "\r\n") + "\r\n"
+        self.runtime_id = "sha256:" + hashlib.sha256(self.config_blob.encode()).hexdigest()
+        self.manifest = {"schemaVersion": 2, "mediaType": media_type, "config": {
+            "mediaType": config_type, "digest": self.runtime_id, "size": len(self.config_blob.encode())}, "layers": []}
+        self.manifest_blob = json.dumps(self.manifest, indent=2).replace("\n", "\r\n") + "\r\n"
+        self.image_id = "sha256:" + hashlib.sha256(self.manifest_blob.encode()).hexdigest()
+        self.blobs = {self.image_id: self.manifest_blob, self.runtime_id: self.config_blob}
+        self.repo_digests = []
+        self.pod_ids = [self.image_id, self.runtime_id]
+
+    def __call__(self, argv, **kwargs):
+        result = super().__call__(argv, **kwargs)
+        if argv[:3] == ["docker", "image", "inspect"]:
+            result.stdout = json.dumps([{"Id": self.image_id, "Descriptor": {
+                "digest": self.image_id, "mediaType": self.manifest["mediaType"],
+                "annotations": {"config.digest": self.runtime_id}}}])
+        elif argv[0] == "docker" and "inspecti" in argv:
+            result.stdout = json.dumps({"status": {"id": self.runtime_id, "repoDigests": self.repo_digests}})
+        elif argv[0] == "docker" and "content" in argv and "get" in argv:
+            if argv[-1] not in self.blobs:
+                result.returncode, result.stderr = 1, "Content digest was not found"
+            else:
+                result.stdout = self.blobs[argv[-1]]
+        elif argv[0] == "kubectl" and "pods" in argv and "-A" not in argv:
+            pods = json.loads(result.stdout)
+            for pod, image_id in zip(pods["items"], self.pod_ids):
+                pod["status"]["containerStatuses"][0]["imageID"] = image_id
+            result.stdout = json.dumps(pods)
+        return result
+
+
 class MetricsSafetyRunnerTests(unittest.TestCase):
     def test_success_builds_current_dockerfile_records_evidence_and_deletes_owned_cluster(self):
         module = importlib.util.module_from_spec(SPEC)
@@ -124,6 +164,10 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
             self.assertEqual(0, code, summary)
             self.assertTrue(summary["passed"])
             self.assertTrue(environment.deleted)
+            proof = json.loads((output / "image-identity.json").read_text())
+            self.assertEqual(environment.image_id, proof["runtime_config_digest"])
+            self.assertEqual([], proof["verified_manifest_digests"])
+            self.assertEqual([environment.image_id], proof["accepted_pod_image_ids"])
             manifest = json.loads((output / "artifact-manifest.json").read_text())
             self.assertIn("source.json", manifest["files"])
             for path in output.rglob("*"):
@@ -134,6 +178,29 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
             builds = [c for c in environment.commands if c[:2] == ["docker", "build"]]
             self.assertEqual(1, len(builds))
             self.assertIn("--file", builds[0])
+
+    def test_manifest_and_cri_config_are_linked_even_when_repo_digests_are_empty(self):
+        module = importlib.util.module_from_spec(SPEC)
+        SPEC.loader.exec_module(module)
+        environment = ManifestImageEnvironment()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "evidence"
+            with patch.object(subprocess, "Popen", side_effect=command_processes(environment)), contextlib.redirect_stdout(io.StringIO()):
+                code = module.main(["--cluster-name", "phpa-metrics-safety-test", "--output", str(output)])
+            summary = json.loads((output / "summary.json").read_text())
+            self.assertEqual(0, code, summary)
+            self.assertTrue(summary["passed"])
+            self.assertTrue(environment.deleted)
+            proof = json.loads((output / "image-identity.json").read_text())
+            self.assertEqual(environment.image_id, proof["docker_image_id"])
+            self.assertEqual(environment.runtime_id, proof["runtime_config_digest"])
+            self.assertEqual([environment.image_id], proof["verified_manifest_digests"])
+            self.assertEqual({environment.image_id, environment.runtime_id}, set(proof["accepted_pod_image_ids"]))
+            self.assertEqual(environment.manifest_blob.encode(), (output / "image-manifest.json").read_bytes())
+            self.assertEqual(environment.config_blob.encode(), (output / "image-config.json").read_bytes())
+            reads = [argv for argv in environment.commands if argv[0] == "docker" and "content" in argv and "get" in argv]
+            self.assertEqual({environment.image_id, environment.runtime_id}, {argv[-1] for argv in reads})
+            self.assertTrue(all(argv[2] == "node-original" for argv in reads))
 
     def test_existing_cluster_is_rejected_and_never_deleted(self):
         module = importlib.util.module_from_spec(SPEC)
@@ -157,13 +224,69 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
     def test_containerd_config_and_docker_manifest_ids_can_differ_when_digest_matches(self):
         module = importlib.util.module_from_spec(SPEC)
         SPEC.loader.exec_module(module)
+        environment = ManifestImageEnvironment("application/vnd.docker.distribution.manifest.v2+json")
+        environment.repo_digests = ["docker.io/metrics-safety/predictive-hpa@" + environment.image_id]
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "evidence"
+            with patch.object(subprocess, "Popen", side_effect=command_processes(environment)), contextlib.redirect_stdout(io.StringIO()):
+                code = module.main(["--cluster-name", "phpa-metrics-safety-test", "--output", str(output)])
+            summary = json.loads((output / "summary.json").read_text())
+        self.assertEqual(0, code, summary)
+        self.assertTrue(environment.deleted)
+
+    def test_unverified_image_content_is_rejected_before_helm_and_owned_cluster_is_deleted(self):
+        for scenario in ("forged-manifest", "malformed-manifest", "config-mismatch", "forged-config",
+                         "config-size-mismatch", "unsupported-media-type", "annotation-without-manifest"):
+            with self.subTest(scenario=scenario):
+                module = importlib.util.module_from_spec(SPEC)
+                SPEC.loader.exec_module(module)
+                environment = ManifestImageEnvironment()
+                if scenario == "forged-manifest":
+                    environment.blobs[environment.image_id] += " "
+                elif scenario == "forged-config":
+                    environment.blobs[environment.runtime_id] += " "
+                elif scenario == "annotation-without-manifest":
+                    del environment.blobs[environment.image_id]
+                else:
+                    if scenario == "config-mismatch":
+                        environment.manifest["config"]["digest"] = "sha256:" + "2" * 64
+                    elif scenario == "config-size-mismatch":
+                        environment.manifest["config"]["size"] += 1
+                    elif scenario == "unsupported-media-type":
+                        environment.manifest["mediaType"] = "application/vnd.oci.image.index.v1+json"
+                    blob = "{not-json" if scenario == "malformed-manifest" else json.dumps(environment.manifest)
+                    environment.image_id = "sha256:" + hashlib.sha256(blob.encode()).hexdigest()
+                    environment.blobs[environment.image_id] = blob
+                with tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "evidence"
+                    with patch.object(subprocess, "Popen", side_effect=command_processes(environment)), contextlib.redirect_stdout(io.StringIO()):
+                        code = module.main(["--cluster-name", "phpa-metrics-safety-test", "--output", str(output)])
+                    summary = json.loads((output / "summary.json").read_text())
+                    self.assertEqual(1, code, summary)
+                    self.assertIsNotNone(summary["run_error"])
+                    self.assertTrue(summary["cluster_deleted"])
+                    self.assertTrue(environment.deleted)
+                    self.assertIsNone(summary["cleanup_error"])
+                    self.assertTrue((output / "artifact-manifest.json").is_file())
+                    self.assertFalse(any(argv[0] == "helm" and any(action in argv for action in ("lint", "template", "install"))
+                        for argv in environment.commands))
+
+    def test_unrelated_cri_repo_digest_is_not_an_accepted_manager_pod_identity(self):
+        module = importlib.util.module_from_spec(SPEC)
+        SPEC.loader.exec_module(module)
         environment = CommandEnvironment()
+        unrelated = "sha256:" + "9" * 64
 
         def command(argv, **kwargs):
             result = environment(argv, **kwargs)
             if argv[0] == "docker" and "inspecti" in argv:
-                result.stdout = json.dumps({"status": {"id": "sha256:" + "2" * 64,
-                    "repoDigests": ["docker.io/metrics-safety/predictive-hpa@" + environment.image_id]}})
+                result.stdout = json.dumps({"status": {"id": environment.image_id,
+                    "repoDigests": ["docker.io/other/image@" + unrelated]}})
+            elif argv[0] == "kubectl" and "pods" in argv and "-A" not in argv:
+                pods = json.loads(result.stdout)
+                pods["items"][0]["status"]["containerStatuses"][0]["imageID"] = unrelated
+                result.stdout = json.dumps(pods)
             return result
 
         with tempfile.TemporaryDirectory() as directory:
@@ -171,8 +294,11 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
             with patch.object(subprocess, "Popen", side_effect=command_processes(command)), contextlib.redirect_stdout(io.StringIO()):
                 code = module.main(["--cluster-name", "phpa-metrics-safety-test", "--output", str(output)])
             summary = json.loads((output / "summary.json").read_text())
-        self.assertEqual(0, code, summary)
-        self.assertTrue(environment.deleted)
+            self.assertEqual(1, code, summary)
+            self.assertTrue(summary["cluster_deleted"])
+            self.assertTrue(environment.deleted)
+            proof = json.loads((output / "image-identity.json").read_text())
+            self.assertNotIn(unrelated, proof["accepted_pod_image_ids"])
 
     def test_failure_before_node_creation_preserves_error_without_inventing_cleanup_failure(self):
         module = importlib.util.module_from_spec(SPEC)
