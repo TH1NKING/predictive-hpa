@@ -11,9 +11,9 @@
 
 PredictiveHPA（PHPA）是我为了理解 Kubernetes 的工作原理和控制流程而做的个人项目，主要学习和实践 **Go / Kubernetes / 云原生基础设施**。我想通过实现一个扩缩容控制器，理解从指标采集到副本调整的完整过程，并验证一个问题：如果在当前 CPU 指标之外引入历史趋势，能否改善扩缩容时机？
 
-围绕这个问题，我实现了 CRD、控制器、EWMA 预测和缩容稳定窗口，打通了从声明式配置到 `Deployment/scale` 写入的流程，并在 Kind 集群中进行了容量校准和多轮对照实验。**目前的实验尚未证明预测模式能更早扩容或取得整体服务收益。** 这个结果也让我继续排查负载分流、指标可见性和协调时机，把实现过程、实验结果和设计取舍记录下来。
+围绕这个问题，我实现了 CRD、控制器、EWMA 预测和缩容稳定窗口，打通了从声明式配置到 `Deployment/scale` 写入的流程。指标安全改造后，我重新校准了容量，并完成了 **step / ramp 共 18 次正式对照**。**这些实验仍未证明预测模式能更早扩容或取得整体服务收益。** 我保留了逐次结果和原始证据，继续区分预测规则、指标可见性和协调时机各自的影响。
 
-[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [指标安全讲解](docs/metrics-safety-guide.zh-CN.md) · [实验与结论](docs/benchmarks/README.md)
+[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [指标安全讲解](docs/metrics-safety-guide.zh-CN.md) · [当前版本实测报告](docs/benchmarks/live-baseline-20260910.md) · [实验导航](docs/benchmarks/README.md)
 
 ## 我做了哪些工作
 
@@ -68,13 +68,32 @@ desiredReplicas = ceil(currentReplicas × decisionCPU / targetCPU)
 | leader 切换 | 新 leader 建立冷启动保护，30 秒观察段内保持至少 3 个副本，保护到期后能够缩至 1 个 |
 | Prometheus 中断与恢复 | 中断期间保持 Scale、清除过期 CPU 展示值；指标恢复后继续协调 |
 
-Linux 单元测试、envtest 和 race 检查均通过。这里验证的是控制器的功能与故障行为；新版本是否改善服务成功率、延迟和副本占用，还需要重新做匹配对照。[完整验证记录与边界](docs/metrics-safety-validation.md) · [代码讲解与方案取舍](docs/metrics-safety-guide.zh-CN.md)
+Linux 单元测试、envtest 和 race 检查均通过。这里验证的是控制器的功能与故障行为；指标安全改造后的服务成功率、延迟和副本占用已另行完成[18 次匹配对照](docs/benchmarks/live-baseline-20260910.md)。[完整功能验证记录与边界](docs/metrics-safety-validation.md) · [代码讲解与方案取舍](docs/metrics-safety-guide.zh-CN.md)
+
+2026-09-11，我又通过当前 Dockerfile、独立 Kind 和 Helm 双 manager 路径完成了全部 11 项功能验收，并核对镜像身份与最终清理。运行使用了固定镜像缓存；前八次失败与入口修复过程也保留在[真实入口验收报告](docs/metrics-safety-entry-validation-20260911.md)中。这不代表全冷缓存安装或 GitHub 托管 CI 已通过。
 
 ## 实验得到了什么
 
-以下实验来自指标安全改造之前的代码。当前版本改为积累经过 UID 校验的实时观测，采样和冷启动行为已有变化；这些历史结果不能作为当前版本的性能验收。
+### 当前版本：18 次正式对照
 
-### 同控制器的三种模式对照
+2026-09-10，我用独立 Kind 集群重新验证了 25 RPS 的容量：固定单副本只有 165/2250 个请求返回 HTTP 200；固定五副本达到 2250/2250、全请求 p95 81.78ms、零丢弃。随后让三种模式分别进行三次 step 和三次 ramp，轮换执行顺序，完整保留全部 18 个已分配位置。
+
+| 负载与模式（每组 n=3） | HTTP 200 均值 | 首次成功提高 Scale，距负载开始 | 请求 Pod-seconds 均值 |
+|---|---:|---:|---:|
+| step · Current | 77.36% | 28.44s | 2,221.81 |
+| step · Predictive | 62.32% | 58.49s | 2,092.38 |
+| step · Hybrid | 66.37% | 48.47s | 2,052.48 |
+| ramp · Current | 90.15% | 58.53s | 2,111.36 |
+| ramp · Predictive | 86.33% | 58.47s | 2,182.05 |
+| ramp · Hybrid | 92.64% | 58.46s | 2,318.14 |
+
+**18 次都没有达到预先确定的服务标准：HTTP 200 至少 99%、全请求 p95 不超过 500ms、零丢弃。** 全部 p95 仍约 10 秒；step 每次丢弃一次迭代，ramp 均为零。表中 step 采用 541 秒窗口，ramp 采用 600 秒窗口，请求与 Ready 副本积分均完整覆盖。Pod-seconds 表示副本数量对时间的采样积分，不是 CPU 消耗或云账单。
+
+step 的日志复现了预测值偏低而延后扩容的路径；Hybrid 两次较晚扩容时，首轮当前 CPU 输入本身还较低，不能作相同归因。ramp 三模式首次扩容时间接近，Hybrid 的较高成功率也伴随更多副本时间。每组只有三次，尚不足以据此更换默认模式或宣称普遍优势。[完整结果、图表与逐次数据](docs/benchmarks/live-baseline-20260910.md) · [实现与复现讲解](docs/benchmarks/live-baseline-guide.zh-CN.md) · [工具回归与审查](docs/benchmarks/live-baseline-validation.md)
+
+### 指标安全改造前的对照与诊断
+
+下面保留的是较早版本的实验。当前代码已改为积累经过 UID 校验的实时观测，采样和冷启动行为不同；历史结果与上述新基线分别解释，不混合计算。
 
 2026-09-07，我在匹配配置下，通过集群内 Service 施加 **25 RPS step** 负载，让三种模式各运行三次。以下为描述性均值：
 
@@ -88,7 +107,7 @@ Linux 单元测试、envtest 和 race 检查均通过。这里验证的是控制
 
 在此前与原生 HPA 的匹配对照中，我也观察到 PHPA 扩容更晚、成功率更低的情况。不同批次的环境和方法有差异，因此我分别保留了各批次的结果，没有混合计算收益。[原生 HPA 对照](docs/benchmarks/capacity-and-controlled-pilot-20260906.md)
 
-### 没有得到预期收益后，我继续查了什么
+这些历史实验还帮助我拆分了几个问题：
 
 - **复现预测压制当前需求的路径。** 我用回归测试和日志复现了“当前 CPU 已超标，较低预测却压制扩容”的路径。Current / Hybrid 能保护该路径，但真实运行仍可能因观测值偏低而等待。[决策消融讲解](docs/benchmarks/decision-mode-ablation-guide.zh-CN.md)
 - **拆分扩容前的等待。** 我记录了指标查询、决策和 Scale 写入的时间。六次 Current 运行中，首次独立观测到 CPU 超过扩容阈值平均在负载后 26.283s，此后到扩容查询开始平均再等 12.923s；查询开始到 Scale 成功响应仅 5.5–8.4ms。这让我把排查范围缩小到指标可见性与协调时机，但还不能分别确定各阶段的因果贡献。[时序诊断](docs/benchmarks/latency-diagnostic-20260907.md)
@@ -112,7 +131,7 @@ kubectl get phpa -n default -w
 
 [示例 CR](config/samples/autoscaling_v1alpha1_predictivehpa.yaml)使用 1–10 个副本、50% 目标 CPU、5 分钟历史窗口和 30 秒预测视野。没有负载时保持最小副本是正常现象；Prometheus 无数据或历史样本不足时，控制器会等待重试。目标 Deployment 与 PHPA 必须同命名空间，且不要同时让原生 HPA 和 PHPA 控制同一个 Deployment。
 
-若要验证扩缩容效果，先完成[固定副本容量校准](docs/benchmarks/service-routing-validation.md)，再按[受控对照流程](docs/benchmarks/controlled-pilot.md)发压。历史实验发现 `port-forward svc/...` 路径不足以证明新增副本分担请求，当前实验工具采用集群内 Service 路径并检查请求分布。
+若要验证扩缩容效果，按[当前版本基线讲解](docs/benchmarks/live-baseline-guide.zh-CN.md)准备独立环境、完成容量校准，再运行匹配对照。另一环境仍需重新校准，不能直接沿用本次 25 RPS 通过点。历史实验发现 `port-forward svc/...` 路径不足以证明新增副本分担请求，当前实验工具采用集群内 Service 路径并检查请求分布。
 
 ## 测试与代码阅读
 
@@ -148,6 +167,6 @@ docs/benchmarks/      实验协议、报告、图表与中文讲解
 - **状态：** CPU 观测和副本建议都保存在有界进程内存中。Helm 启用 Lease 选主，默认单副本；新 leader 重新积累 CPU 样本并建立缩容保护，不恢复原始历史。频繁重启可能延长容量保留时间。
 - **指标：** 依据 Pod → ReplicaSet → Deployment 的 UID 链核验归属，CPU 使用量和 requests 对齐到相同的普通容器集合。缺失、陈旧或无法确认身份的数据会暂停决策；Pod 级资源和可重启 init sidecar 等语义不在本版本支持范围内。
 
-指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。后续还需要基于新版本重新校准容量、扩大负载场景和重复次数。多指标、其他工作负载及更复杂的预测算法也在考虑范围内。
+指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。当前版本的容量校准与 18 次正式对照已经完成；下一步先对齐负载与抓取相位，回放同一 CPU 历史区分输入差异和决策规则，再决定是否做单变量参数实验。现有证据下保留默认 30 秒协调周期、60 秒 CPU rate 窗口和 Predictive 模式，尚没有已经验证的优化收益。扩大重复次数与负载范围应先于增加复杂预测算法。
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。
