@@ -42,7 +42,7 @@ def command_processes(environment):
     def launch(argv, **kwargs):
         if argv[0] == "git":
             return REAL_POPEN(argv, **kwargs)
-        result = environment(argv)
+        result = environment(argv, stdin=kwargs.get("stdin"))
         kwargs["stdout"].write(result.stdout)
         kwargs["stderr"].write(result.stderr)
         return CompletedCommand(result)
@@ -160,7 +160,9 @@ class PlatformFixtureEnvironment(CommandEnvironment):
     def __init__(self, refs=(PROMETHEUS_FIXTURE_IMAGE,)):
         super().__init__()
         self.refs = refs
-        self.archive_bytes = {ref: ("fixture archive for " + ref).encode() for ref in refs}
+        self.archive_bytes = {ref: b"\x00\xfffixture archive\r\n" + ref.encode() for ref in refs}
+        self.imported_archives = []
+        self.stdin_streams = []
 
     def __call__(self, argv, **kwargs):
         result = super().__call__(argv, **kwargs)
@@ -171,15 +173,25 @@ class PlatformFixtureEnvironment(CommandEnvironment):
         elif argv[:3] == ["docker", "image", "save"]:
             Path(argv[argv.index("--output") + 1]).write_bytes(self.archive_bytes[argv[-1]])
         elif argv[0] == "docker" and "images" in argv and "import" in argv:
-            if "--all-platforms" in argv or "--platform" not in argv or argv[argv.index("--platform") + 1] != "linux/amd64":
+            if argv[-1] != "-":
+                result.returncode, result.stderr = 1, "Copied archive path: no such file or directory"
+            elif kwargs.get("stdin") is None:
+                result.returncode, result.stderr = 1, "Image archive stdin was not attached"
+            elif "--all-platforms" in argv or "--platform" not in argv or argv[argv.index("--platform") + 1] != "linux/amd64":
                 result.returncode, result.stderr = 1, "Import did not select the owned node platform"
+            else:
+                self.stdin_streams.append(kwargs["stdin"])
+                content = kwargs["stdin"].read()
+                self.imported_archives.append(content)
+                if content not in self.archive_bytes.values():
+                    result.returncode, result.stderr = 1, "Import received different archive bytes"
         elif argv[0] == "docker" and "inspecti" in argv and argv[-1] in self.refs:
             result.stdout = json.dumps({"status": {"id": "sha256:" + "7" * 64, "repoDigests": [argv[-1]]}})
         return result
 
 
 class MetricsSafetyRunnerTests(unittest.TestCase):
-    def test_preload_imports_only_owned_node_platform_when_other_architecture_is_absent(self):
+    def test_preload_streams_archive_when_copy_does_not_provide_a_visible_node_file(self):
         module = importlib.util.module_from_spec(SPEC)
         SPEC.loader.exec_module(module)
         environment = PlatformFixtureEnvironment()
@@ -194,7 +206,7 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
             self.assertTrue(environment.deleted)
             imports = [argv for argv in environment.commands if argv[0] == "docker" and "images" in argv and "import" in argv]
             self.assertEqual(1, len(imports))
-            self.assertEqual("node-original", imports[0][2])
+            self.assertEqual(["docker", "exec", "-i", "node-original"], imports[0][:4])
             self.assertEqual("linux/amd64", imports[0][imports[0].index("--platform") + 1])
             proof = json.loads((output / "fixture-import-1.json").read_text())
             expected_archive = environment.archive_bytes[PROMETHEUS_FIXTURE_IMAGE]
@@ -204,6 +216,13 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
             self.assertEqual(len(expected_archive), proof["archive_size_bytes"])
             self.assertEqual("sha256:" + "7" * 64, proof["runtime_config_digest"])
             self.assertEqual("node-original", proof["node_container_id"])
+            self.assertEqual([expected_archive], environment.imported_archives)
+            self.assertTrue(all(stream.closed for stream in environment.stdin_streams))
+            receipts = [json.loads(path.read_text()) for path in output.glob("[0-9]*-fixture-import-1.json")]
+            self.assertEqual(1, len(receipts))
+            self.assertEqual(proof["archive_sha256"], receipts[0]["stdin_sha256"])
+            self.assertEqual(proof["archive_size_bytes"], receipts[0]["stdin_size_bytes"])
+            self.assertFalse(Path(receipts[0]["stdin_file"]).exists())
 
     def test_declared_cached_fixture_image_is_loaded_before_monitoring_apply(self):
         module = importlib.util.module_from_spec(SPEC)
@@ -231,33 +250,26 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
             calls = environment.commands
             inspections = [i for i, argv in enumerate(calls) if argv[:3] == ["docker", "image", "inspect"] and argv[-1] == PROMETHEUS_FIXTURE_IMAGE]
             saves = [i for i, argv in enumerate(calls) if argv[:3] == ["docker", "image", "save"] and argv[-1] == PROMETHEUS_FIXTURE_IMAGE]
-            copies = [i for i, argv in enumerate(calls) if argv[:2] == ["docker", "cp"]]
             imports = [i for i, argv in enumerate(calls) if argv[0] == "docker" and "images" in argv and "import" in argv]
             fixture_runtime = [i for i, argv in enumerate(calls) if argv[0] == "docker" and "inspecti" in argv and argv[-1] == PROMETHEUS_FIXTURE_IMAGE]
             self.assertEqual(1, len(inspections))
-            for indexes in (saves, copies, imports, fixture_runtime):
+            for indexes in (saves, imports, fixture_runtime):
                 self.assertEqual(1, len(indexes))
             build = next(i for i, argv in enumerate(calls) if argv[:2] == ["docker", "build"])
             monitoring = next(i for i, argv in enumerate(calls) if argv[0] == "kubectl" and "apply" in argv
                 and any(arg.endswith("metrics-safety-monitoring.yaml") for arg in argv))
             self.assertLess(inspections[0], build)
             runtime = next(i for i, argv in enumerate(calls) if argv[0] == "docker" and "inspecti" in argv)
-            order = [runtime, saves[0], copies[0], imports[0], fixture_runtime[0], monitoring]
+            order = [runtime, saves[0], imports[0], fixture_runtime[0], monitoring]
             self.assertEqual(sorted(order), order)
-            self.assertTrue(calls[copies[0]][-1].startswith("node-original:"))
-            node_archive = calls[copies[0]][-1].split(":", 1)[1]
             imported = calls[imports[0]]
-            self.assertEqual("node-original", imported[2])
+            self.assertEqual(["docker", "exec", "-i", "node-original"], imported[:4])
             self.assertIn("--local", imported)
             self.assertIn("--digests", imported)
             self.assertEqual("linux/amd64", imported[imported.index("--platform") + 1])
             self.assertEqual("quay.io/prometheus/prometheus", imported[imported.index("--base-name") + 1])
-            self.assertEqual(node_archive, imported[-1])
-            removed = [i for i, argv in enumerate(calls) if argv[:3] == ["docker", "exec", "node-original"]
-                and "rm" in argv and node_archive in argv]
-            self.assertEqual(1, len(removed))
-            self.assertLess(fixture_runtime[0], removed[0])
-            self.assertLess(removed[0], monitoring)
+            self.assertEqual("-", imported[-1])
+            self.assertFalse(any(argv[:2] == ["docker", "cp"] or (argv[0] == "docker" and "rm" in argv) for argv in calls))
 
     def test_node_platform_is_required_only_when_fixture_preload_is_requested(self):
         for preload in (False, True):
@@ -289,20 +301,23 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
                         for argv in environment.commands))
 
     def test_failed_platform_import_or_runtime_check_still_deletes_the_owned_node(self):
-        for scenario in ("import-failed", "invalid-runtime-identity", "archive-removal-failed"):
+        for scenario in ("import-failed", "invalid-runtime-identity", "missing-archive", "stdin-command-error"):
             with self.subTest(scenario=scenario):
                 module = importlib.util.module_from_spec(SPEC)
                 SPEC.loader.exec_module(module)
                 environment = PlatformFixtureEnvironment()
 
                 def command(argv, **kwargs):
+                    if scenario == "stdin-command-error" and argv[0] == "docker" and "images" in argv and "import" in argv:
+                        environment.stdin_streams.append(kwargs["stdin"])
+                        raise OSError("Could not start command with archive stdin")
                     result = environment(argv, **kwargs)
                     if scenario == "import-failed" and argv[0] == "docker" and "images" in argv and "import" in argv:
                         result.returncode, result.stderr = 1, "Selected platform import failed"
                     elif scenario == "invalid-runtime-identity" and argv[0] == "docker" and "inspecti" in argv and argv[-1] == PROMETHEUS_FIXTURE_IMAGE:
                         result.stdout = json.dumps({"status": {"id": "not-a-digest", "repoDigests": []}})
-                    elif scenario == "archive-removal-failed" and argv[:3] == ["docker", "exec", "node-original"] and "rm" in argv:
-                        result.returncode, result.stderr = 1, "Could not remove copied archive"
+                    elif scenario == "missing-archive" and argv[:3] == ["docker", "image", "save"]:
+                        Path(argv[argv.index("--output") + 1]).unlink()
                     return result
 
                 with tempfile.TemporaryDirectory() as directory:
@@ -315,11 +330,9 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
                     self.assertIsNotNone(summary["run_error"])
                     self.assertTrue(summary["cluster_deleted"])
                     self.assertIsNone(summary["cleanup_error"])
-                    copies = [argv for argv in environment.commands if argv[:2] == ["docker", "cp"]]
-                    self.assertEqual(1, len(copies))
-                    self.assertTrue(copies[0][-1].startswith("node-original:"))
-                    # Failed imports need not run the success-path rm: deleting
-                    # the owned node also removes its copied temporary archive.
+                    self.assertTrue(all(stream.closed for stream in environment.stdin_streams))
+                    self.assertFalse(any(argv[:2] == ["docker", "cp"] or (argv[0] == "docker" and "rm" in argv)
+                        for argv in environment.commands))
                     self.assertTrue(environment.deleted)
                     self.assertIsNone(environment.cluster)
                     self.assertFalse(any(argv[0] == "kubectl" and "apply" in argv and any(

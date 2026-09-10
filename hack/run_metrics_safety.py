@@ -2,6 +2,7 @@
 """Build and run metrics-safety acceptance in a newly owned Kind cluster."""
 
 import argparse
+from contextlib import ExitStack
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -98,7 +99,7 @@ class Runner:
         if not termination["group_stopped"]:
             raise RuntimeError("Owned command process group remained after bounded termination")
 
-    def command(self, label, argv, timeout=45, raw_stdout=False):
+    def command(self, label, argv, timeout=45, raw_stdout=False, stdin_path=None):
         if not self.finalizing:
             remaining = self.deadline - time.monotonic()
             if remaining <= 0:
@@ -112,8 +113,15 @@ class Runner:
         try:
             # Files prevent inherited stdout/stderr pipe descriptors from making
             # communicate() wait forever when a verifier leaves descendants.
-            with stdout_path.open("w", encoding="utf-8", newline="") as stdout, stderr_path.open("w", encoding="utf-8", newline="") as stderr:
-                process = subprocess.Popen(argv, cwd=ROOT, stdout=stdout, stderr=stderr,
+            with ExitStack() as streams:
+                stdout = streams.enter_context(stdout_path.open("w", encoding="utf-8", newline=""))
+                stderr = streams.enter_context(stderr_path.open("w", encoding="utf-8", newline=""))
+                stdin = streams.enter_context(Path(stdin_path).open("rb")) if stdin_path is not None else None
+                if stdin is not None:
+                    receipt.update(stdin_file=str(stdin_path), stdin_sha256=hashlib.file_digest(stdin, "sha256").hexdigest(),
+                                   stdin_size_bytes=os.fstat(stdin.fileno()).st_size)
+                    stdin.seek(0)
+                process = subprocess.Popen(argv, cwd=ROOT, stdin=stdin, stdout=stdout, stderr=stderr,
                                            start_new_session=os.name == "posix")
                 try:
                     code = process.wait(timeout=timeout)
@@ -219,10 +227,8 @@ class Runner:
 
     def load_fixture_image(self, index, ref, platform):
         archive = self.private / f"fixture-{index}.tar"
-        node_archive = f"/run/{self.private.name}-fixture-{index}.tar"
         self.command(f"fixture-save-{index}", ["docker", "image", "save", "--output", str(archive), ref], timeout=180)
         archive_hash, archive_size = digest(archive), archive.stat().st_size
-        self.command(f"fixture-copy-{index}", ["docker", "cp", str(archive), f"{self.node_id}:{node_archive}"], timeout=180)
         repository = ref.rsplit("@", 1)[0]
         if "/" not in repository:
             repository = "docker.io/library/" + repository
@@ -231,9 +237,11 @@ class Runner:
         # A Docker cache may contain only the host platform of a multi-platform
         # index. Preserve that index and import the actual node's platform;
         # Kind's all-platform import would require unrelated cached platforms.
-        self.command(f"fixture-import-{index}", ["docker", "exec", self.node_id, "ctr", "-n", "k8s.io",
+        # Stream the private archive directly, avoiding an intermediate
+        # container path that the import process might not see.
+        self.command(f"fixture-import-{index}", ["docker", "exec", "-i", self.node_id, "ctr", "-n", "k8s.io",
                                                 "images", "import", "--local", "--platform", platform,
-                                                "--digests", "--base-name", repository, node_archive], timeout=180)
+                                                "--digests", "--base-name", repository, "-"], timeout=180, stdin_path=archive)
         runtime = json.loads(self.command(f"fixture-runtime-{index}", ["docker", "exec", self.node_id,
                                                                       "crictl", "inspecti", ref]))
         runtime_id = runtime.get("status", {}).get("id")
@@ -242,7 +250,6 @@ class Runner:
         self.write(f"fixture-import-{index}.json", {"image": ref, "platform": platform,
                                                    "archive_sha256": archive_hash, "archive_size_bytes": archive_size,
                                                    "runtime_config_digest": runtime_id, "node_container_id": self.node_id})
-        self.command(f"fixture-archive-cleanup-{index}", ["docker", "exec", self.node_id, "rm", "--", node_archive])
 
     def inspect_node(self):
         nodes = json.loads(self.command("node-identity", ["docker", "inspect", self.node_name]))
