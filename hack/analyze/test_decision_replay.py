@@ -224,6 +224,19 @@ class DecisionReplayAnalysisCLI(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("schedule", result.stderr.lower())
 
+    def test_rejects_impossible_source_times_on_a_successful_observation(self):
+        for source_time in [stamp(1000), stamp(-1000), None, 0, True]:
+            with self.subTest(source_time=source_time), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                run = root / "run"
+                run.mkdir()
+                rows, _ = fixture(run)
+                rows[0]["sourceTimestamp"] = source_time
+                write_log(run, rows)
+                result = self.run_cli(run, root / "report")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((root / "report").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

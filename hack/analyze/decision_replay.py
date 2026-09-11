@@ -222,6 +222,18 @@ def validate_cycles(cycles, plan, phpa, log_text):
             if decision or cycle.get("scale"):
                 raise ValueError("Rejected observation unexpectedly has a decision or write")
             continue
+        if (not query.get("sourceTimestamp") or not query.get("latestEvaluationAt")
+                or not query.get("queryInstantAt") or not query.get("queryFinishedAt")):
+            raise ValueError("Successful observation is missing source/evaluation/query time")
+        source_time, evaluation = epoch(query["sourceTimestamp"]), epoch(query["latestEvaluationAt"])
+        if (source_time <= 0 or source_time > evaluation or evaluation != epoch(query["queryInstantAt"])
+                or evaluation > epoch(query["queryStartedAt"])):
+            raise ValueError("Successful observation has inconsistent or future source/evaluation time")
+        # The provider validates freshness after the queries. A source already
+        # older than its 45s limit at query completion could not be accepted.
+        # Do not use later log/decision time as the exact provider check time.
+        if epoch(query["queryFinishedAt"]) - source_time > 45:
+            raise ValueError("Successful observation reports stale source time")
         if not decision:
             if query["samples"] != 1:
                 raise ValueError("Missing decision after a successful multi-sample observation")
