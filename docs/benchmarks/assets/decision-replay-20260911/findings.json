@@ -1,0 +1,609 @@
+{
+  "reason_counts": {
+    "insufficient_history": 18,
+    "current_input_at_or_below_target": 359,
+    "scale_written": 98,
+    "metrics_rejected_before_query": 175,
+    "metrics_rejected_after_query": 106,
+    "no_replica_change": 8,
+    "scale_down_stabilized": 137,
+    "lower_forecast_did_not_expand": 2,
+    "within_tolerance": 3
+  },
+  "runs": [
+    {
+      "run": "20260910_182812_step_phpa_current_r1",
+      "pattern": "step",
+      "mode": "Current",
+      "first_decision_seconds": 28.38247585296631,
+      "cpu": 84.18135493024353,
+      "forecast": 46.71532288248383,
+      "source_age": 13.830023050308228,
+      "first_mode_requests": {
+        "Current": {
+          "final": 2,
+          "skip": ""
+        },
+        "Hybrid": {
+          "final": 2,
+          "skip": ""
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 28.38247585296631,
+        "Hybrid": 28.38247585296631,
+        "Predictive": 59.72420287132263
+      },
+      "actual_first_scale": 28.389866828918457,
+      "first_ready_interval": [
+        29.011748790740967,
+        31.062615871429443
+      ]
+    },
+    {
+      "run": "20260910_183937_step_phpa_r1",
+      "pattern": "step",
+      "mode": "Predictive",
+      "first_decision_seconds": 28.456655025482178,
+      "cpu": 77.23201625621819,
+      "forecast": 42.85936791738055,
+      "source_age": 14.604008913040161,
+      "first_mode_requests": {
+        "Current": {
+          "final": 2,
+          "skip": ""
+        },
+        "Hybrid": {
+          "final": 2,
+          "skip": ""
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 28.456655025482178,
+        "Hybrid": 28.456655025482178,
+        "Predictive": 58.477039098739624
+      },
+      "actual_first_scale": 58.48235011100769,
+      "first_ready_interval": [
+        59.089877128601074,
+        61.13366723060608
+      ]
+    },
+    {
+      "run": "20260910_185104_step_phpa_hybrid_r1",
+      "pattern": "step",
+      "mode": "Hybrid",
+      "first_decision_seconds": 28.430436849594116,
+      "cpu": 0.6843836108384316,
+      "forecast": 0.3851657258043276,
+      "source_age": 28.016317129135132,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.456188917160034,
+        "Hybrid": 58.456188917160034,
+        "Predictive": 58.456188917160034
+      },
+      "actual_first_scale": 58.46147394180298,
+      "first_ready_interval": [
+        59.065593004226685,
+        61.105034828186035
+      ]
+    },
+    {
+      "run": "20260910_190231_step_phpa_r2",
+      "pattern": "step",
+      "mode": "Predictive",
+      "first_decision_seconds": 28.474087953567505,
+      "cpu": 90.07521588157329,
+      "forecast": 49.983917957176146,
+      "source_age": 12.389721870422363,
+      "first_mode_requests": {
+        "Current": {
+          "final": 2,
+          "skip": ""
+        },
+        "Hybrid": {
+          "final": 2,
+          "skip": ""
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 28.474087953567505,
+        "Hybrid": 28.474087953567505,
+        "Predictive": 58.50962686538696
+      },
+      "actual_first_scale": 58.51778197288513,
+      "first_ready_interval": [
+        59.104259967803955,
+        61.16907787322998
+      ]
+    },
+    {
+      "run": "20260910_191357_step_phpa_hybrid_r2",
+      "pattern": "step",
+      "mode": "Hybrid",
+      "first_decision_seconds": 28.479100942611694,
+      "cpu": 56.46237135328012,
+      "forecast": 31.334414721039643,
+      "source_age": 16.87299108505249,
+      "first_mode_requests": {
+        "Current": {
+          "final": 2,
+          "skip": ""
+        },
+        "Hybrid": {
+          "final": 2,
+          "skip": ""
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 28.479100942611694,
+        "Hybrid": 28.479100942611694,
+        "Predictive": 59.890949010849
+      },
+      "actual_first_scale": 28.48380708694458,
+      "first_ready_interval": [
+        29.115381956100464,
+        31.16296410560608
+      ]
+    },
+    {
+      "run": "20260910_192522_step_phpa_current_r2",
+      "pattern": "step",
+      "mode": "Current",
+      "first_decision_seconds": 28.471484899520874,
+      "cpu": 125.88061053668115,
+      "forecast": 69.85382083315172,
+      "source_age": 2.531735897064209,
+      "first_mode_requests": {
+        "Current": {
+          "final": 3,
+          "skip": ""
+        },
+        "Hybrid": {
+          "final": 3,
+          "skip": ""
+        },
+        "Predictive": {
+          "final": 2,
+          "skip": ""
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 28.471484899520874,
+        "Hybrid": 28.471484899520874,
+        "Predictive": 28.471484899520874
+      },
+      "actual_first_scale": 28.478800058364868,
+      "first_ready_interval": [
+        29.109246015548706,
+        31.154267072677612
+      ]
+    },
+    {
+      "run": "20260910_193647_step_phpa_hybrid_r3",
+      "pattern": "step",
+      "mode": "Hybrid",
+      "first_decision_seconds": 28.43696403503418,
+      "cpu": 33.656468539463106,
+      "forecast": 18.6800305369257,
+      "source_age": 21.73553490638733,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.470091819763184,
+        "Hybrid": 58.470091819763184,
+        "Predictive": 58.470091819763184
+      },
+      "actual_first_scale": 58.47779083251953,
+      "first_ready_interval": [
+        59.06794190406799,
+        61.12334895133972
+      ]
+    },
+    {
+      "run": "20260910_194812_step_phpa_current_r3",
+      "pattern": "step",
+      "mode": "Current",
+      "first_decision_seconds": 28.452493906021118,
+      "cpu": 67.08523283156757,
+      "forecast": 37.22983288990983,
+      "source_age": 15.728482007980347,
+      "first_mode_requests": {
+        "Current": {
+          "final": 2,
+          "skip": ""
+        },
+        "Hybrid": {
+          "final": 2,
+          "skip": ""
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 28.452493906021118,
+        "Hybrid": 28.452493906021118,
+        "Predictive": 59.25739097595215
+      },
+      "actual_first_scale": 28.45927882194519,
+      "first_ready_interval": [
+        29.081745862960815,
+        31.128599882125854
+      ]
+    },
+    {
+      "run": "20260910_195936_step_phpa_r3",
+      "pattern": "step",
+      "mode": "Predictive",
+      "first_decision_seconds": 28.44318699836731,
+      "cpu": 91.28221180534194,
+      "forecast": 50.654110113679124,
+      "source_age": 16.34091305732727,
+      "first_mode_requests": {
+        "Current": {
+          "final": 2,
+          "skip": ""
+        },
+        "Hybrid": {
+          "final": 2,
+          "skip": ""
+        },
+        "Predictive": {
+          "final": 2,
+          "skip": "WithinToleranceBand"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 28.44318699836731,
+        "Hybrid": 28.44318699836731,
+        "Predictive": 58.469635009765625
+      },
+      "actual_first_scale": 58.47413682937622,
+      "first_ready_interval": [
+        59.07521390914917,
+        61.11724781990051
+      ]
+    },
+    {
+      "run": "20260910_201104_ramp_phpa_current_r1",
+      "pattern": "ramp",
+      "mode": "Current",
+      "first_decision_seconds": 28.548077821731567,
+      "cpu": 13.81221336536343,
+      "forecast": 7.665182744437933,
+      "source_age": 16.861459970474243,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.589966773986816,
+        "Hybrid": 58.589966773986816,
+        "Predictive": 58.589966773986816
+      },
+      "actual_first_scale": 58.59797286987305,
+      "first_ready_interval": [
+        59.012489795684814,
+        61.06826400756836
+      ]
+    },
+    {
+      "run": "20260910_202329_ramp_phpa_r1",
+      "pattern": "ramp",
+      "mode": "Predictive",
+      "first_decision_seconds": 28.419008016586304,
+      "cpu": 25.343717082162453,
+      "forecast": 14.069256729787423,
+      "source_age": 10.842883110046387,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.44029879570007,
+        "Hybrid": 58.44029879570007,
+        "Predictive": 58.44029879570007
+      },
+      "actual_first_scale": 58.44580388069153,
+      "first_ready_interval": [
+        59.06281280517578,
+        61.11079382896423
+      ]
+    },
+    {
+      "run": "20260910_203554_ramp_phpa_hybrid_r1",
+      "pattern": "ramp",
+      "mode": "Hybrid",
+      "first_decision_seconds": 28.377679109573364,
+      "cpu": 41.98375270490267,
+      "forecast": 23.30123427132542,
+      "source_age": 3.6755290031433105,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.39489698410034,
+        "Hybrid": 58.39489698410034,
+        "Predictive": 58.39489698410034
+      },
+      "actual_first_scale": 58.399080991744995,
+      "first_ready_interval": [
+        59.01702809333801,
+        61.06682205200195
+      ]
+    },
+    {
+      "run": "20260910_204819_ramp_phpa_r2",
+      "pattern": "ramp",
+      "mode": "Predictive",
+      "first_decision_seconds": 28.441495180130005,
+      "cpu": 7.4198022236966255,
+      "forecast": 4.122340591183695,
+      "source_age": 19.337268829345703,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.46692419052124,
+        "Hybrid": 58.46692419052124,
+        "Predictive": 58.46692419052124
+      },
+      "actual_first_scale": 58.475741147994995,
+      "first_ready_interval": [
+        59.0895881652832,
+        61.151633977890015
+      ]
+    },
+    {
+      "run": "20260910_210044_ramp_phpa_hybrid_r2",
+      "pattern": "ramp",
+      "mode": "Hybrid",
+      "first_decision_seconds": 28.4686119556427,
+      "cpu": 2.310303694629117,
+      "forecast": 1.2870757811668203,
+      "source_age": 23.558629989624023,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.48631000518799,
+        "Hybrid": 58.48631000518799,
+        "Predictive": 58.48631000518799
+      },
+      "actual_first_scale": 58.49081802368164,
+      "first_ready_interval": [
+        59.107239961624146,
+        61.16979908943176
+      ]
+    },
+    {
+      "run": "20260910_211309_ramp_phpa_current_r2",
+      "pattern": "ramp",
+      "mode": "Current",
+      "first_decision_seconds": 28.460018157958984,
+      "cpu": 17.014147173804837,
+      "forecast": 9.445708446593727,
+      "source_age": 13.619035959243774,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.47854709625244,
+        "Hybrid": 58.47854709625244,
+        "Predictive": 58.47854709625244
+      },
+      "actual_first_scale": 58.483407974243164,
+      "first_ready_interval": [
+        59.10598707199097,
+        61.15680909156799
+      ]
+    },
+    {
+      "run": "20260910_212533_ramp_phpa_hybrid_r3",
+      "pattern": "ramp",
+      "mode": "Hybrid",
+      "first_decision_seconds": 28.460935831069946,
+      "cpu": 0.41976537761806965,
+      "forecast": 0.23936029109710466,
+      "source_age": 25.356879949569702,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.4815719127655,
+        "Hybrid": 58.4815719127655,
+        "Predictive": 58.4815719127655
+      },
+      "actual_first_scale": 58.48706078529358,
+      "first_ready_interval": [
+        57.092405796051025,
+        59.13799786567688
+      ]
+    },
+    {
+      "run": "20260910_213757_ramp_phpa_current_r3",
+      "pattern": "ramp",
+      "mode": "Current",
+      "first_decision_seconds": 28.469125032424927,
+      "cpu": 16.096061248073468,
+      "forecast": 8.936425724474306,
+      "source_age": 16.38414692878723,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.4889190196991,
+        "Hybrid": 58.4889190196991,
+        "Predictive": 58.4889190196991
+      },
+      "actual_first_scale": 58.4940619468689,
+      "first_ready_interval": [
+        57.11258912086487,
+        59.1505970954895
+      ]
+    },
+    {
+      "run": "20260910_215021_ramp_phpa_r3",
+      "pattern": "ramp",
+      "mode": "Predictive",
+      "first_decision_seconds": 28.462310791015625,
+      "cpu": 11.080629582524576,
+      "forecast": 6.153888459808984,
+      "source_age": 17.993263959884644,
+      "first_mode_requests": {
+        "Current": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Hybrid": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        },
+        "Predictive": {
+          "final": 1,
+          "skip": "DesiredEqualsCurrent"
+        }
+      },
+      "first_candidate_decision_seconds": {
+        "Current": 58.48964786529541,
+        "Hybrid": 58.48964786529541,
+        "Predictive": 58.48964786529541
+      },
+      "actual_first_scale": 58.49536490440369,
+      "first_ready_interval": [
+        59.1048858165741,
+        61.155879974365234
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "base": "6855020c5049d6abf69238fdc4660981532d20ca",
+  "files": {
+    "cmd/replay/main.go": "a0c5d5c47058d8c63261bbdf90e63cb9a27c988bb91e0e7c11dbc4b57b352eaa",
+    "cmd/replay/main_test.go": "4462321ebb3abf86c34bc6c06e51970b3ae11774abb7907486aabb274bc8d4f5",
+    "internal/controller/replay.go": "d5a49fbf681d1f02c26bb8e8e17bfb84b1b47018cf243bf1b56b93332016a8b8",
+    "internal/controller/scaling_decision.go": "a0705fefa5b556d4b366ec7a693f68f9ec74c3ff5861b234fd4a3367caec15a8",
+    "hack/analyze/decision_replay.py": "c44dd8179c89633d01f9a76ba1c3c3c64394eaee977a65c14e46da577d1c9da1",
+    "hack/analyze/test_decision_replay.py": "65109097bdfab00451ac0b2d9455b1676fb8a00a7004783a283619053e0c5e0c",
+    "docs/benchmarks/decision-replay-plan.md": "c05da50ae1634569680c19ae04253d56567d16687a34a13d43c6c22e2736a4a1",
+    "internal/controller/predictivehpa_controller.go": "10df301717e0f7bcf3abd52fb3c304c7674efd37c0fdbb3f240ec6d0f82b698c"
+  }
+}
