@@ -1,0 +1,9 @@
+{
+  "runs": 18,
+  "decisions": 607,
+  "computed": 457,
+  "recorded": 150,
+  "api_checks": 6375,
+  "cycles": 906,
+  "binary_sha256": "1e87bdbe0203ee7e70573c9faa3d86b634db2298b0762597ec068c4942927216"
+}

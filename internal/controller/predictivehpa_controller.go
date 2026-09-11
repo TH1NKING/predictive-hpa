@@ -224,22 +224,14 @@ func (r *PredictiveHPAReconciler) reconcileTarget(
 	// v1alpha1 has no scale-to-zero path; default or explicit zero means one.
 	minReplicas := max(int32(1), ptr.Deref(phpa.Spec.MinReplicas, int32(1)))
 
-	desiredReplicas := computeDesiredReplicas(
+	desiredReplicas := directedRecommendation(
 		currentReplicas,
+		requestedReplicas,
 		decisionCPU,
 		phpa.Spec.TargetCPUUtilizationPercentage,
 		minReplicas,
 		phpa.Spec.MaxReplicas,
 	)
-	// Actual Pod count can lag an already-issued Scale request. Keep the
-	// selected CPU signal's direction relative to that live request: low CPU
-	// cannot reverse a pending reduction, nor high CPU a pending expansion.
-	if decisionCPU < float64(phpa.Spec.TargetCPUUtilizationPercentage) {
-		desiredReplicas = min(desiredReplicas, requestedReplicas)
-	} else if decisionCPU > float64(phpa.Spec.TargetCPUUtilizationPercentage) {
-		desiredReplicas = max(desiredReplicas, requestedReplicas)
-	}
-	desiredReplicas = min(max(desiredReplicas, max(minReplicas, 1)), phpa.Spec.MaxReplicas)
 
 	// 8. Apply the bounded history and identity/configuration cold-start guard.
 	now := r.now()
@@ -248,14 +240,8 @@ func (r *PredictiveHPAReconciler) reconcileTarget(
 
 	// 9. Decide whether to actually scale.
 	scaled := false
-	skipReason := ""
-	switch {
-	case finalDesired == requestedReplicas:
-		skipReason = "DesiredEqualsCurrent"
-	case requestedReplicas >= max(minReplicas, 1) && requestedReplicas <= phpa.Spec.MaxReplicas &&
-		withinTolerance(decisionCPU, phpa.Spec.TargetCPUUtilizationPercentage):
-		skipReason = "WithinToleranceBand"
-	}
+	skipReason := scalingSkipReason(finalDesired, requestedReplicas, decisionCPU,
+		phpa.Spec.TargetCPUUtilizationPercentage, minReplicas, phpa.Spec.MaxReplicas)
 	// Persist the policy outcome before Scale/status writes: either can fail,
 	// and a later status conflict must not erase evidence of an earlier decision.
 	log.Info("Evaluated PredictiveHPA scaling decision",

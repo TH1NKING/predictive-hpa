@@ -91,6 +91,8 @@ Linux 单元测试、envtest 和 race 检查均通过。这里验证的是控制
 
 step 的日志复现了预测值偏低而延后扩容的路径；Hybrid 两次较晚扩容时，首轮当前 CPU 输入本身还较低，不能作相同归因。ramp 三模式首次扩容时间接近，Hybrid 的较高成功率也伴随更多副本时间。每组只有三次，尚不足以据此更换默认模式或宣称普遍优势。[完整结果、图表与逐次数据](docs/benchmarks/live-baseline-20260910.md) · [实现与复现讲解](docs/benchmarks/live-baseline-guide.zh-CN.md) · [工具回归与审查](docs/benchmarks/live-baseline-validation.md)
 
+我进一步用同一份观测、时间和实际副本状态回放三种决策模式：18 次运行的 **607 次原模式决策全部匹配**，其中 **457 次能恢复完整 CPU 历史并重算预测**；其余 150 次沿用日志中的预测值，明确保留早期样本缺口。回放把三次 Predictive 的首轮等待定位到预测值／容差，而两次低输入 Hybrid 在三种规则下均不会扩容。这是规则与时序诊断，没有产生新的服务性能结果。[离线回放报告](docs/benchmarks/decision-replay-20260911.md) · [代码讲解与复现](docs/benchmarks/decision-replay-guide.zh-CN.md)
+
 ### 指标安全改造前的对照与诊断
 
 下面保留的是较早版本的实验。当前代码已改为积累经过 UID 校验的实时观测，采样和冷启动行为不同；历史结果与上述新基线分别解释，不混合计算。
@@ -167,6 +169,6 @@ docs/benchmarks/      实验协议、报告、图表与中文讲解
 - **状态：** CPU 观测和副本建议都保存在有界进程内存中。Helm 启用 Lease 选主，默认单副本；新 leader 重新积累 CPU 样本并建立缩容保护，不恢复原始历史。频繁重启可能延长容量保留时间。
 - **指标：** 依据 Pod → ReplicaSet → Deployment 的 UID 链核验归属，CPU 使用量和 requests 对齐到相同的普通容器集合。缺失、陈旧或无法确认身份的数据会暂停决策；Pod 级资源和可重启 init sidecar 等语义不在本版本支持范围内。
 
-指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。当前版本的容量校准与 18 次正式对照已经完成；下一步先对齐负载与抓取相位，回放同一 CPU 历史区分输入差异和决策规则，再决定是否做单变量参数实验。现有证据下保留默认 30 秒协调周期、60 秒 CPU rate 窗口和 Predictive 模式，尚没有已经验证的优化收益。扩大重复次数与负载范围应先于增加复杂预测算法。
+指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。容量校准、18 次正式对照和同输入决策回放已经完成；下一步检验相位配对条件下缩短协调周期是否能读到更早的有效信号，并同时衡量查询开销与服务结果。现有证据下保留默认 30 秒协调周期、60 秒 CPU rate 窗口和 Predictive 模式，尚没有已经验证的优化收益。实验假设与失效条件见[回放报告](docs/benchmarks/decision-replay-20260911.md)。
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。

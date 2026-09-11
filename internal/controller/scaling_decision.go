@@ -128,3 +128,26 @@ func capPrediction(predicted, currentCPU float64) float64 {
 	}
 	return predicted
 }
+
+// directedRecommendation keeps the selected signal's direction relative to the
+// live Scale request when observed replicas lag an earlier expansion/reduction.
+func directedRecommendation(observed, requested int32, decisionCPU float64, target, minimum, maximum int32) int32 {
+	desired := computeDesiredReplicas(observed, decisionCPU, target, minimum, maximum)
+	if decisionCPU < float64(target) {
+		desired = min(desired, requested)
+	} else if decisionCPU > float64(target) {
+		desired = max(desired, requested)
+	}
+	return min(max(desired, max(minimum, 1)), maximum)
+}
+
+func scalingSkipReason(finalDesired, requested int32, decisionCPU float64, target, minimum, maximum int32) string {
+	switch {
+	case finalDesired == requested:
+		return "DesiredEqualsCurrent"
+	case requested >= max(minimum, 1) && requested <= maximum && withinTolerance(decisionCPU, target):
+		return "WithinToleranceBand"
+	default:
+		return ""
+	}
+}
