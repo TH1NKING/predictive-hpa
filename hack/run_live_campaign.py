@@ -49,16 +49,30 @@ def source_identity() -> dict:
 class Campaign:
     def __init__(self, args: argparse.Namespace, output: Path) -> None:
         self.args, self.output, self.sequence = args, output, 0
-        self.status = {**plan(args.pattern, args.rps), "context": args.context, "started_at": now(),
+        self.status = {**self.assignment_plan(), "context": args.context, "started_at": now(),
                        "status": "in_progress", "error": None, "cleanup_error": None}
         self.environment = {**os.environ, "KUBECONFIG": str(args.kubeconfig.resolve()),
             "BENCHMARK_CONTEXT": args.context, "LIVE_BASELINE": "true", "LIVE_BASELINE_STARTUP_MODE": "warm",
+            "CADENCE_PILOT": "false", "LIVE_BASELINE_REQUEUE_SECONDS": "30",
             "LATENCY_DIAGNOSTIC": "false", "METRIC_PIPELINE_DIAGNOSTIC": "false", "METRIC_PIPELINE_SOURCE_NODE": "",
             "BENCHMARK_PATTERNS": args.pattern, "BENCHMARK_CONTROLLERS": "phpa_current phpa phpa_hybrid",
             "BENCHMARK_REPEATS": "3", "BENCHMARK_PYTHON": sys.executable, "RPS": str(args.rps),
             "EXPERIMENTS_ROOT": str(output / "runs"), "CAMPAIGN": output.name}
         self.kube = [shutil.which("kubectl") or "kubectl", "--context", args.context, "--request-timeout=20s"]
         self.active = None
+
+    def assignment_plan(self) -> dict:
+        return plan(self.args.pattern, self.args.rps)
+
+    def build_extra_binaries(self, private: Path) -> None:
+        """A protocol may pin additional observation binaries alongside the controller."""
+
+    def configure_slot(self, slot: dict) -> None:
+        """A protocol may add its predeclared treatment to the run environment."""
+
+    def analyze_slot(self, slot: dict, run: Path, analysis: Path) -> None:
+        self.command(f"slot-{slot['slot']:02d}-analysis", [sys.executable,
+            "hack/analyze/live_baseline.py", str(run), "--output", str(analysis)])
 
     def command(self, label: str, arguments: list[str], timeout: int = 60) -> str:
         self.sequence += 1
@@ -213,6 +227,7 @@ class Campaign:
                 self.environment["LIVE_BASELINE_CONTROLLER_BINARY"] = str(binary)
                 self.environment["LIVE_BASELINE_CONTROLLER_SHA256"] = digest(binary)
                 write_json(self.output / "controller-binary.json", {"sha256": digest(binary), "build_flags": ["-trimpath"]})
+                self.build_extra_binaries(Path(private))
                 previous = initial
                 for slot in self.status["slots"]:
                     if source_identity() != frozen_source or digest(binary) != self.environment["LIVE_BASELINE_CONTROLLER_SHA256"]:
@@ -224,6 +239,7 @@ class Campaign:
                     write_json(self.output / f"slot-{slot['slot']:02d}-before.json", current)
                     before = set((self.output / "runs").iterdir())
                     try:
+                        self.configure_slot(slot)
                         self.command(f"slot-{slot['slot']:02d}-benchmark", [shutil.which("bash") or "bash", "hack/run_benchmark.sh",
                             self.args.pattern, slot["controller"], str(slot["repeat"])], 1200)
                         created = set((self.output / "runs").iterdir()) - before
@@ -234,7 +250,7 @@ class Campaign:
                         if source_identity() != frozen_source:
                             raise ValueError("Frozen source changed during a slot")
                         analysis = self.output / "analysis" / f"slot-{slot['slot']:02d}.json"
-                        self.command(f"slot-{slot['slot']:02d}-analysis", [sys.executable, "hack/analyze/live_baseline.py", str(run), "--output", str(analysis)])
+                        self.analyze_slot(slot, run, analysis)
                         slot["analysis"] = analysis.relative_to(self.output).as_posix()
                         previous = self.snapshot()
                         if {k: v for k, v in previous.items() if k != "phpa"} != {k: v for k, v in initial.items() if k != "phpa"}:

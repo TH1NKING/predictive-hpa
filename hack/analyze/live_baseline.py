@@ -24,7 +24,7 @@ def read_json(path: Path) -> dict:
 
 
 def validate_plan(plan: dict) -> None:
-    if plan["protocol_version"] != "live-baseline-v1" or plan["startup_mode"] not in ("warm", "cold"):
+    if plan["protocol_version"] not in ("live-baseline-v1", "cadence-pilot-v1") or plan["startup_mode"] not in ("warm", "cold"):
         raise ValueError("Unsupported live baseline protocol or startup mode")
     if plan["decision_mode"] not in ("Current", "Predictive", "Hybrid"):
         raise ValueError("Unsupported decision mode")
@@ -32,12 +32,18 @@ def validate_plan(plan: dict) -> None:
         raise ValueError("Unsupported load pattern")
     for name in ("rps", "interval_seconds", "requeue_seconds", "quiet_seconds", "offered_duration_seconds", "post_load_tail_seconds"):
         value = plan[name]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        allow_zero = name == "quiet_seconds" and plan["protocol_version"] == "cadence-pilot-v1"
+        if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                or value < 0 or (value == 0 and not allow_zero)):
             raise ValueError(f"Plan {name} must be a finite positive number")
     if plan["offered_duration_seconds"] != {"step": 181, "ramp": 240}[plan["pattern"]]:
         raise ValueError("Offered duration does not match the frozen load pattern")
-    if plan["quiet_seconds"] != 30 or plan["post_load_tail_seconds"] != 360:
-        raise ValueError("Quiet period and observation tail must match live-baseline-v1")
+    quiet = 0 if plan["protocol_version"] == "cadence-pilot-v1" else 30
+    if plan["quiet_seconds"] != quiet or plan["post_load_tail_seconds"] != 360:
+        raise ValueError("Quiet period and observation tail must match the declared protocol")
+    if plan["protocol_version"] == "cadence-pilot-v1" and (plan["startup_mode"] != "warm"
+            or plan["decision_mode"] != "Current" or plan["pattern"] != "step" or plan["requeue_seconds"] not in (15, 30)):
+        raise ValueError("Cadence pilot requires warm Current step runs at 15 or 30 seconds")
     epoch(plan["controller_started_at"])
 
 
@@ -408,7 +414,7 @@ def analyze(directory: Path, plan: dict) -> dict:
             break
         if row["value"] == 1:
             previous = row
-    return {"protocol_version": "live-baseline-v1", "experiment_id": metadata["experiment_id"],
+    return {"protocol_version": plan["protocol_version"], "experiment_id": metadata["experiment_id"],
         "decision_mode": plan["decision_mode"], "pattern": plan["pattern"], "schedule": actual, "k6": k6,
         "startup": {"mode": plan["startup_mode"], "controller_started_at": plan["controller_started_at"], "gate": gate,
             "controller_start_to_onset_seconds": onset - epoch(plan["controller_started_at"]),

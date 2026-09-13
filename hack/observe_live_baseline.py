@@ -61,7 +61,8 @@ def read_state(context: str) -> dict:
             "requests": requests, "response": {key: value[1] for key, value in results.items() if value[1] is not None}}
 
 
-def ready_receipt(state: dict, log: Path, mode: str, target_uid: str, phpa_uid: str) -> dict | None:
+def ready_receipt(state: dict, log: Path, mode: str, target_uid: str, phpa_uid: str,
+                  requeue_seconds: int | None = None) -> dict | None:
     deploy, phpa = state["deployment"], state["phpa"]
     if deploy["metadata"]["uid"] != target_uid or phpa["metadata"]["uid"] != phpa_uid:
         raise ValueError("Target or PredictiveHPA UID changed")
@@ -70,6 +71,8 @@ def ready_receipt(state: dict, log: Path, mode: str, target_uid: str, phpa_uid: 
         return None
     cycle = cycles[-1]
     query, decision, finish = (cycle.get(key, {}) for key in ("query", "decision", "finish"))
+    if requeue_seconds is not None and finish and not finish.get("reconcileError") and finish.get("requeueAfterSeconds") != requeue_seconds:
+        raise ValueError("Actual controller cadence disagrees with the declared interval")
     conditions = phpa.get("status", {}).get("conditions", [])
     metrics_ready = any(row.get("type") == "MetricsReady" and row.get("status") == "True"
                         and row.get("observedGeneration") == phpa["metadata"].get("generation") for row in conditions)
@@ -100,9 +103,12 @@ def observe(args: argparse.Namespace) -> int:
             raise ValueError("Source and controller binary SHA256 must be explicit")
     epoch(args.controller_started_at)
     started = utc()
-    plan = {"protocol_version": "live-baseline-v1", "startup_mode": args.startup_mode,
+    if args.protocol_version == "cadence-pilot-v1" and (args.startup_mode != "warm" or args.pattern != "step" or args.decision_mode != "Current"):
+        raise ValueError("Cadence pilot requires warm Current step runs")
+    plan = {"protocol_version": args.protocol_version, "startup_mode": args.startup_mode,
             "decision_mode": args.decision_mode, "pattern": args.pattern, "rps": args.rps,
-            "requeue_seconds": 30, "interval_seconds": 2, "quiet_seconds": 30,
+            "requeue_seconds": args.requeue_seconds, "interval_seconds": 2,
+            "quiet_seconds": 0 if args.protocol_version == "cadence-pilot-v1" else 30,
             "offered_duration_seconds": 181 if args.pattern == "step" else 240, "post_load_tail_seconds": 360,
             "controller_started_at": args.controller_started_at, "observer_started_at": started,
             "target_uid": args.target_uid, "phpa_uid": args.phpa_uid, "context": args.context,
@@ -131,16 +137,18 @@ def observe(args: argparse.Namespace) -> int:
                     raise ValueError("Target or PredictiveHPA UID changed during observation")
                 if not gate_released:
                     if args.startup_mode == "cold":
-                        receipt = {"protocol_version": "live-baseline-v1", "startup_mode": "cold",
+                        receipt = {"protocol_version": args.protocol_version, "startup_mode": "cold",
                                    "released_at": utc(), "target_uid": args.target_uid, "phpa_uid": args.phpa_uid,
                                    "anchor": None, "controller_started_at": args.controller_started_at}
                     else:
                         try:
                             receipt = ready_receipt(state, directory / "controller.log", args.decision_mode,
-                                                    args.target_uid, args.phpa_uid)
+                                                    args.target_uid, args.phpa_uid,
+                                                    args.requeue_seconds if args.protocol_version == "cadence-pilot-v1" else None)
                         except json.JSONDecodeError:
                             receipt = None  # A logger can be partway through its final record.
                     if receipt is not None:
+                        receipt["protocol_version"] = args.protocol_version
                         exclusive_json(directory / "live-baseline-gate.json", receipt)
                         gate_released = True
                     elif time.monotonic() >= gate_deadline:
@@ -178,6 +186,8 @@ def main() -> int:
     run.add_argument("--decision-mode", choices=("Current", "Predictive", "Hybrid"), required=True)
     run.add_argument("--pattern", choices=("step", "ramp"), required=True)
     run.add_argument("--rps", type=int, choices=range(1, 1001), required=True)
+    run.add_argument("--protocol-version", choices=("live-baseline-v1", "cadence-pilot-v1"), default="live-baseline-v1")
+    run.add_argument("--requeue-seconds", type=int, choices=(15, 30), default=30)
     for name in ("controller-started-at", "target-uid", "phpa-uid", "source-sha256", "binary-sha256"):
         run.add_argument("--" + name, required=True)
     args = parser.parse_args()

@@ -6,8 +6,15 @@
 BENCHMARK_CONFIG_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 benchmark_config_init() {
+  CADENCE_PILOT="${CADENCE_PILOT-false}"
+  case "$CADENCE_PILOT" in
+    true|false) ;;
+    *) echo "ERROR: CADENCE_PILOT must be true or false" >&2; return 1 ;;
+  esac
   LIVE_BASELINE="${LIVE_BASELINE-false}"
   LIVE_BASELINE_STARTUP_MODE="${LIVE_BASELINE_STARTUP_MODE-warm}"
+  LIVE_BASELINE_REQUEUE_SECONDS="${LIVE_BASELINE_REQUEUE_SECONDS-30}"
+  LIVE_BASELINE_PROTOCOL_VERSION=live-baseline-v1
   case "$LIVE_BASELINE" in
     true|false) ;;
     *) echo "ERROR: LIVE_BASELINE must be true or false" >&2; return 1 ;;
@@ -16,6 +23,20 @@ benchmark_config_init() {
     warm|cold) ;;
     *) echo "ERROR: LIVE_BASELINE_STARTUP_MODE must be warm or cold" >&2; return 1 ;;
   esac
+  if [ "$CADENCE_PILOT" = true ]; then
+    if [ "$LIVE_BASELINE" != true ] || [ "$LIVE_BASELINE_STARTUP_MODE" != warm ]; then
+      echo "ERROR: CADENCE_PILOT requires LIVE_BASELINE=true and warm startup" >&2; return 1
+    fi
+    case "${CADENCE_SLOT-}:${CADENCE_PAIR-}:$LIVE_BASELINE_REQUEUE_SECONDS:${CADENCE_OFFSET_SECONDS-}" in
+      1:1:30:2|2:1:15:2|3:2:15:7|4:2:30:7|5:3:30:12|6:3:15:12) ;;
+      *) echo "ERROR: cadence slot, pair, requeue and offset must match the frozen six-slot assignment" >&2; return 1 ;;
+    esac
+    LIVE_BASELINE_PROTOCOL_VERSION=cadence-pilot-v1
+    export CADENCE_SLOT CADENCE_PAIR CADENCE_OFFSET_SECONDS
+  elif [ "$LIVE_BASELINE_REQUEUE_SECONDS" != 30 ]; then
+    echo "ERROR: LIVE_BASELINE_REQUEUE_SECONDS is 30 outside CADENCE_PILOT" >&2; return 1
+  fi
+  export CADENCE_PILOT LIVE_BASELINE_REQUEUE_SECONDS LIVE_BASELINE_PROTOCOL_VERSION
   export LIVE_BASELINE LIVE_BASELINE_STARTUP_MODE
   LATENCY_DIAGNOSTIC="${LATENCY_DIAGNOSTIC-false}"
   case "$LATENCY_DIAGNOSTIC" in
@@ -72,8 +93,16 @@ benchmark_config_init() {
     fi
     export LATENCY_OFFSET_SECONDS LATENCY_GATE_TIMEOUT_SECONDS LATENCY_REQUEUE_SECONDS
   elif [ "$LIVE_BASELINE" = true ]; then
-    BENCHMARK_PATTERNS="${BENCHMARK_PATTERNS-step ramp}"
-    BENCHMARK_CONTROLLERS="${BENCHMARK_CONTROLLERS-phpa_current phpa phpa_hybrid}"
+    if [ "$CADENCE_PILOT" = true ]; then
+      BENCHMARK_PATTERNS="${BENCHMARK_PATTERNS-step}"
+      BENCHMARK_CONTROLLERS="${BENCHMARK_CONTROLLERS-phpa_current}"
+      if [ "$BENCHMARK_PATTERNS" != step ] || [ "$BENCHMARK_CONTROLLERS" != phpa_current ]; then
+        echo "ERROR: CADENCE_PILOT requires step and phpa_current" >&2; return 1
+      fi
+    else
+      BENCHMARK_PATTERNS="${BENCHMARK_PATTERNS-step ramp}"
+      BENCHMARK_CONTROLLERS="${BENCHMARK_CONTROLLERS-phpa_current phpa phpa_hybrid}"
+    fi
   else
     BENCHMARK_PATTERNS="${BENCHMARK_PATTERNS-step ramp spike}"
     BENCHMARK_CONTROLLERS="${BENCHMARK_CONTROLLERS-native_hpa_300 native_hpa_60 phpa}"
@@ -173,6 +202,9 @@ benchmark_config_fingerprint() {
       if [ "$LIVE_BASELINE" = true ]; then
         printf '%s\n' hack/observe_live_baseline.py hack/run_live_campaign.py hack/analyze/live_baseline.py hack/analyze/latency.py
       fi
+      if [ "$CADENCE_PILOT" = true ]; then
+        printf '%s\n' hack/run_cadence_campaign.py hack/observe_cadence.py hack/analyze/cadence.py
+      fi
       if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
         printf '%s\n' hack/analyze/metric_pipeline.py
       fi
@@ -188,11 +220,15 @@ benchmark_config_fingerprint() {
       printf '%s\n' \
       "protocol=$BENCHMARK_PROTOCOL_VERSION" "source=$BENCHMARK_SOURCE_SHA256" \
       "rps=$RPS" "pre_allocated_vus=$BENCHMARK_PRE_ALLOCATED_VUS" "max_vus=$BENCHMARK_MAX_VUS" \
-      'quiet_seconds=30' 'metric_accumulation_seconds=30' 'post_load_tail_seconds=360' \
-      'pattern_durations_seconds=step:211,ramp:270,spike:241' 'request_timeout_seconds=10' \
+      'metric_accumulation_seconds=30' 'post_load_tail_seconds=360' 'request_timeout_seconds=10' \
       "benchmark_context=${BENCHMARK_CONTEXT:-unset-offline-plan}" \
       "endpoint=${K6_BASE_URL:?source k6_runner.sh first}" "k6_image=$K6_IMAGE" \
       "traffic_path=$K6_TRAFFIC_PATH" "load_generator=$K6_EXECUTION_MODE" 'connection_reuse=false'
+      if [ "$CADENCE_PILOT" = true ]; then
+        printf '%s\n' 'quiet_seconds=0' 'pattern_durations_seconds=step:181'
+      else
+        printf '%s\n' 'quiet_seconds=30' 'pattern_durations_seconds=step:211,ramp:270,spike:241'
+      fi
       if [ "$LATENCY_DIAGNOSTIC" = true ]; then
         printf '%s\n' 'latency_diagnostic=latency-diagnostic-v1' \
           "latency_offset_seconds=$LATENCY_OFFSET_SECONDS" \
@@ -202,9 +238,16 @@ benchmark_config_fingerprint() {
           'latency_gate_clock_precision_seconds=1' 'latency_launch_rounding=ceil'
       fi
       if [ "$LIVE_BASELINE" = true ]; then
-        printf '%s\n' 'live_baseline=live-baseline-v1' "startup_mode=$LIVE_BASELINE_STARTUP_MODE" \
-          'readiness_gate_timeout_seconds=240' 'observer_interval_seconds=2' 'requeue_seconds=30'
+        printf '%s\n' "live_baseline=$LIVE_BASELINE_PROTOCOL_VERSION" "startup_mode=$LIVE_BASELINE_STARTUP_MODE" \
+          'readiness_gate_timeout_seconds=240' 'observer_interval_seconds=2' "requeue_seconds=$LIVE_BASELINE_REQUEUE_SECONDS"
         printf '%s\n' "frozen_controller_binary_sha256=${LIVE_BASELINE_CONTROLLER_SHA256:-per-run-build}"
+      fi
+      if [ "$CADENCE_PILOT" = true ]; then
+        printf '%s\n' 'cadence=cadence-pilot-v1' "cadence_pair=$CADENCE_PAIR" "cadence_slot=$CADENCE_SLOT" \
+          "cadence_offset_seconds=$CADENCE_OFFSET_SECONDS" 'cadence_gate_timeout_seconds=120' \
+          'cadence_phase_tolerance_seconds=1' 'cadence_quiet_seconds=0' 'cadence_pre_gate_idle_seconds_min=30' \
+          'cadence_offered_duration_seconds=181' 'cadence_observer_interval_seconds=1' \
+          "frozen_cpu_observer_binary_sha256=${CADENCE_CPU_SHA256:-missing}"
       fi
       if [ "$METRIC_PIPELINE_DIAGNOSTIC" = true ]; then
         printf '%s\n' 'metric_pipeline_diagnostic=metric-pipeline-v1' \

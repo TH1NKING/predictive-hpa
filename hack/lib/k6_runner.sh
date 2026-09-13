@@ -79,6 +79,11 @@ k6_runner_render() {
     echo "ERROR: baseline.js requires LIVE_BASELINE=true" >&2
     return 1
   fi
+  if { [ "$script" = cadence.js ] && { [ "${CADENCE_PILOT:-false}" != true ] || [ "${LIVE_BASELINE:-false}" != true ]; }; } || \
+     { [ "${CADENCE_PILOT:-false}" = true ] && [ "$script" != cadence.js ]; }; then
+    echo "ERROR: cadence.js requires the explicit CADENCE_PILOT live protocol" >&2
+    return 1
+  fi
   command -v jq >/dev/null || { echo "ERROR: jq is required to render runner manifests" >&2; return 1; }
   mkdir -p "$output_dir" || return 1
   local name="${K6_RUNNER_NAME:-phpa-k6-$(date -u +%Y%m%d%H%M%S)-$$-$RANDOM}"
@@ -100,6 +105,9 @@ k6_runner_render() {
     {name:"K6_NO_CONNECTION_REUSE",value:"true"},
     {name:"K6_NO_USAGE_REPORT",value:"true"}
   ]') || return 1
+  if [ "$script" = cadence.js ]; then
+    env_json=$(jq '. + [{name:"CADENCE_PILOT",value:"true"}]' <<<"$env_json") || return 1
+  fi
   for entry in "$@"; do
     # Only workload parameters are accepted; endpoint and k6 execution options
     # are fixed so an inherited shell variable cannot redirect benchmark load.
@@ -178,7 +186,12 @@ if [ "${LATENCY_GATE_TIMEOUT_SECONDS:-0}" != 0 ]; then
 fi
 date -u +%Y-%m-%dT%H:%M:%SZ > /results/k6-start-time-utc
 date +%s > /results/k6-start-time-unix
-k6 run --out json=/results/k6.json --summary-export=/results/k6-summary.json --log-output=file=/results/k6-warnings.log "$1" > /results/k6-stdout.log 2>&1 &
+script="$1"
+set --
+if [ "${CADENCE_PILOT:-false}" = true ]; then
+  set -- --paused --address 0.0.0.0:6565
+fi
+k6 run "$@" --out json=/results/k6.json --summary-export=/results/k6-summary.json --log-output=file=/results/k6-warnings.log "$script" > /results/k6-stdout.log 2>&1 &
 load_pid=$!
 printf '%s\n' "$load_pid" > /results/k6-pid
 trap 'kill -TERM "$load_pid" 2>/dev/null || true; wait "$load_pid" 2>/dev/null || true; exit 143' TERM INT
@@ -223,7 +236,9 @@ RUNNER
     connection_reuse:false,environment:$env,status:"planned"
   } + (if $gate_enabled then {latency_gate:{timeout_seconds:180,
     clock_precision_seconds:1,launch_epoch_unit:"integer_unix_seconds",
-    launch_rounding:"ceil",poll_interval_seconds:0.1}} else {} end)' > "$output_dir/k6-runner.json" || return 1
+    launch_rounding:"ceil",poll_interval_seconds:0.1}} else {} end) +
+    (if $script == "cadence.js" then {cadence_gate:{protocol_version:"cadence-pilot-v1",paused:true,
+      rest_port:6565,source_timeout_seconds:120}} else {} end)' > "$output_dir/k6-runner.json" || return 1
 }
 
 k6_runner_validate_artifacts() {
@@ -380,6 +395,13 @@ k6_runner_run() (
   local started=$SECONDS marker phase
   failure_reason="runner exceeded ${K6_RUNNER_TIMEOUT_SECONDS}s timeout"
   while [ "$((SECONDS - started))" -lt "$K6_RUNNER_TIMEOUT_SECONDS" ]; do
+    if [ "$script" = cadence.js ]; then
+      if ! kill -0 "${CADENCE_OBSERVER_PID:?cadence observer process is required}" 2>/dev/null || \
+          { [ -f "$output_dir/cadence-status.json" ] && jq -e '.status == "failed"' "$output_dir/cadence-status.json" >/dev/null; }; then
+        failure_reason="cadence observer failed; cancelling the assigned workload"
+        exit 2
+      fi
+    fi
     marker=$(k6_runner_kubectl exec "$name" -c k6 -- sh -c \
       'if [ -f /results/k6-exit-code ]; then cat /results/k6-exit-code; fi' 2>> "$output_dir/k6-collection-errors.log") || marker=""
     if [[ "$marker" =~ ^[0-9]+$ ]]; then
