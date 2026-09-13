@@ -37,11 +37,9 @@ source file unchanged, and the recovered hashes matched the local checkout.
 | Standards review | 0 remaining findings, including generated-file synchronization and the upgrade test |
 | Spec review | The Kubernetes-version/status compatibility finding was fixed by the 1.33 bound and real upgrade regression; no other findings |
 
-The first Linux lint attempt reported a repeated test reason string and a
-constant-only fixture argument. The final tests share the reason constant and
-use the fixture across two namespaces. The initial failure and successful run
-are preserved separately. Helm rendering checks do not claim an actual 1.33
-cluster was exercised; the API server used here was 1.35.
+Failing and successful validation artifacts are retained separately. Helm
+rendering checks do not claim an actual 1.33 cluster was exercised; the API
+server used here was 1.35.
 
 ## Recording compatibility
 
