@@ -13,7 +13,9 @@ PredictiveHPA（PHPA）是我为了理解 Kubernetes 的工作原理和控制流
 
 围绕这个问题，我实现了 CRD、控制器、EWMA 预测和缩容稳定窗口，打通了从声明式配置到 `Deployment/scale` 写入的流程。指标安全改造后，我重新校准了容量，并完成了 **step / ramp 共 18 次正式对照**。**这些实验仍未证明预测模式能更早扩容或取得整体服务收益。** 我保留了逐次结果和原始证据，继续区分预测规则、指标可见性和协调时机各自的影响。
 
-[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [指标安全讲解](docs/metrics-safety-guide.zh-CN.md) · [当前版本实测报告](docs/benchmarks/live-baseline-20260910.md) · [实验导航](docs/benchmarks/README.md)
+同输入回放之后，我又完成了 **Current 模式 30／15 秒协调周期的六轮 pilot**。六轮的启动偏移和数据覆盖均合格，但三对源样本年龄都未匹配，**没有有效配对，暂时无法判定缩短周期的效果**。这次也验证了实验工具如何保留失败、逐次统计真实查询，并拒绝输出不可比的优化差值。
+
+[运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [指标安全讲解](docs/metrics-safety-guide.zh-CN.md) · [最新周期实验](docs/benchmarks/cadence-pilot-20260914.md) · [实验导航](docs/benchmarks/README.md)
 
 ## 我做了哪些工作
 
@@ -169,6 +171,6 @@ docs/benchmarks/      实验协议、报告、图表与中文讲解
 - **状态：** CPU 观测和副本建议都保存在有界进程内存中。Helm 启用 Lease 选主，默认单副本；新 leader 重新积累 CPU 样本并建立缩容保护，不恢复原始历史。频繁重启可能延长容量保留时间。
 - **指标：** 依据 Pod → ReplicaSet → Deployment 的 UID 链核验归属，CPU 使用量和 requests 对齐到相同的普通容器集合。缺失、陈旧或无法确认身份的数据会暂停决策；Pod 级资源和可重启 init sidecar 等语义不在本版本支持范围内。
 
-指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。配置准入、旧配置运行时保护与回放时间边界见[正确性修复讲解](docs/configuration-correctness-guide.zh-CN.md)。容量校准、18 次正式对照和同输入决策回放已经完成；下一步按[六次协调周期配对方案](docs/benchmarks/cadence-pilot-plan.md)检验缩短协调周期是否能读到更早的有效信号，并同时衡量查询开销与服务结果。现有证据下保留默认 30 秒协调周期、60 秒 CPU rate 窗口和 Predictive 模式，尚没有已经验证的优化收益。实验假设与失效条件见[回放报告](docs/benchmarks/decision-replay-20260911.md)。
+指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。配置准入、旧配置运行时保护与回放时间边界见[正确性修复讲解](docs/configuration-correctness-guide.zh-CN.md)。容量校准、18 次正式对照、同输入决策回放和[六轮协调周期 pilot](docs/benchmarks/cadence-pilot-20260914.md)已经完成。下一步需先改进负载起点的源样本年龄对齐方法，再冻结新的对照协议；保留原有配对门槛。现有证据下保留默认 30 秒协调周期、60 秒 CPU rate 窗口和 Predictive 模式，尚没有已经验证的优化收益。实现、取舍与复现方式见[周期实验讲解](docs/benchmarks/cadence-pilot-guide.zh-CN.md)。
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。
