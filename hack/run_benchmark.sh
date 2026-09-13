@@ -70,6 +70,10 @@ fi
 
 # === Configuration ===
 benchmark_config_init
+if [ "$CADENCE_PILOT" = true ] && { [ "$PATTERN" != step ] || [ "$CONTROLLER" != phpa_current ] || [ "$REPEAT_IDX" != "$CADENCE_SLOT" ]; }; then
+  echo "ERROR: CADENCE_PILOT requires step phpa_current and the assigned slot repeat" >&2
+  exit 1
+fi
 if [ "$LATENCY_DIAGNOSTIC" = true ] && { [ "$PATTERN" != step ] || [ "$CONTROLLER" != phpa_current ]; }; then
   echo "ERROR: LATENCY_DIAGNOSTIC=true only supports step phpa_current" >&2
   exit 1
@@ -90,6 +94,7 @@ CAMPAIGN="${CAMPAIGN:-service-routing-v1}"
 CONTROLLER_PID=""
 LATENCY_OBSERVER_PID=""
 LIVE_OBSERVER_PID=""
+CADENCE_OBSERVER_PID=""
 CONTROLLER_KUBECONFIG=""
 CONTROLLER_BINARY=""
 CONTROLLER_STARTUP_TIMEOUT=60
@@ -197,6 +202,10 @@ if [ "$LIVE_BASELINE" = true ]; then
   printf 'live_baseline: true\nlive_baseline_protocol_version: "live-baseline-v1"\nstartup_mode: "%s"\n' \
     "$LIVE_BASELINE_STARTUP_MODE" >> "$EXP_DIR/metadata.yaml"
 fi
+if [ "$CADENCE_PILOT" = true ]; then
+  printf 'cadence_pilot: true\ncadence_protocol_version: "cadence-pilot-v1"\ncadence_pair: %s\ncadence_slot: %s\ncadence_offset_seconds: %s\nrequeue_seconds: %s\n' \
+    "$CADENCE_PAIR" "$CADENCE_SLOT" "$CADENCE_OFFSET_SECONDS" "$LIVE_BASELINE_REQUEUE_SECONDS" >> "$EXP_DIR/metadata.yaml"
+fi
 echo "  start_time_utc: $START_TIME_UTC"
 
 update_metadata() {
@@ -236,6 +245,27 @@ stop_live_observer() {
   return "$observer_result"
 }
 
+stop_cadence_observer() {
+  [ -n "$CADENCE_OBSERVER_PID" ] || return 0
+  local observer_pid="$CADENCE_OBSERVER_PID" observer_result=0 stop_wait
+  CADENCE_OBSERVER_PID=""
+  printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$EXP_DIR/cadence-stop"
+  for ((stop_wait=0; stop_wait<30; stop_wait++)); do
+    kill -0 "$observer_pid" 2>/dev/null || break
+    sleep 1
+  done
+  if kill -0 "$observer_pid" 2>/dev/null; then
+    kill -TERM "$observer_pid" 2>/dev/null || true
+    sleep 2
+    if kill -0 "$observer_pid" 2>/dev/null; then kill -KILL "$observer_pid" 2>/dev/null || true; fi
+    observer_result=3
+  fi
+  wait "$observer_pid" || observer_result=3
+  jq -e '.status == "success" and .owned_processes_stopped == true and .gate_released == true' \
+    "$EXP_DIR/cadence-status.json" >/dev/null 2>> "$EXP_DIR/cadence-observer.log" || observer_result=3
+  return "$observer_result"
+}
+
 stop_latency_observer() {
   [ -n "$LATENCY_OBSERVER_PID" ] || return 0
   local observer_pid="$LATENCY_OBSERVER_PID" observer_result=0 stop_wait
@@ -260,6 +290,7 @@ stop_latency_observer() {
 cleanup_benchmark() {
   local status=$? controller_stopped=true
   trap - EXIT INT TERM
+  stop_cadence_observer || status=3
   stop_live_observer || status=3
   stop_latency_observer || status=3
   if [ -n "$CONTROLLER_PID" ]; then
@@ -384,7 +415,7 @@ if [[ "$CONTROLLER" = phpa* ]]; then
   if [ "$LATENCY_DIAGNOSTIC" = true ]; then
     CONTROLLER_EXTRA_ARGS+=("--requeue-interval=${LATENCY_REQUEUE_SECONDS}s")
   elif [ "$LIVE_BASELINE" = true ]; then
-    CONTROLLER_EXTRA_ARGS+=("--requeue-interval=30s")
+    CONTROLLER_EXTRA_ARGS+=("--requeue-interval=${LIVE_BASELINE_REQUEUE_SECONDS}s")
   fi
   CONTROLLER_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
   if [ "$LIVE_BASELINE" = true ]; then
@@ -400,6 +431,21 @@ if [[ "$CONTROLLER" = phpa* ]]; then
     sleep 1
   done
   [ "$STARTED" = true ] || fail_experiment "controller startup timed out (see controller.log)"
+  if [ "$CADENCE_PILOT" = true ]; then
+    # Read the process's effective argv and executable, rather than treating our
+    # requested shell flag as proof of what the running manager received.
+    if ! CONTROLLER_ACTUAL_ARGS=$(tr '\0' '\n' < "/proc/$CONTROLLER_PID/cmdline" | jq -Rsc 'split("\n")[:-1]') || \
+        ! CONTROLLER_ACTUAL_SHA256=$(sha256sum "/proc/$CONTROLLER_PID/exe" | cut -d ' ' -f 1); then
+      fail_experiment "could not verify the running controller command" 3
+    fi
+    jq -n --argjson args "$CONTROLLER_ACTUAL_ARGS" --argjson requeue "$LIVE_BASELINE_REQUEUE_SECONDS" \
+      --arg sha "$CONTROLLER_ACTUAL_SHA256" '{args:$args,requeue_seconds:$requeue,binary_sha256:$sha}' \
+      > "$EXP_DIR/controller-command.json"
+    jq -e --arg flag "--requeue-interval=${LIVE_BASELINE_REQUEUE_SECONDS}s" \
+      --arg sha "$LIVE_BASELINE_CONTROLLER_SHA256" \
+      '.binary_sha256 == $sha and [.args[] | select(startswith("--requeue-interval"))] == [$flag]' \
+      "$EXP_DIR/controller-command.json" >/dev/null || fail_experiment "controller deployment differs from declared cadence" 3
+  fi
 else
   k6_runner_kubectl apply -f "$NATIVE_HPA_YAML" >/dev/null
 fi
@@ -411,6 +457,7 @@ if [ "$LIVE_BASELINE" = true ]; then
   "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/observe_live_baseline.py" observe \
     --run-dir "$EXP_DIR" --context "$BENCHMARK_CONTEXT" --startup-mode "$LIVE_BASELINE_STARTUP_MODE" \
     --decision-mode "$DECISION_MODE" --pattern "$PATTERN" --rps "$RPS" \
+    --protocol-version "$LIVE_BASELINE_PROTOCOL_VERSION" --requeue-seconds "$LIVE_BASELINE_REQUEUE_SECONDS" \
     --controller-started-at "$CONTROLLER_STARTED_AT" \
     --target-uid "$(jq -r .metadata.uid "$EXP_DIR/deployment-before.json")" \
     --phpa-uid "$(jq -r .metadata.uid "$EXP_DIR/phpa-after-apply.json")" \
@@ -423,7 +470,7 @@ if [ "$LIVE_BASELINE" = true ]; then
     kill -0 "$LIVE_OBSERVER_PID" 2>/dev/null || fail_experiment "live observer failed before load; retained startup evidence" 3
     kill -0 "$CONTROLLER_PID" 2>/dev/null || fail_experiment "controller exited before live readiness"
     if [ -f "$EXP_DIR/live-baseline-gate.json" ] && \
-        jq -e '.protocol_version == "live-baseline-v1" and .released_at != null' "$EXP_DIR/live-baseline-gate.json" >/dev/null 2>&1; then
+        jq -e --arg protocol "$LIVE_BASELINE_PROTOCOL_VERSION" '.protocol_version == $protocol and .released_at != null' "$EXP_DIR/live-baseline-gate.json" >/dev/null 2>&1; then
       LIVE_GATE_READY=true
       break
     fi
@@ -444,6 +491,31 @@ K6_EXTRA_ARGS=()
 if [ "$LIVE_BASELINE" = true ]; then
   K6_SCRIPT=baseline.js
   K6_EXTRA_ARGS+=("BASELINE_PATTERN=$PATTERN")
+fi
+if [ "$CADENCE_PILOT" = true ]; then
+  if ! [[ "${CADENCE_CPU_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || \
+      [ "$(sha256sum -- "${CADENCE_CPU_BINARY:-missing}" | cut -d ' ' -f 1)" != "$CADENCE_CPU_SHA256" ]; then
+    fail_experiment "frozen CPU observation binary identity is missing or changed" 3
+  fi
+  "$BENCHMARK_PYTHON" "$REPO_ROOT/hack/observe_cadence.py" observe \
+    --run-dir "$EXP_DIR" --context "$BENCHMARK_CONTEXT" \
+    --cpu-binary "$CADENCE_CPU_BINARY" --cpu-sha256 "$CADENCE_CPU_SHA256" --prometheus-address "$PROM_URL" \
+    --target-uid "$(jq -r .metadata.uid "$EXP_DIR/deployment-before.json")" \
+    --phpa-uid "$(jq -r .metadata.uid "$EXP_DIR/phpa-after-apply.json")" \
+    --requeue-seconds "$LIVE_BASELINE_REQUEUE_SECONDS" --offset-seconds "$CADENCE_OFFSET_SECONDS" \
+    --pair "$CADENCE_PAIR" --slot "$CADENCE_SLOT" > "$EXP_DIR/cadence-observer.log" 2>&1 &
+  CADENCE_OBSERVER_PID=$!
+  export CADENCE_OBSERVER_PID
+  CADENCE_OBSERVER_STARTED=false
+  for ((observer_wait=0; observer_wait<60; observer_wait++)); do
+    kill -0 "$CADENCE_OBSERVER_PID" 2>/dev/null || fail_experiment "cadence observer failed before runner startup" 3
+    kill -0 "$LIVE_OBSERVER_PID" 2>/dev/null || fail_experiment "live observer failed before cadence runner startup" 3
+    if [ -f "$EXP_DIR/cadence-observer-ready" ]; then CADENCE_OBSERVER_STARTED=true; break; fi
+    sleep 1
+  done
+  [ "$CADENCE_OBSERVER_STARTED" = true ] || fail_experiment "cadence observer startup timed out" 3
+  K6_SCRIPT=cadence.js
+  K6_EXTRA_ARGS=()
 fi
 if [ "$LATENCY_DIAGNOSTIC" = true ]; then
   METRIC_PIPELINE_OBSERVER_ARGS=()
@@ -530,7 +602,19 @@ fi
 TAIL_WAIT_SECONDS=$((TAIL_OBSERVATION_END_TIME_UNIX + 15 - $(date +%s)))
 if (( TAIL_WAIT_SECONDS > 0 )); then
   echo "  Observing fixed post-load tail; ${TAIL_WAIT_SECONDS}s remaining including final scrape"
-  sleep "$TAIL_WAIT_SECONDS"
+  if [ "$CADENCE_PILOT" = true ]; then
+    while [ "$(date +%s)" -lt "$((TAIL_OBSERVATION_END_TIME_UNIX + 15))" ]; do
+      kill -0 "$CADENCE_OBSERVER_PID" 2>/dev/null || fail_experiment "cadence observer exited during tail" 3
+      kill -0 "$LIVE_OBSERVER_PID" 2>/dev/null || fail_experiment "live observer exited during tail" 3
+      kill -0 "$CONTROLLER_PID" 2>/dev/null || fail_experiment "controller exited during tail" 3
+      sleep 1
+    done
+  else
+    sleep "$TAIL_WAIT_SECONDS"
+  fi
+fi
+if [ "$CADENCE_PILOT" = true ]; then
+  stop_cadence_observer || fail_experiment "cadence observer collection or cleanup failed" 3
 fi
 if [ "$LATENCY_DIAGNOSTIC" = true ]; then
   kill -0 "$LATENCY_OBSERVER_PID" 2>/dev/null || fail_experiment "latency observer exited during experiment" 3

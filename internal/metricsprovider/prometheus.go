@@ -85,7 +85,7 @@ func NewPrometheus(baseURL string, reader client.Reader) (*PrometheusProvider, e
 	if reader == nil {
 		return nil, fmt.Errorf("%w: API reader is required", ErrInvalidData)
 	}
-	promClient, err := api.NewClient(api.Config{Address: baseURL})
+	promClient, err := api.NewClient(api.Config{Address: baseURL, RoundTripper: receiptTransport{next: api.DefaultRoundTripper}})
 	if err != nil {
 		return nil, fmt.Errorf("metricsprovider: build prometheus client: %w", err)
 	}
@@ -104,6 +104,11 @@ func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 	ctx context.Context, target *appsv1.Deployment, window time.Duration,
 ) (history CPUHistory, observationErr error) {
 	started := time.Now()
+	trace, ok := ctx.Value(observationTraceKey{}).(*observationTrace)
+	if !ok {
+		trace = &observationTrace{}
+		ctx = context.WithValue(ctx, observationTraceKey{}, trace)
+	}
 	var evaluatedAt time.Time
 	var queryStarted, queryFinished time.Time
 	var gate chan struct{}
@@ -112,7 +117,7 @@ func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 		if invalidatesObservationHistory(observationErr) && target != nil && gateHeld {
 			p.discard(client.ObjectKeyFromObject(target))
 		}
-		p.logObservation(ctx, started, queryStarted, queryFinished, evaluatedAt, history, observationErr)
+		p.logObservation(ctx, target, trace, started, queryStarted, queryFinished, evaluatedAt, history, observationErr)
 		if gateHeld {
 			<-gate
 		}
@@ -152,7 +157,7 @@ func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 	if err != nil {
 		return CPUHistory{}, err
 	}
-	value, sourceAt, err := p.utilization(roster, rates, sources, evaluatedAt)
+	value, sourceAt, containers, err := p.utilization(roster, rates, sources, evaluatedAt)
 	if err != nil {
 		return CPUHistory{}, err
 	}
@@ -166,6 +171,7 @@ func (p *PrometheusProvider) AverageCPUUtilizationPercentage(
 	if p.now().Sub(sourceAt) > p.maxSampleAge() {
 		return CPUHistory{}, ErrStaleData
 	}
+	trace.containers = containers
 	return p.record(target, window, predictor.Sample{Timestamp: evaluatedAt, Value: value}, sourceAt), nil
 }
 
@@ -200,6 +206,11 @@ func (p *PrometheusProvider) now() time.Time {
 }
 
 func (p *PrometheusProvider) query(ctx context.Context, expression string, at time.Time) (model.Vector, error) {
+	kind := "rate"
+	if strings.HasPrefix(expression, "timestamp(") {
+		kind = "timestamp"
+	}
+	ctx = context.WithValue(ctx, queryKindKey{}, kind)
 	result, warnings, err := p.api.Query(ctx, expression, at)
 	if err != nil {
 		return nil, fmt.Errorf("metricsprovider: instant query: %w", err)
@@ -264,18 +275,41 @@ func (p *PrometheusProvider) discard(key types.NamespacedName) {
 }
 
 func (p *PrometheusProvider) logObservation(
-	ctx context.Context, started, queryStarted, queryFinished, evaluatedAt time.Time, history CPUHistory, err error,
+	ctx context.Context, target *appsv1.Deployment, trace *observationTrace,
+	started, queryStarted, queryFinished, evaluatedAt time.Time, history CPUHistory, err error,
 ) {
 	errorMessage := ""
 	if err != nil {
 		errorMessage = err.Error()
 	}
 	finished := time.Now()
+	observation := CPUObservation{StartedAt: started.UTC(), FinishedAt: finished.UTC(), Status: "rejected", Error: errorMessage,
+		Containers: []ContainerSource{}, Queries: append([]QueryReceipt{}, trace.queries...)}
+	if target != nil {
+		observation.TargetUID = string(target.UID)
+	}
+	if !evaluatedAt.IsZero() {
+		at := evaluatedAt.UTC()
+		observation.EvaluatedAt = &at
+	}
+	if err == nil {
+		observation.Status = "success"
+		source := history.SourceTimestamp.UTC()
+		observation.SourceTimestamp = &source
+		if len(history.Samples) != 0 {
+			value := history.Samples[len(history.Samples)-1].Value
+			observation.UtilizationPercent = &value
+		}
+		observation.Containers = append(observation.Containers, trace.containers...)
+	}
+	trace.result = observation
 	var queryDuration float64
 	if !queryStarted.IsZero() && !queryFinished.IsZero() {
 		queryDuration = queryFinished.Sub(queryStarted).Seconds()
 	}
 	logf.FromContext(ctx).Info("Queried CPU utilization",
+		"targetUID", observation.TargetUID, "containerSources", observation.Containers, "queries", observation.Queries,
+		"currentCPU%", observation.UtilizationPercent,
 		"observationStartedAt", started.UTC().Format(time.RFC3339Nano), "observationFinishedAt", finished.UTC().Format(time.RFC3339Nano),
 		"queryStartedAt", optionalTimestamp(queryStarted), "queryFinishedAt", optionalTimestamp(queryFinished),
 		"queryDurationSeconds", queryDuration, "queryInstantAt", optionalTimestamp(evaluatedAt),

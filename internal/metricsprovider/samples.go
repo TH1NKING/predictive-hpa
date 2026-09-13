@@ -3,6 +3,7 @@ package metricsprovider
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,36 +27,44 @@ func matchesInstance(metric model.Metric, expected expectedContainer) bool {
 	return podFound && instanceFound
 }
 
-func (p *PrometheusProvider) utilization(roster targetRoster, rates, sources model.Vector, at time.Time) (float64, time.Time, error) {
+func (p *PrometheusProvider) utilization(roster targetRoster, rates, sources model.Vector, at time.Time) (float64, time.Time, []ContainerSource, error) {
 	if len(rates) == 0 || len(sources) == 0 {
-		return 0, time.Time{}, ErrNoData
+		return 0, time.Time{}, nil, ErrNoData
 	}
 	var totalCPU, totalRequest float64
 	var oldest time.Time
+	containers := make([]ContainerSource, 0, len(roster.containers))
 	for key, expected := range roster.containers {
 		rate, err := uniqueSample(rates, key, expected)
 		if err != nil {
-			return 0, time.Time{}, err
+			return 0, time.Time{}, nil, err
 		}
 		source, err := uniqueSample(sources, key, expected)
 		if err != nil {
-			return 0, time.Time{}, err
+			return 0, time.Time{}, nil, err
 		}
 		if err := validatePair(rate, source, at, p.maxSampleAge()); err != nil {
-			return 0, time.Time{}, err
+			return 0, time.Time{}, nil, err
 		}
 		totalCPU += float64(rate.Value)
 		totalRequest += expected.request
 		sourceAt := time.Unix(0, int64(float64(source.Value)*float64(time.Second)))
+		containers = append(containers, ContainerSource{Pod: key.pod, PodUID: string(expected.podUID), Container: key.container, RuntimeID: expected.containerID, SourceTimestamp: sourceAt.UTC()})
 		if oldest.IsZero() || sourceAt.Before(oldest) {
 			oldest = sourceAt
 		}
 	}
 	value := 100 * totalCPU / totalRequest
 	if !finite(value) {
-		return 0, time.Time{}, fmt.Errorf("%w: CPU aggregate is not finite", ErrInvalidData)
+		return 0, time.Time{}, nil, fmt.Errorf("%w: CPU aggregate is not finite", ErrInvalidData)
 	}
-	return value, oldest, nil
+	slices.SortFunc(containers, func(a, b ContainerSource) int {
+		if result := strings.Compare(a.Pod, b.Pod); result != 0 {
+			return result
+		}
+		return strings.Compare(a.Container, b.Container)
+	})
+	return value, oldest, containers, nil
 }
 
 func (p *PrometheusProvider) maxSampleAge() time.Duration {
