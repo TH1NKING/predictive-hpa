@@ -214,9 +214,41 @@ def observe(args) -> int:
                     name = runner["pod"]
                     if not re.fullmatch(r"phpa-k6-[a-z0-9-]+", name) or runner.get("script") != "cadence.js":
                         raise ValueError("Unexpected cadence k6 runner identity")
+                if runner is not None and forward is None:
+                    # Rendering precedes Kubernetes creation. An empty successful
+                    # List is an expected startup state, not a failed connection.
+                    started = utc()
+                    pod_read = subprocess.run(kube + ["--request-timeout=10s", "get", "pods",
+                        "--field-selector", "metadata.name=" + runner["pod"], "-o", "json"],
+                        capture_output=True, text=True, timeout=12)
+                    receipt = {"kind": "runner_pod", "started_at": started, "finished_at": utc(),
+                               "returncode": pod_read.returncode, "stderr": pod_read.stderr}
+                    if pod_read.returncode:
+                        controls.write(json.dumps(receipt) + "\n"); controls.flush()
+                        raise RuntimeError("Could not observe the assigned k6 Pod")
+                    receipt["response"] = json.loads(pod_read.stdout)
+                    controls.write(json.dumps(receipt) + "\n"); controls.flush()
+                    pods = receipt["response"]["items"]
+                    if not pods:
+                        stop.wait(.2)
+                        continue
+                    if len(pods) != 1:
+                        raise ValueError("Ambiguous k6 Pod identity")
+                    pod = pods[0]
+                    metadata = pod["metadata"]
+                    if (metadata["name"] != runner["pod"] or metadata["namespace"] != "default"
+                            or not metadata.get("uid") or metadata.get("deletionTimestamp")
+                            or metadata.get("labels", {}).get("benchmark-run") != runner["pod"]):
+                        raise ValueError("Assigned k6 Pod identity changed")
+                    if pod.get("status", {}).get("phase") in ("Failed", "Succeeded"):
+                        raise RuntimeError("Assigned k6 Pod finished before its launch gate")
+                    if not any(c.get("type") == "Ready" and c.get("status") == "True"
+                               for c in pod.get("status", {}).get("conditions", [])):
+                        stop.wait(.2)
+                        continue
                     # Bind a port selected by kubectl; the exact forwarding process
                     # and observed port stay owned by this run.
-                    forward = subprocess.Popen(kube + ["--request-timeout=0", "port-forward", "pod/" + name,
+                    forward = subprocess.Popen(kube + ["--request-timeout=0", "port-forward", "pod/" + runner["pod"],
                         ":6565", "--address=127.0.0.1", "--pod-running-timeout=120s"],
                         stdout=forward_log, stderr=subprocess.STDOUT)
                     processes.append(forward)

@@ -194,7 +194,7 @@ class CadenceAnchorCLI(unittest.TestCase):
 
 
 class CadenceLiveWarmCLI(unittest.TestCase):
-    def run_live_observer(self, failure=None):
+    def run_live_observer(self, failure=None, *, pod_delay=False):
         """Drive the real CLI through its process, HTTP, and retained-input boundaries."""
         with tempfile.TemporaryDirectory(prefix="cadence-inflight-") as temporary:
             directory = Path(temporary)
@@ -236,6 +236,14 @@ root=pathlib.Path(os.environ['CADENCE_FIXTURE_DIR'])
 stop=root/'cadence-cpu-stop'
 stamp=lambda value: datetime.fromtimestamp(value,timezone.utc).isoformat()
 if sys.argv[1]=='forward':
+ if 'get' in sys.argv[2:]:
+  counter=root/'pod-reads'; count=int(counter.read_text())+1 if counter.exists() else 1; counter.write_text(str(count))
+  items=[] if os.environ.get('CADENCE_FIXTURE_POD_DELAY')=='1' and count==1 else [
+   {'metadata':{'name':'phpa-k6-test','namespace':'default','uid':'runner-uid','labels':{'benchmark-run':'phpa-k6-test'}},
+    'status':{'phase':'Running','conditions':[{'type':'Ready','status':'True'}]}}]
+  print(json.dumps({'items':items}));sys.exit(0)
+ if os.environ.get('CADENCE_FIXTURE_POD_DELAY')=='1' and not (root/'pod-reads').exists():
+  print('Error from server (NotFound): pods phpa-k6-test not found',file=sys.stderr);sys.exit(17)
  print('Forwarding from 127.0.0.1:'+os.environ['CADENCE_FIXTURE_PORT']+' -> 6565',flush=True)
  while not stop.exists(): time.sleep(.02)
 else:
@@ -298,7 +306,8 @@ else:
             writer = threading.Thread(target=update_state, daemon=True)
             writer.start()
             environment = {**os.environ, "PATH": str(directory) + os.pathsep + os.environ.get("PATH", ""),
-                "CADENCE_FIXTURE_DIR": str(directory), "CADENCE_FIXTURE_PORT": str(server.server_port)}
+                "CADENCE_FIXTURE_DIR": str(directory), "CADENCE_FIXTURE_PORT": str(server.server_port),
+                "CADENCE_FIXTURE_POD_DELAY": "1" if pod_delay else "0"}
             arguments = [sys.executable, str(CLI), "observe", "--run-dir", str(directory),
                 "--context", "kind-phpa-cadence-test", "--cpu-binary", str(binaries["cpu-producer"]),
                 "--cpu-sha256", hashlib.sha256(binaries["cpu-producer"].read_bytes()).hexdigest(),
@@ -361,6 +370,13 @@ else:
         self.assertEqual([], errors)
         self.assertEqual("success", status["status"])
         self.assertTrue(status["owned_processes_stopped"])
+        self.assertEqual("released", gate["status"])
+        self.assertEqual(1, len(patches))
+
+    def test_runner_plan_before_pod_creation_waits_for_actual_ready_pod(self):
+        code, output, status, gate, patches, errors = self.run_live_observer(pod_delay=True)
+        self.assertEqual(0, code, output + json.dumps(status))
+        self.assertEqual([], errors)
         self.assertEqual("released", gate["status"])
         self.assertEqual(1, len(patches))
 
