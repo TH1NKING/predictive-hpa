@@ -241,7 +241,7 @@ class CadenceCLI(unittest.TestCase):
     def test_invalid_identity_sources_queries_configuration_or_cleanup_never_publish_success(self) -> None:
         for case in ("rejected_target", "partial_gate", "duplicate_identity", "future", "stale", "missing_queries",
                      "query_duration", "missing_summary", "failed_summary", "command", "metadata", "log", "cleanup",
-                     "missing_cpu", "inconsistent_cpu"):
+                     "missing_cpu", "inconsistent_cpu", "numeric_observation_time", "inexact_oldest_source", "hot_anchor"):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 directory = Path(temporary)
                 fixture(directory)
@@ -263,6 +263,15 @@ class CadenceCLI(unittest.TestCase):
                     rows[2]["source_timestamp"] = rows[2]["containers"][0]["source_timestamp"]
                 elif case == "missing_queries":
                     del rows[5]["queries"]
+                elif case == "numeric_observation_time":
+                    rows[2]["observation_started_at"] = ONSET + .5
+                elif case == "inexact_oldest_source":
+                    rows[2]["source_timestamp"] = stamp(-6.9995)
+                elif case == "hot_anchor":
+                    rows[1]["utilization_percent"] = 5
+                    gate = json.loads((directory / "cadence-gate.json").read_text())
+                    gate["anchor"] = rows[1]
+                    retain_gate(directory, gate)
                 elif case == "query_duration":
                     rows[2]["queries"][0]["duration_seconds"] = 3
                 elif case == "missing_summary":

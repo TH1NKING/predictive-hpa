@@ -6,6 +6,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -62,14 +63,36 @@ def read_state(context: str) -> dict:
 
 
 def ready_receipt(state: dict, log: Path, mode: str, target_uid: str, phpa_uid: str,
-                  requeue_seconds: int | None = None) -> dict | None:
+                  requeue_seconds: int | None = None, *, allow_inflight: bool = False) -> dict | None:
     deploy, phpa = state["deployment"], state["phpa"]
     if deploy["metadata"]["uid"] != target_uid or phpa["metadata"]["uid"] != phpa_uid:
         raise ValueError("Target or PredictiveHPA UID changed")
-    cycles = controller_cycles(log)
+    cycles = controller_cycles(log, ignore_incomplete_tail=allow_inflight)
     if not cycles:
         return None
     cycle = cycles[-1]
+    if allow_inflight:
+        # A query/decision is logged before its reconciliation finishes. Keep a
+        # fresh completed warm cycle while those later records are still idle;
+        # already observed failures must never be hidden by the older receipt.
+        completed = [item for item in cycles if item.get("finish")]
+        if not completed:
+            return None
+        cycle = completed[-1]
+        for pending in cycles[cycles.index(cycle) + 1:]:
+            query, decision = (pending.get(key, {}) for key in ("query", "decision"))
+            cpu = query.get("currentCPU%")
+            if query and (query.get("queryError") or query.get("samples", 0) < 2
+                    or not query.get("sourceTimestamp") or isinstance(cpu, bool)
+                    or not isinstance(cpu, (int, float)) or not math.isfinite(cpu) or not 0 <= cpu < 5
+                    or query.get("targetUID", target_uid) != target_uid):
+                return None
+            if pending.get("scale") or (decision and (not query or decision.get("decisionMode") != mode
+                    or decision.get("samples", 0) < 2 or decision.get("currentReplicas") != 1
+                    or decision.get("finalDesired") != 1 or not 0 <= float(decision.get("currentCPU%", 100)) < 5
+                    or decision.get("coldStartProtection") is not False
+                    or epoch(decision["stabilizationEvaluatedAt"]) <= epoch(decision["coldStartProtectedUntil"]))):
+                return None
     query, decision, finish = (cycle.get(key, {}) for key in ("query", "decision", "finish"))
     if requeue_seconds is not None and finish and not finish.get("reconcileError") and finish.get("requeueAfterSeconds") != requeue_seconds:
         raise ValueError("Actual controller cadence disagrees with the declared interval")
@@ -86,7 +109,7 @@ def ready_receipt(state: dict, log: Path, mode: str, target_uid: str, phpa_uid: 
             or deploy.get("status", {}).get("replicas") != 1):
         return None
     if (epoch(decision["stabilizationEvaluatedAt"]) <= epoch(decision["coldStartProtectedUntil"])
-            or not 0 <= time.time() - epoch(finish["reconcileFinishedAt"]) <= 72):
+            or not 0 <= time.time() - epoch(finish["reconcileFinishedAt"]) <= 2 * (requeue_seconds or 30) + 12):
         return None
     return {"protocol_version": "live-baseline-v1", "startup_mode": "warm", "released_at": utc(),
             "target_uid": target_uid, "phpa_uid": phpa_uid, "anchor": cycle}

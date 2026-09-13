@@ -256,15 +256,19 @@ def observe(args) -> int:
                 state = state_rows[-1]
                 if (state["status"] != "success" or time.time() - epoch(state["request_finished_at"]) > 4
                     or ready_receipt(state["response"], directory / "controller.log", "Current",
-                                         args.target_uid, args.phpa_uid, args.requeue_seconds) is None):
+                                         args.target_uid, args.phpa_uid, args.requeue_seconds,
+                                         allow_inflight=True) is None):
                     raise ValueError("Warm target readiness changed before release")
                 if gate is not None:
                     expected = source_set(gate["anchor"], args.target_uid).keys()
+                    if gate["anchor"]["utilization_percent"] >= 5:
+                        raise ValueError("Verified CPU source anchor is no longer idle")
                     for row in read_rows(directory / "cadence-cpu.ndjson"):
                         if row.get("kind") != "cpu_observation" or row["sequence"] <= gate["anchor"]["sequence"]:
                             continue
-                        if row["status"] != "success" or source_set(row, args.target_uid).keys() != expected:
-                            raise ValueError("Verified CPU coverage changed while waiting for the assigned phase")
+                        if (row["status"] != "success" or source_set(row, args.target_uid).keys() != expected
+                                or row["utilization_percent"] >= 5):
+                            raise ValueError("Verified CPU coverage or idle condition changed while waiting for the assigned phase")
 
             while time.time() < after and not stop.is_set():
                 check()

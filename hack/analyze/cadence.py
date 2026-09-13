@@ -16,7 +16,7 @@ import live_baseline
 from latency import controller_cycles, epoch, records
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from observe_cadence import select_anchor
+from observe_cadence import epoch as observation_time, select_anchor, source_set
 
 
 PROTOCOL = "cadence-pilot-v1"
@@ -53,19 +53,11 @@ def sources(row: dict) -> dict:
 
 
 def validate_observation(row: dict, uid: str) -> None:
-    start, finish = (timestamp(row[key]) for key in ("observation_started_at", "observation_finished_at"))
+    start, finish = (observation_time(row[key]) for key in ("observation_started_at", "observation_finished_at"))
     if finish < start or row["status"] not in ("success", "rejected") or row["target_uid"] != uid:
         raise ValueError("Invalid CPU observation interval or status")
     if row["status"] == "success":
-        if row["target_uid"] != uid or row.get("error"):
-            raise ValueError("Accepted CPU observation has wrong target identity or an error")
-        evaluated = timestamp(row["evaluated_at"])
-        source = sources(row)
-        if (evaluated < start - 0.001 or evaluated > finish + 0.001
-                or any(value > evaluated or finish - value > 45 for value in source.values())
-                or abs(timestamp(row["source_timestamp"]) - min(source.values())) > 0.001):
-            raise ValueError("CPU observation has stale, future, or inconsistent source timestamps")
-        number(row["utilization_percent"], "CPU utilization")
+        source_set(row, uid)
     elif not row.get("error"):
         raise ValueError("Rejected CPU observation lacks a reason")
 
@@ -212,7 +204,7 @@ def controller_observations(cycles: list[dict], uid: str) -> list[dict]:
         query = cycle.get("query")
         if query is None:
             continue
-        row = {"status": "rejected" if query.get("queryError") else "success", "error": query.get("queryError", ""),
+        row = {"protocol_version": "cadence-cpu-v1", "status": "rejected" if query.get("queryError") else "success", "error": query.get("queryError", ""),
             "target_uid": query.get("targetUID"), "observation_started_at": query["observationStartedAt"],
             "observation_finished_at": query["observationFinishedAt"], "evaluated_at": query.get("latestEvaluationAt"),
             "source_timestamp": query.get("sourceTimestamp"), "containers": query.get("containerSources"),
@@ -273,6 +265,8 @@ def analyze_run(directory: Path) -> dict:
     if previous["status"] != "success" or anchor["status"] != "success" or accepted_between:
         raise ValueError("Gate does not reference successive accepted CPU observations")
     before, current = sources(previous), sources(anchor)
+    if anchor["utilization_percent"] >= 5:
+        raise ValueError("Verified CPU source anchor is no longer idle")
     if before.keys() != current.keys() or not all(current[key] > before[key] for key in current):
         raise ValueError("Gate requires strictly newer source samples for the entire unchanged container membership")
     finish = timestamp(anchor["observation_finished_at"])
@@ -283,7 +277,7 @@ def analyze_run(directory: Path) -> dict:
     release_start, release_end = (timestamp(gate[key]) for key in ("release_request_started_at", "release_request_finished_at"))
     for row in cpu:
         if row["sequence"] > anchor["sequence"] and timestamp(row["observation_finished_at"]) <= release_start:
-            if row["status"] != "success" or sources(row).keys() != current.keys():
+            if row["status"] != "success" or sources(row).keys() != current.keys() or row["utilization_percent"] >= 5:
                 raise ValueError("Verified CPU coverage changed between the source anchor and gate release")
     planned = timestamp(gate["planned_onset_unix"])
     if (timestamp(anchor["observation_started_at"]) < earliest or finish - earliest > plan["gate_timeout_seconds"]

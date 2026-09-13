@@ -35,10 +35,13 @@ def records(path: Path) -> list[dict]:
         return [json.loads(line) for line in stream if line.strip()]
 
 
-def controller_cycles(path: Path) -> list[dict]:
-    """Accept the controller's console or JSON logger without trusting display time."""
+def controller_cycles(path: Path, *, ignore_incomplete_tail: bool = False) -> list[dict]:
+    """Accept both log formats; a live reader may defer the unfinished final line."""
     cycles = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+        if ignore_incomplete_tail and not line.endswith("\n"):
+            continue
+        line = line.rstrip("\r\n")
         if not any(message in line for message in EVENTS):
             continue
         if line.startswith("{"):
