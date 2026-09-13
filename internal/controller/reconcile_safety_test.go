@@ -28,6 +28,8 @@ import (
 	"github.com/th1nking/predictive-hpa/internal/predictor"
 )
 
+const invalidConfigurationReason = "InvalidConfiguration"
+
 // These tests invoke the public reconciliation boundary and inspect only the
 // Kubernetes Scale/status API. The fake API allows deterministic failure and
 // recreation sequencing; the existing envtest suite also runs against etcd.
@@ -257,6 +259,99 @@ func TestReconcileSafetyExtremeFiniteCPUHonorsMaximum(t *testing.T) {
 	status := safetyStatus(t, r, req)
 	if status.CurrentCPUUtilizationPercentage == nil || *status.CurrentCPUUtilizationPercentage != math.MaxInt32 {
 		t.Fatal("extreme CPU display must saturate without wrapping negative")
+	}
+}
+
+func TestReconcileSafetyRejectsNegativeHorizonAndRecovers(t *testing.T) {
+	r, p, req := safetyFixture(t)
+	var phpa autoscalingv1alpha1.PredictiveHPA
+	if err := r.Get(context.Background(), req.NamespacedName, &phpa); err != nil {
+		t.Fatal(err)
+	}
+	zero := int32(0)
+	phpa.Spec.DecisionMode = autoscalingv1alpha1.DecisionModePredictive
+	phpa.Spec.ScaleDownStabilizationWindowSeconds = &zero
+	phpa.Spec.Prediction.Horizon.Duration = -time.Minute
+	if err := r.Update(context.Background(), &phpa); err != nil {
+		t.Fatal(err)
+	}
+	now := r.Clock.Now()
+	p.SetSamples("test", "web", []predictor.Sample{
+		{Timestamp: now.Add(-30 * time.Second), Value: 20},
+		{Timestamp: now, Value: 100},
+	})
+	result, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := safetyReplicas(t, r); got != 5 {
+		t.Fatalf("invalid negative horizon changed Scale from 5 to %d", got)
+	}
+	status := safetyStatus(t, r, req)
+	condition := meta.FindStatusCondition(status.Conditions, "MetricsReady")
+	if condition == nil || condition.Status != metav1.ConditionFalse || condition.Reason != invalidConfigurationReason {
+		t.Fatalf("invalid configuration condition=%+v", condition)
+	}
+	if result.RequeueAfter != time.Minute || status.CurrentCPUUtilizationPercentage != nil || status.PredictedCPUUtilizationPercentage != nil {
+		t.Fatalf("invalid configuration did not clear CPU values and use bounded retry: result=%+v status=%+v", result, status)
+	}
+	if status.LastScaleTime == nil || !status.LastScaleTime.Equal(phpa.Status.LastScaleTime) {
+		t.Fatal("invalid configuration changed the last successful scale time")
+	}
+	if err := r.Get(context.Background(), req.NamespacedName, &phpa); err != nil {
+		t.Fatal(err)
+	}
+	phpa.Spec.Prediction.Horizon.Duration = 30 * time.Second
+	phpa.Generation++
+	if err := r.Update(context.Background(), &phpa); err != nil {
+		t.Fatal(err)
+	}
+	safetyCPU(r, p, 100)
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	status = safetyStatus(t, r, req)
+	condition = meta.FindStatusCondition(status.Conditions, "MetricsReady")
+	if condition == nil || condition.Status != metav1.ConditionTrue || condition.ObservedGeneration != phpa.Generation || safetyReplicas(t, r) != 10 {
+		t.Fatalf("repaired configuration did not resume valid scaling: condition=%+v", condition)
+	}
+}
+
+func TestReconcileSafetyRejectsStoredConfigurationOutsideAdmissionBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*autoscalingv1alpha1.PredictiveHPASpec)
+	}{
+		{name: "short window", change: func(s *autoscalingv1alpha1.PredictiveHPASpec) { s.Prediction.Window.Duration = 14 * time.Second }},
+		{name: "long window", change: func(s *autoscalingv1alpha1.PredictiveHPASpec) {
+			s.Prediction.Window.Duration = time.Hour + time.Nanosecond
+		}},
+		{name: "long horizon", change: func(s *autoscalingv1alpha1.PredictiveHPASpec) {
+			s.Prediction.Horizon.Duration = time.Hour + time.Nanosecond
+		}},
+		{name: "zero horizon", change: func(s *autoscalingv1alpha1.PredictiveHPASpec) { s.Prediction.Horizon.Duration = 0 }},
+		{name: "conflicting replicas", change: func(s *autoscalingv1alpha1.PredictiveHPASpec) { minimum := int32(11); s.MinReplicas = &minimum }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, p, req := safetyFixture(t)
+			var phpa autoscalingv1alpha1.PredictiveHPA
+			if err := r.Get(context.Background(), req.NamespacedName, &phpa); err != nil {
+				t.Fatal(err)
+			}
+			tc.change(&phpa.Spec)
+			if err := r.Update(context.Background(), &phpa); err != nil {
+				t.Fatal(err)
+			}
+			safetyCPU(r, p, 200)
+			if _, err := r.Reconcile(context.Background(), req); err != nil {
+				t.Fatal(err)
+			}
+			status := safetyStatus(t, r, req)
+			condition := meta.FindStatusCondition(status.Conditions, "MetricsReady")
+			if safetyReplicas(t, r) != 5 || condition == nil || condition.Status != metav1.ConditionFalse || condition.Reason != invalidConfigurationReason {
+				t.Fatalf("invalid stored policy was not held: replicas=%d condition=%+v", safetyReplicas(t, r), condition)
+			}
+		})
 	}
 }
 

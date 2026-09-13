@@ -237,6 +237,54 @@ class DecisionReplayAnalysisCLI(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse((root / "report").exists())
 
+    def test_rejects_evaluation_times_before_the_recorded_observation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "run"
+            run.mkdir()
+            rows, _ = fixture(run)
+            # Keep the CPU history spacing and source freshness plausible, but
+            # move each evaluation before its observation and the first startup.
+            for row in rows:
+                at = int(row["reconcileID"])
+                for field in ("queryInstantAt", "latestEvaluationAt"):
+                    if field in row:
+                        row[field] = stamp(at - 10)
+                if "sourceTimestamp" in row:
+                    row["sourceTimestamp"] = stamp(at - 15)
+            write_log(run, rows)
+            result = self.run_cli(run, root / "report")
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("evaluation", result.stderr.lower())
+            self.assertFalse((root / "report").exists())
+
+    def test_accepts_evaluation_truncated_within_the_observation_start_millisecond(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "run"
+            run.mkdir()
+            rows, _ = fixture(run)
+            rows[0]["observationStartedAt"] = stamp(-59.999001)
+            write_log(run, rows)
+            result = self.run_cli(run, root / "report")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads((root / "report" / "report.json").read_text())
+            self.assertEqual(report["verification"], "prepared-only")
+            self.assertEqual(report["history"]["unknown_cpu_observations"], 1)
+
+    def test_rejects_evaluation_from_the_previous_observation_start_millisecond(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "run"
+            run.mkdir()
+            rows, _ = fixture(run)
+            rows[0]["observationStartedAt"] = stamp(-59.999)
+            write_log(run, rows)
+            result = self.run_cli(run, root / "report")
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("evaluation", result.stderr.lower())
+            self.assertFalse((root / "report").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

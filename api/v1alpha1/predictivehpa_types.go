@@ -63,17 +63,26 @@ type PredictionConfig struct {
 	// window is the lookback duration of historical samples used to compute the EWMA.
 	// Samples older than this window are dropped.
 	// Examples: "5m", "10m".
+	// Must be between 15 seconds and 1 hour, inclusive.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('15s') && duration(self) <= duration('1h')",message="window must be a valid Go duration between 15s and 1h"
 	// +required
 	Window metav1.Duration `json:"window"`
 
 	// horizon is how far into the future the controller predicts metric values
 	// to drive the scaling decision.
 	// Examples: "30s", "1m".
+	// Must be greater than zero and at most 1 hour.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:XValidation:rule="duration(self) > duration('0s') && duration(self) <= duration('1h')",message="horizon must be a valid Go duration greater than 0s and at most 1h"
 	// +required
 	Horizon metav1.Duration `json:"horizon"`
 }
 
 // PredictiveHPASpec defines the desired state of PredictiveHPA.
+// +kubebuilder:validation:XValidation:rule="!has(self.minReplicas) || self.minReplicas <= self.maxReplicas",message="minReplicas must be less than or equal to maxReplicas"
 type PredictiveHPASpec struct {
 	// scaleTargetRef points to the target resource to scale (e.g. a Deployment).
 	// The reference is resolved within the same namespace as the PredictiveHPA.

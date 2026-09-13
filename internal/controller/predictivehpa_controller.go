@@ -152,6 +152,9 @@ func (r *PredictiveHPAReconciler) reconcileTarget(
 	if !phpa.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
+	if err := validateConfiguration(phpa.Spec); err != nil {
+		return r.metricsUnavailable(ctx, &phpa, err, requeueOnConfigError)
+	}
 
 	// 3. Fetch the target Deployment.
 	var deploy appsv1.Deployment

@@ -25,6 +25,7 @@ type EWMAConfig struct {
 	Alpha float64
 
 	// Horizon is how far ahead in time the prediction projects.
+	// It must not be negative; zero returns the smoothed tail.
 	Horizon time.Duration
 }
 
@@ -40,6 +41,9 @@ var (
 	// ErrInvalidInterval is returned when the inferred sample interval is
 	// non-positive (e.g. all samples share identical timestamps).
 	ErrInvalidInterval = errors.New("predictor: non-positive sample interval")
+
+	// ErrInvalidHorizon rejects backward extrapolation from a forecast API.
+	ErrInvalidHorizon = errors.New("predictor: horizon must not be negative")
 )
 
 // trendDampingFactor (phi in Holt's damped-trend method) attenuates the
@@ -107,6 +111,9 @@ func Smooth(samples []Sample, alpha float64) ([]Sample, error) {
 // trending signals. The trade-off between lag and noise sensitivity is
 // controlled by Alpha and is explored empirically in Phase 3 experiments.
 func Predict(samples []Sample, cfg EWMAConfig) (float64, error) {
+	if cfg.Horizon < 0 {
+		return 0, ErrInvalidHorizon
+	}
 	if len(samples) < 2 {
 		return 0, ErrInsufficientData
 	}

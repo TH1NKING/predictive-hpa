@@ -226,8 +226,11 @@ def validate_cycles(cycles, plan, phpa, log_text):
                 or not query.get("queryInstantAt") or not query.get("queryFinishedAt")):
             raise ValueError("Successful observation is missing source/evaluation/query time")
         source_time, evaluation = epoch(query["sourceTimestamp"]), epoch(query["latestEvaluationAt"])
+        # The provider evaluates after observation start, then truncates its
+        # timestamp to milliseconds. Preserve that precision at the lower bound.
+        earliest_evaluation = math.floor(epoch(query["observationStartedAt"]) * 1000) / 1000
         if (source_time <= 0 or source_time > evaluation or evaluation != epoch(query["queryInstantAt"])
-                or evaluation > epoch(query["queryStartedAt"])):
+                or evaluation < earliest_evaluation or evaluation > epoch(query["queryStartedAt"])):
             raise ValueError("Successful observation has inconsistent or future source/evaluation time")
         # The provider validates freshness after the queries. A source already
         # older than its 45s limit at query completion could not be accepted.

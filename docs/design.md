@@ -76,12 +76,14 @@ API：`autoscaling.brian.io/v1alpha1`，Kind：`PredictiveHPA`，短名称：`ph
 | `targetCPUUtilizationPercentage` | 必填，示例 `50` | 1–100，相对于 CPU request |
 | `prediction.algorithm` | `EWMA` | 当前唯一算法 |
 | `prediction.alphaPercent` | 必填，示例 `30` | 1–99；30 表示 alpha = 0.3 |
-| `prediction.window` | 必填，示例 `5m` | 查询历史时序的回溯长度 |
-| `prediction.horizon` | 必填，示例 `30s` | 外推时长 |
+| `prediction.window` | 必填，示例 `5m` | 观测历史长度，15 秒到 1 小时（含边界） |
+| `prediction.horizon` | 必填，示例 `30s` | 向未来外推的时长，大于 0、至多 1 小时 |
 | `decisionMode` | `Predictive` | Predictive / Current / Hybrid |
 | `scaleDownStabilizationWindowSeconds` | `60` | 缩容窗口；0 表示不保留此前窗口历史 |
 
-枚举和已声明的数值范围由 CRD schema 在 admission 阶段校验；这不代表所有配置组合都经过完整校验。例如 `maxReplicas >= minReplicas` 的跨字段约束和 duration 的合理范围仍有完善空间。不要把类型注释中的约定等同于已实现的校验规则。
+CRD schema 在 admission 阶段校验枚举、数值范围、Go duration 语法及上述时长范围，并拒绝 `minReplicas > maxReplicas`。时长字符串最多 64 个字符，支持复合单位与小数。控制器在运行时复核时长与副本边界，保护升级前已存储且仍能解码的旧配置；不合法时保持 Scale，并用 `MetricsReady=False / InvalidConfiguration` 说明原因。
+
+schema 升级不会修复已经存储的非法时长字符串；应先用 `kubectl` 等非类型化客户端修正这些对象，再启动控制器。合法的窗口也需要实际容纳两个观测才能预测，15 秒的准入下限不保证在 30 秒协调周期下完成暖机。具体取舍见[配置与证据校验讲解](configuration-correctness-guide.zh-CN.md)。
 
 status 提供 `currentReplicas`、`desiredReplicas`、当前与预测 CPU、`lastScaleTime` 以及 `conditions`。`desiredReplicas` 是策略计算结果，不保证副本已经达到该值；容差也可能阻止写入。`lastScaleTime` 在成功 Scale 写入后更新，不宜单独用于统计真正的扩容次数。诊断工具使用成功写入日志中的 `previousDesiredReplicas` 和 `finalDesired` 判断目标是否实际提高。
 

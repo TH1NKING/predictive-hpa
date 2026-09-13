@@ -6,7 +6,9 @@
 
 ## 在独立 Kind 集群中运行
 
-需要 Docker、Kind、kubectl 和 Helm。以下示例使用 Kubernetes `v1.35.0`，与项目已有实验环境一致。`Chart.yaml` 中的 `kubeVersion` 下界不代表项目测试过所有较早的 Kubernetes 版本。
+需要 Docker、Kind、kubectl 和 Helm。chart 0.3.0 起要求 Kubernetes 1.33 或更新版本，以使用已稳定的 CEL 校验和 [validation ratcheting](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#validation-ratcheting)：保留旧非法 spec 时仍能更新状态，报告配置错误。以下示例使用 Kubernetes `v1.35.0`，与项目已有实验环境一致；版本下界不代表项目测试过所有版本。
+
+升级前应检查现有 PHPA 的时长和副本配置：窗口为 15 秒到 1 小时，预测时长大于 0、至多 1 小时，最小副本不能超过最大副本。新的 schema 不会修复已存储的非法字符串；先用非类型化客户端修正对象，再启动控制器，见[配置保护讲解](../../../docs/configuration-correctness-guide.zh-CN.md)。
 
 ### 1. 创建集群并安装指标来源
 
