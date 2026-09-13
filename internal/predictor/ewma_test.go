@@ -68,6 +68,23 @@ func TestSmooth_FormulaWithAlpha05(t *testing.T) {
 
 // --- Predict ---
 
+func TestPredict_RejectsNegativeHorizon(t *testing.T) {
+	now := time.Now()
+	samples := []Sample{{Timestamp: now.Add(-30 * time.Second), Value: 20}, {Timestamp: now, Value: 100}}
+	if value, err := Predict(samples, EWMAConfig{Alpha: 0.3, Horizon: -time.Minute}); err == nil {
+		t.Fatalf("negative horizon returned a forecast of %v instead of an error", value)
+	}
+}
+
+func TestPredict_ZeroHorizonReturnsSmoothedTail(t *testing.T) {
+	now := time.Now()
+	samples := []Sample{{Timestamp: now.Add(-30 * time.Second), Value: 20}, {Timestamp: now, Value: 100}}
+	value, err := Predict(samples, EWMAConfig{Alpha: 0.3, Horizon: 0})
+	if err != nil || math.Abs(value-44) > 1e-9 {
+		t.Fatalf("zero horizon forecast=%v err=%v, want smoothed tail 44", value, err)
+	}
+}
+
 func TestPredict_ErrorsOnInsufficientData(t *testing.T) {
 	samples := makeSeries(time.Now(), 15*time.Second, []float64{1})
 	_, err := Predict(samples, EWMAConfig{Alpha: 0.5, Horizon: 30 * time.Second})

@@ -163,6 +163,7 @@ func TestReplayRejectsIncompleteOrUnusableRecording(t *testing.T) {
 		"invalid alpha":         strings.Replace(fixedReplicaInput, `"alphaPercent":30`, `"alphaPercent":100`, 1),
 		"invalid window":        strings.Replace(fixedReplicaInput, `"windowSeconds":300`, `"windowSeconds":1`, 1),
 		"backward forecast":     strings.Replace(fixedReplicaInput, `"horizonSeconds":30`, `"horizonSeconds":-1`, 1),
+		"oversized forecast":    strings.Replace(fixedReplicaInput, `"horizonSeconds":30`, `"horizonSeconds":3601`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, stdout, stderr := invokeReplay(t, input)

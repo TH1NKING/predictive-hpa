@@ -118,13 +118,26 @@ spec:
                       horizon is how far into the future the controller predicts metric values
                       to drive the scaling decision.
                       Examples: "30s", "1m".
+                      Must be greater than zero and at most 1 hour.
+                    maxLength: 64
                     type: string
+                    x-kubernetes-validations:
+                    - message: horizon must be a valid Go duration greater than 0s
+                        and at most 1h
+                      rule: duration(self) > duration('0s') && duration(self) <= duration('1h')
                   window:
                     description: |-
                       window is the lookback duration of historical samples used to compute the EWMA.
                       Samples older than this window are dropped.
                       Examples: "5m", "10m".
+                      Must be between 15 seconds and 1 hour, inclusive.
+                    maxLength: 64
                     type: string
+                    x-kubernetes-validations:
+                    - message: window must be a valid Go duration between 15s and
+                        1h
+                      rule: duration(self) >= duration('15s') && duration(self) <=
+                        duration('1h')
                 required:
                 - algorithm
                 - alphaPercent
@@ -174,6 +187,9 @@ spec:
             - scaleTargetRef
             - targetCPUUtilizationPercentage
             type: object
+            x-kubernetes-validations:
+            - message: minReplicas must be less than or equal to maxReplicas
+              rule: '!has(self.minReplicas) || self.minReplicas <= self.maxReplicas'
           status:
             description: status defines the observed state of PredictiveHPA
             properties:

@@ -175,7 +175,7 @@ func validateReplayConfig(config replayConfig) error {
 		return errors.New("explicit valid minReplicas, maxReplicas and targetCPU are required")
 	}
 	if config.AlphaPercent < 1 || config.AlphaPercent > 99 || config.WindowSeconds < 15 || config.WindowSeconds > 3600 ||
-		config.HorizonSeconds <= 0 || config.StabilizationSeconds == nil || *config.StabilizationSeconds < 0 {
+		config.HorizonSeconds <= 0 || config.HorizonSeconds > 3600 || config.StabilizationSeconds == nil || *config.StabilizationSeconds < 0 {
 		return errors.New("invalid or missing prediction/stabilization configuration")
 	}
 	return nil

@@ -59,6 +59,8 @@ func validateCPUHistory(history metricsprovider.CPUHistory, now time.Time, windo
 
 func metricsFailureReason(err error) (string, bool) {
 	switch {
+	case errors.Is(err, errInvalidConfiguration):
+		return "InvalidConfiguration", true
 	case errors.Is(err, metricsprovider.ErrNoData):
 		return "NoData", true
 	case errors.Is(err, metricsprovider.ErrStaleData):

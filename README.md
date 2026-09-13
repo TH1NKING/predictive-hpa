@@ -169,6 +169,6 @@ docs/benchmarks/      实验协议、报告、图表与中文讲解
 - **状态：** CPU 观测和副本建议都保存在有界进程内存中。Helm 启用 Lease 选主，默认单副本；新 leader 重新积累 CPU 样本并建立缩容保护，不恢复原始历史。频繁重启可能延长容量保留时间。
 - **指标：** 依据 Pod → ReplicaSet → Deployment 的 UID 链核验归属，CPU 使用量和 requests 对齐到相同的普通容器集合。缺失、陈旧或无法确认身份的数据会暂停决策；Pod 级资源和可重启 init sidecar 等语义不在本版本支持范围内。
 
-指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。容量校准、18 次正式对照和同输入决策回放已经完成；下一步检验相位配对条件下缩短协调周期是否能读到更早的有效信号，并同时衡量查询开销与服务结果。现有证据下保留默认 30 秒协调周期、60 秒 CPU rate 窗口和 Predictive 模式，尚没有已经验证的优化收益。实验假设与失效条件见[回放报告](docs/benchmarks/decision-replay-20260911.md)。
+指标安全改造的范围与设计取舍见[验收规范](docs/metrics-safety-plan.md)和[设计决策](docs/adr/0001-verified-live-cpu-observations.md)。配置准入、旧配置运行时保护与回放时间边界见[正确性修复讲解](docs/configuration-correctness-guide.zh-CN.md)。容量校准、18 次正式对照和同输入决策回放已经完成；下一步按[六次协调周期配对方案](docs/benchmarks/cadence-pilot-plan.md)检验缩短协调周期是否能读到更早的有效信号，并同时衡量查询开销与服务结果。现有证据下保留默认 30 秒协调周期、60 秒 CPU rate 窗口和 Predictive 模式，尚没有已经验证的优化收益。实验假设与失效条件见[回放报告](docs/benchmarks/decision-replay-20260911.md)。
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。
