@@ -61,34 +61,26 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
-# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
+# E2E owns a new Kind cluster, private kubeconfig, command wrappers and bounded cleanup.
+# Default manifests use self-signed metrics TLS and no webhook.
+# Opt into CertManager when enabling certificate-dependent manifests:
+# - CERT_MANAGER_INSTALL_SKIP=false
 KIND_CLUSTER ?= predictive-hpa-test-e2e
+PYTHON ?= python3
 
 .PHONY: setup-test-e2e
-setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
-	@command -v $(KIND) >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@case "$$($(KIND) get clusters)" in \
-		*"$(KIND_CLUSTER)"*) \
-			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
-		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
-	esac
+setup-test-e2e: ## Explain the owned E2E lifecycle (use test-e2e).
+	@echo "Use make test-e2e; setup, execution and cleanup must share one owned lifecycle."
+	@exit 1
 
 .PHONY: test-e2e
-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
-	$(MAKE) cleanup-test-e2e
+test-e2e: manifests generate fmt vet ## Run E2E in a new owned Kind cluster and always retain evidence and clean up.
+	KIND="$(KIND)" KUBECTL="$(KUBECTL)" $(PYTHON) hack/run_e2e.py --cluster-name "$(KIND_CLUSTER)"
 
 .PHONY: cleanup-test-e2e
-cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
-	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+cleanup-test-e2e: ## Explain why standalone deletion is refused.
+	@echo "Cleanup is automatic in make test-e2e; standalone name-based deletion is refused."
+	@exit 1
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter

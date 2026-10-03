@@ -36,11 +36,18 @@ var _ = Describe("PredictiveHPA configuration schema upgrade", func() {
 		legacy := hardened.DeepCopy()
 		legacy.ObjectMeta = metav1.ObjectMeta{Name: hardened.Name}
 		legacy.Status = apiextensionsv1.CustomResourceDefinitionStatus{}
-		prediction := legacy.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"].Properties["prediction"]
+		legacySpec := legacy.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"]
+		prediction := legacySpec.Properties["prediction"]
 		horizon := prediction.Properties["horizon"]
 		Expect(horizon.XValidations).NotTo(BeEmpty())
 		horizon.XValidations = nil
 		prediction.Properties["horizon"] = horizon
+		for _, field := range []string{"targetCPUUtilizationPercentage", "scaleDownStabilizationWindowSeconds"} {
+			property := legacySpec.Properties[field]
+			Expect(property.Minimum).NotTo(BeNil())
+			property.Minimum = nil
+			legacySpec.Properties[field] = property
+		}
 
 		upgradeEnv := &envtest.Environment{
 			CRDs:                  []*apiextensionsv1.CustomResourceDefinition{legacy},
@@ -58,14 +65,32 @@ var _ = Describe("PredictiveHPA configuration schema upgrade", func() {
 		Expect(err).NotTo(HaveOccurred())
 		const namespace = "phpa-schema-upgrade"
 		Expect(upgradeClient.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
-		phpa := durationValidationResource("legacy-negative-horizon", namespace, "5m", "-1m")
-		Expect(upgradeClient.Create(ctx, phpa)).To(Succeed())
-		key := client.ObjectKeyFromObject(phpa)
-		var stored autoscalingv1alpha1.PredictiveHPA
-		Expect(upgradeClient.Get(ctx, key, &stored)).To(Succeed())
-		stored.Status.CurrentCPUUtilizationPercentage = ptr.To(int32(20))
-		stored.Status.PredictedCPUUtilizationPercentage = ptr.To(int32(40))
-		Expect(upgradeClient.Status().Update(ctx, &stored)).To(Succeed())
+		cases := []struct {
+			name   string
+			change func(*autoscalingv1alpha1.PredictiveHPASpec)
+			repair func(*autoscalingv1alpha1.PredictiveHPASpec)
+		}{
+			{name: "legacy-negative-horizon", change: func(s *autoscalingv1alpha1.PredictiveHPASpec) { s.Prediction.Horizon.Duration = -time.Minute },
+				repair: func(s *autoscalingv1alpha1.PredictiveHPASpec) { s.Prediction.Horizon.Duration = 30 * time.Second }},
+			{name: "legacy-negative-stabilization", change: func(s *autoscalingv1alpha1.PredictiveHPASpec) {
+				s.ScaleDownStabilizationWindowSeconds = ptr.To(int32(-1))
+			},
+				repair: func(s *autoscalingv1alpha1.PredictiveHPASpec) {
+					s.ScaleDownStabilizationWindowSeconds = ptr.To(int32(60))
+				}},
+			{name: "legacy-zero-target-cpu", change: func(s *autoscalingv1alpha1.PredictiveHPASpec) { s.TargetCPUUtilizationPercentage = 0 },
+				repair: func(s *autoscalingv1alpha1.PredictiveHPASpec) { s.TargetCPUUtilizationPercentage = 50 }},
+		}
+		for _, tc := range cases {
+			resource := durationValidationResource(tc.name, namespace, "5m", "30s")
+			var stored autoscalingv1alpha1.PredictiveHPA
+			Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(resource.Object, &stored)).To(Succeed())
+			tc.change(&stored.Spec)
+			Expect(upgradeClient.Create(ctx, &stored)).To(Succeed())
+			stored.Status.CurrentCPUUtilizationPercentage = ptr.To(int32(20))
+			stored.Status.PredictedCPUUtilizationPercentage = ptr.To(int32(40))
+			Expect(upgradeClient.Status().Update(ctx, &stored)).To(Succeed())
+		}
 
 		// Updating a CRD does not revalidate stored objects. Fetch its current
 		// resourceVersion and wait until dry-run admission sees the harder rule.
@@ -73,35 +98,44 @@ var _ = Describe("PredictiveHPA configuration schema upgrade", func() {
 		Expect(upgradeClient.Get(ctx, client.ObjectKey{Name: hardened.Name}, &currentCRD)).To(Succeed())
 		currentCRD.Spec = hardened.Spec
 		Expect(upgradeClient.Update(ctx, &currentCRD)).To(Succeed())
-		Eventually(func() bool {
-			probe := durationValidationResource("hardened-rule-probe", namespace, "5m", "-1m")
-			return apierrors.IsInvalid(upgradeClient.Create(ctx, probe, client.DryRunAll))
-		}, 10*time.Second, 100*time.Millisecond).Should(BeTrue())
+		for _, tc := range cases {
+			Eventually(func() bool {
+				resource := durationValidationResource(tc.name+"-probe", namespace, "5m", "30s")
+				var probe autoscalingv1alpha1.PredictiveHPA
+				Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(resource.Object, &probe)).To(Succeed())
+				tc.change(&probe.Spec)
+				return apierrors.IsInvalid(upgradeClient.Create(ctx, &probe, client.DryRunAll))
+			}, 10*time.Second, 100*time.Millisecond).Should(BeTrue())
+		}
 
 		// A fake client cannot cover this boundary: status updates re-run CEL
 		// over the unchanged invalid spec and require validation ratcheting.
 		reconciler := &PredictiveHPAReconciler{Client: upgradeClient, APIReader: upgradeClient, Scheme: upgradeScheme}
-		result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(result.RequeueAfter).To(Equal(time.Minute))
-		Expect(upgradeClient.Get(ctx, key, &stored)).To(Succeed())
-		condition := meta.FindStatusCondition(stored.Status.Conditions, conditionMetricsReady)
-		Expect(condition).NotTo(BeNil())
-		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(condition.Reason).To(Equal(invalidConfigurationReason))
-		Expect(stored.Status.CurrentCPUUtilizationPercentage).To(BeNil())
-		Expect(stored.Status.PredictedCPUUtilizationPercentage).To(BeNil())
+		for _, tc := range cases {
+			key := client.ObjectKey{Namespace: namespace, Name: tc.name}
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Minute))
+			var stored autoscalingv1alpha1.PredictiveHPA
+			Expect(upgradeClient.Get(ctx, key, &stored)).To(Succeed())
+			condition := meta.FindStatusCondition(stored.Status.Conditions, conditionMetricsReady)
+			Expect(condition).NotTo(BeNil())
+			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(condition.Reason).To(Equal(invalidConfigurationReason))
+			Expect(stored.Status.CurrentCPUUtilizationPercentage).To(BeNil())
+			Expect(stored.Status.PredictedCPUUtilizationPercentage).To(BeNil())
 
-		stored.Spec.Prediction.Horizon.Duration = 30 * time.Second
-		Expect(upgradeClient.Update(ctx, &stored)).To(Succeed())
-		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(upgradeClient.Get(ctx, key, &stored)).To(Succeed())
-		condition = meta.FindStatusCondition(stored.Status.Conditions, conditionMetricsReady)
-		Expect(condition).NotTo(BeNil())
-		// No Deployment is created: repaired policy resumes normal target lookup
-		// without running workload Pods or making a Scale write.
-		Expect(condition.Reason).To(Equal("NoData"))
-		Expect(condition.ObservedGeneration).To(Equal(stored.Generation))
+			tc.repair(&stored.Spec)
+			Expect(upgradeClient.Update(ctx, &stored)).To(Succeed())
+			_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(upgradeClient.Get(ctx, key, &stored)).To(Succeed())
+			condition = meta.FindStatusCondition(stored.Status.Conditions, conditionMetricsReady)
+			Expect(condition).NotTo(BeNil())
+			// No Deployment is created: repaired policy resumes normal target lookup
+			// without running workload Pods or making a Scale write.
+			Expect(condition.Reason).To(Equal("NoData"))
+			Expect(condition.ObservedGeneration).To(Equal(stored.Generation))
+		}
 	})
 })

@@ -8,6 +8,9 @@ jobs:
   test-e2e:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KIND_VERSION: v0.31.0
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
@@ -17,16 +20,35 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install the latest version of kind
+      - name: Install pinned kind and verify its checksum
+        timeout-minutes: 5
+        shell: bash
         run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
+          set -euo pipefail
+          tools_dir=$(mktemp -d)
+          cd "$tools_dir"
+          kind_binary="kind-linux-$(go env GOARCH)"
+          curl --fail --location --retry 3 --max-time 120 --output "$kind_binary" "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/${kind_binary}"
+          curl --fail --location --retry 3 --max-time 120 --output "${kind_binary}.sha256sum" "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/${kind_binary}.sha256sum"
+          sha256sum --check "${kind_binary}.sha256sum"
+          sudo install -m 0755 "$kind_binary" /usr/local/bin/kind
 
       - name: Verify kind installation
         run: kind version
+
+      - name: Verify E2E isolation and failure cleanup
+        run: python3 -m unittest hack.tests.test_e2e_runner
 
       - name: Running Test e2e
         run: |
           go mod tidy
           make test-e2e
+
+      - name: Upload E2E receipts on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          path: benchmark-runs/e2e-*/
+          if-no-files-found: warn
+          retention-days: 14

@@ -29,17 +29,33 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --leader-elect
+            - --health-probe-bind-address=:8081
             # 核验当前 CPU 观测后，在进程内积累 EWMA 历史。
             - --prometheus-url={{ .Values.prometheus.url }}
             {{- if .Values.metricsService.enabled }}
             - --metrics-bind-address=:{{ .Values.metricsService.port }}
             {{- end }}
-          {{- if .Values.metricsService.enabled }}
           ports:
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+            {{- if .Values.metricsService.enabled }}
             - name: metrics
               containerPort: {{ .Values.metricsService.port }}
               protocol: TCP
-          {{- end }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:

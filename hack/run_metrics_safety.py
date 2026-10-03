@@ -99,7 +99,7 @@ class Runner:
         if not termination["group_stopped"]:
             raise RuntimeError("Owned command process group remained after bounded termination")
 
-    def command(self, label, argv, timeout=45, raw_stdout=False, stdin_path=None):
+    def command(self, label, argv, timeout=45, raw_stdout=False, stdin_path=None, env=None, cwd=None):
         if not self.finalizing:
             remaining = self.deadline - time.monotonic()
             if remaining <= 0:
@@ -121,7 +121,8 @@ class Runner:
                     receipt.update(stdin_file=str(stdin_path), stdin_sha256=hashlib.file_digest(stdin, "sha256").hexdigest(),
                                    stdin_size_bytes=os.fstat(stdin.fileno()).st_size)
                     stdin.seek(0)
-                process = subprocess.Popen(argv, cwd=ROOT, stdin=stdin, stdout=stdout, stderr=stderr,
+                process = subprocess.Popen(argv, cwd=ROOT if cwd is None else cwd, env=env,
+                                           stdin=stdin, stdout=stdout, stderr=stderr,
                                            start_new_session=os.name == "posix")
                 try:
                     code = process.wait(timeout=timeout)

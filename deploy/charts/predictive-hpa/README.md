@@ -120,7 +120,7 @@ kubectl --context kind-predictive-hpa-demo get phpa predictivehpa-sample \
 - **Deployment + CPU + EWMA。** 目标必须与 PHPA 同 namespace。当前不支持 StatefulSet、内存/自定义指标或 scale-to-zero；`minReplicas: 0` 在计算时按 1 处理。
 - **保守的指标有效性要求。** 所有纳入的普通容器必须有正数 CPU request、完整且新鲜的 CPU 数据和可确认的 runtime container ID。Pod 级资源和可重启 init sidecar 暂不支持；输入不可用时保留 Scale。支持的 cAdvisor 身份来自标准 Linux cgroupfs/systemd 路径，不能移除 `id` 标签后只靠 Pod 名称匹配。
 - **metrics 开关不等于监控接入完成。** 二进制默认通过 HTTPS 和鉴权暴露自身 metrics，即使配置端口为 8080 也不会自动变成 HTTP。chart 尚未提供完整的 TokenReview/SubjectAccessReview 权限、metrics 读取授权、证书配置与 ServiceMonitor；默认演示流程保持关闭。`prometheus.url` 则是控制器读取业务指标的入口，两者用途不同。
-- **Helm 与 Kustomize 尚未完全对齐。** chart 当前没有配置健康探针；仓库的 Kind E2E 使用 Kustomize，验证 manager 运行与 metrics 端点，不能作为 chart 完整部署流程或真实扩缩容效果的验收证据。
+- **健康探针与验收范围。** chart 通过 manager 的 `:8081/healthz`、`:8081/readyz` 配置存活和就绪探针，独立于 metrics 开关；`helm --wait` 会等待就绪。探针只确认 manager 健康，业务指标是否可用仍由 PHPA 的 `MetricsReady` condition 表达。仓库的 Kind E2E 使用 Kustomize，验证 manager 运行与 metrics 端点；chart 全流程及真实故障行为使用[独立 Kind 指标安全验收](../../../docs/metrics-safety-workflow.md)，面试操作见[演示手册](../../../docs/interview-demo.zh-CN.md)。
 
 ## CRD 更新与维护
 

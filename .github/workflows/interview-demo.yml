@@ -1,0 +1,69 @@
+name: Interview Demo
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Exercise incomplete, altered and failed demo inputs
+        run: python -m unittest hack.tests.test_interview_demo -v
+      - name: Prepare and rehearse the complete campaign
+        run: python hack/interview_demo.py prepare --output benchmark-runs/interview-bundle
+      - name: Run outside the checkout with no Go or cluster tools on PATH
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+          import sys
+          import tempfile
+
+          repository = Path.cwd()
+          with tempfile.TemporaryDirectory(prefix="interview-portable-", dir=os.environ["RUNNER_TEMP"]) as temp:
+              portable = Path(temp)
+              bundle = portable / "bundle"
+              report = portable / "report"
+              shutil.copytree(repository / "benchmark-runs/interview-bundle", bundle)
+              environment = os.environ.copy()
+              environment["PATH"] = ""
+              environment["KUBECONFIG"] = str(portable / "absent-kubeconfig")
+              try:
+                  result = subprocess.run(
+                      [sys.executable, str(bundle / "interview_demo.py"), "run",
+                       "--bundle", str(bundle), "--output", str(report)],
+                      cwd=portable, env=environment, timeout=180,
+                  )
+              finally:
+                  if report.exists():
+                      shutil.copytree(report, repository / "benchmark-runs/interview-report")
+              raise SystemExit(result.returncode)
+      - name: Preserve successful and failed receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interview-demo-${{ matrix.os }}
+          path: |
+            benchmark-runs/interview-bundle/prepare.json
+            benchmark-runs/interview-bundle/manifest.json
+            benchmark-runs/interview-bundle/self-check/
+            benchmark-runs/interview-report/
+          if-no-files-found: warn
