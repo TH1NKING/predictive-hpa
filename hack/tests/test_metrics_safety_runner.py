@@ -301,7 +301,8 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
                         for argv in environment.commands))
 
     def test_failed_platform_import_or_runtime_check_still_deletes_the_owned_node(self):
-        for scenario in ("import-failed", "invalid-runtime-identity", "missing-archive", "stdin-command-error"):
+        for scenario in ("import-failed", "invalid-runtime-identity", "runtime-reference-missing",
+                         "missing-archive", "stdin-command-error"):
             with self.subTest(scenario=scenario):
                 module = importlib.util.module_from_spec(SPEC)
                 SPEC.loader.exec_module(module)
@@ -316,6 +317,8 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
                         result.returncode, result.stderr = 1, "Selected platform import failed"
                     elif scenario == "invalid-runtime-identity" and argv[0] == "docker" and "inspecti" in argv and argv[-1] == PROMETHEUS_FIXTURE_IMAGE:
                         result.stdout = json.dumps({"status": {"id": "not-a-digest", "repoDigests": []}})
+                    elif scenario == "runtime-reference-missing" and argv[0] == "docker" and "inspecti" in argv and argv[-1] == PROMETHEUS_FIXTURE_IMAGE:
+                        result.returncode, result.stderr = 1, "no such image present"
                     elif scenario == "missing-archive" and argv[:3] == ["docker", "image", "save"]:
                         Path(argv[argv.index("--output") + 1]).unlink()
                     return result
@@ -333,6 +336,7 @@ class MetricsSafetyRunnerTests(unittest.TestCase):
                     self.assertTrue(all(stream.closed for stream in environment.stdin_streams))
                     self.assertFalse(any(argv[:2] == ["docker", "cp"] or (argv[0] == "docker" and "rm" in argv)
                         for argv in environment.commands))
+                    self.assertFalse(any("images" in argv and "pull" in argv for argv in environment.commands))
                     self.assertTrue(environment.deleted)
                     self.assertIsNone(environment.cluster)
                     self.assertFalse(any(argv[0] == "kubectl" and "apply" in argv and any(

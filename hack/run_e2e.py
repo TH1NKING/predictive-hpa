@@ -136,7 +136,7 @@ class E2ERunner(Runner):
         architecture = info.get("architecture")
         if info.get("operatingSystem") != "linux" or not isinstance(architecture, str) or not re.fullmatch(r"[a-z0-9_]+", architecture):
             raise RuntimeError("Curl image import requires the owned node's Linux architecture")
-        self.load_fixture_image(1, curl_image, "linux/" + architecture)
+        self.load_fixture_image(1, curl_image, "linux/" + architecture, allow_registry_fallback=True)
         self.guard()
         self.command("go-e2e", ["go", "test", "-tags=e2e", "./test/e2e/", "-v", "-count=1",
             "-timeout=25m", "-ginkgo.v"], timeout=1500, env=self.guarded_environment(), cwd=self.source)

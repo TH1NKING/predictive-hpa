@@ -226,7 +226,9 @@ class Runner:
         self.write("fixture-images.json", {"images": records})
         return requested
 
-    def load_fixture_image(self, index, ref, platform):
+    def load_fixture_image(self, index, ref, platform, *, allow_registry_fallback=False):
+        if allow_registry_fallback and not re.fullmatch(r"[^@\s]+@sha256:[a-f0-9]{64}", ref):
+            raise RuntimeError("Registry fallback requires an exact pinned fixture digest")
         archive = self.private / f"fixture-{index}.tar"
         self.command(f"fixture-save-{index}", ["docker", "image", "save", "--output", str(archive), ref], timeout=180)
         archive_hash, archive_size = digest(archive), archive.stat().st_size
@@ -243,14 +245,35 @@ class Runner:
         self.command(f"fixture-import-{index}", ["docker", "exec", "-i", self.node_id, "ctr", "-n", "k8s.io",
                                                 "images", "import", "--local", "--platform", platform,
                                                 "--digests", "--base-name", repository, "-"], timeout=180, stdin_path=archive)
-        runtime = json.loads(self.command(f"fixture-runtime-{index}", ["docker", "exec", self.node_id,
-                                                                      "crictl", "inspecti", ref]))
+        fallback_reason = None
+        inspect = ["docker", "exec", self.node_id, "crictl", "inspecti", ref]
+        try:
+            contents = self.command(f"fixture-runtime-{index}", inspect)
+        except RuntimeError as error:
+            # Legacy Docker stores can export only a generated platform manifest,
+            # losing the registry index digest despite a successful import. Never
+            # relabel that generated manifest as the index: fetch the exact pinned
+            # reference through containerd, only for callers that permit networking.
+            if not allow_registry_fallback or "no such image" not in str(error).lower():
+                raise
+            fallback_reason = str(error)
+            self.guard()
+            self.command(f"fixture-registry-pull-{index}", ["docker", "exec", self.node_id,
+                "ctr", "-n", "k8s.io", "images", "pull", "--platform", platform, ref], timeout=180)
+            contents = self.command(f"fixture-runtime-after-pull-{index}", inspect)
+        runtime = json.loads(contents)
         runtime_id = runtime.get("status", {}).get("id")
         if not isinstance(runtime_id, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", runtime_id):
             raise RuntimeError("Imported fixture reference has no valid CRI image identity")
+        if fallback_reason is not None:
+            repo_digests = runtime.get("status", {}).get("repoDigests", [])
+            if not any(isinstance(value, str) and value.rsplit("@", 1)[-1] == ref.rsplit("@", 1)[1]
+                       for value in repo_digests):
+                raise RuntimeError("Registry fallback did not expose the pinned fixture digest through CRI")
         self.write(f"fixture-import-{index}.json", {"image": ref, "platform": platform,
                                                    "archive_sha256": archive_hash, "archive_size_bytes": archive_size,
-                                                   "runtime_config_digest": runtime_id, "node_container_id": self.node_id})
+                                                   "runtime_config_digest": runtime_id, "node_container_id": self.node_id,
+                                                   "registry_fallback_reason": fallback_reason})
 
     def inspect_node(self):
         nodes = json.loads(self.command("node-identity", ["docker", "inspect", self.node_name]))

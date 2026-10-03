@@ -57,6 +57,45 @@ class E2EEnvironment(CommandEnvironment):
         return result
 
 
+class LegacyArchiveEnvironment(E2EEnvironment):
+    """The hosted Docker store exports a platform manifest without its registry index."""
+
+    def __init__(self, scenario="success"):
+        super().__init__()
+        self.scenario = scenario
+        self.index_visible = False
+
+    def __call__(self, argv, **kwargs):
+        result = super().__call__(argv, **kwargs)
+        if argv[0] == "docker" and "images" in argv and "import" in argv:
+            result.stdout = "unpacking docker.io/curlimages/curl@sha256:" + "5" * 64 + "...done\n"
+            if self.scenario == "import-failed":
+                result.returncode, result.stderr = 1, "archive import failed"
+        elif argv[0] == "docker" and "inspecti" in argv and argv[-1] == CURL_IMAGE:
+            if self.scenario == "inspect-denied":
+                result.returncode, result.stderr = 1, "permission denied"
+            elif self.scenario == "inspect-timeout":
+                raise subprocess.TimeoutExpired(argv, 45)
+            elif self.scenario == "initial-invalid-id":
+                result.stdout = json.dumps({"status": {"id": "invalid", "repoDigests": []}})
+            elif not self.index_visible:
+                result.returncode, result.stderr = 1, f'no such image "{CURL_IMAGE}" present'
+                if self.scenario == "replace-node":
+                    self.cluster["Id"] = "unowned-replacement"
+            else:
+                image_id = "invalid" if self.scenario == "pulled-invalid-id" else self.image_id
+                repo_digest = "docker.io/curlimages/curl@sha256:" + "8" * 64 if self.scenario == "wrong-digest" else CURL_IMAGE
+                result.stdout = json.dumps({"status": {"id": image_id, "repoDigests": [repo_digest]}})
+        elif argv[0] == "docker" and "images" in argv and "pull" in argv:
+            if self.scenario == "pull-failed":
+                result.returncode, result.stderr = 1, "registry unavailable"
+            elif self.scenario == "pull-timeout":
+                raise subprocess.TimeoutExpired(argv, 180)
+            else:
+                self.index_visible = self.scenario != "still-missing"
+        return result
+
+
 class E2ERunnerTests(unittest.TestCase):
     def execute(self, environment, executable_paths=None, cert_manager_skip=None):
         launch = command_processes(environment)
@@ -92,6 +131,7 @@ class E2ERunnerTests(unittest.TestCase):
                 code = runner.finish()
             self.assertEqual("USER_DEFAULT_CONTEXT_CANARY", user_config.read_text())
             summary = json.loads((output / "summary.json").read_text())
+            environment.evidence = {path.name: json.loads(path.read_text()) for path in output.glob("*.json")}
             receipts = "\n".join(path.read_text() for path in output.glob("*.json"))
             self.assertNotIn("PRIVATE_KUBECONFIG_CANARY", receipts)
             if summary.get("private_workspace"):
@@ -196,6 +236,62 @@ class E2ERunnerTests(unittest.TestCase):
                 self.assertLess(imported, suite)
                 self.assertIn("linux/amd64", calls[imported])
                 self.assertNotIn("--all-platforms", calls[imported])
+                self.assertFalse(any("images" in argv and "pull" in argv for argv in calls))
+
+    def test_legacy_archive_fetches_only_the_original_registry_digest_after_successful_import(self):
+        environment = LegacyArchiveEnvironment()
+        code, summary = self.execute(environment)
+        self.assertEqual(0, code, summary)
+        calls = environment.commands
+        imported = next(i for i, argv in enumerate(calls) if "images" in argv and "import" in argv)
+        pull = next(i for i, argv in enumerate(calls) if "images" in argv and "pull" in argv)
+        inspections = [i for i, argv in enumerate(calls) if "inspecti" in argv and argv[-1] == CURL_IMAGE]
+        suite = next(i for i, argv in enumerate(calls) if argv[:2] == ["go", "test"])
+        self.assertEqual(["docker", "exec", "node-original", "ctr", "-n", "k8s.io", "images", "pull",
+                          "--platform", "linux/amd64", CURL_IMAGE], calls[pull])
+        self.assertEqual(2, len(inspections))
+        self.assertLess(imported, inspections[0])
+        self.assertLess(inspections[0], pull)
+        self.assertLess(pull, inspections[1])
+        self.assertLess(inspections[1], suite)
+        self.assertFalse(any("tag" in argv for argv in calls))
+        proof = environment.evidence["fixture-import-1.json"]
+        self.assertEqual(CURL_IMAGE, proof["image"])
+        self.assertIn("no such image", proof["registry_fallback_reason"])
+        receipt = next(value for name, value in environment.evidence.items() if name.endswith("-fixture-registry-pull-1.json"))
+        self.assertEqual(180, receipt["timeout_seconds"])
+        self.assertTrue(summary["cluster_deleted"])
+
+    def test_archive_or_nonmissing_inspect_failures_never_trigger_registry_fallback(self):
+        for scenario in ("import-failed", "inspect-denied", "inspect-timeout", "initial-invalid-id"):
+            with self.subTest(scenario=scenario):
+                environment = LegacyArchiveEnvironment(scenario)
+                code, summary = self.execute(environment)
+                self.assertEqual(1, code, summary)
+                self.assertTrue(summary["cluster_deleted"])
+                self.assertIsNone(summary["cleanup_error"])
+                self.assertFalse(any("images" in argv and "pull" in argv for argv in environment.commands))
+                self.assertFalse(any(argv[:2] == ["go", "test"] for argv in environment.commands))
+
+    def test_registry_fallback_failures_still_clean_up_and_never_start_the_suite(self):
+        for scenario in ("pull-failed", "pull-timeout", "still-missing", "wrong-digest", "pulled-invalid-id"):
+            with self.subTest(scenario=scenario):
+                environment = LegacyArchiveEnvironment(scenario)
+                code, summary = self.execute(environment)
+                self.assertEqual(1, code, summary)
+                self.assertIsNotNone(summary["run_error"])
+                self.assertTrue(summary["cluster_deleted"])
+                self.assertIsNone(summary["cleanup_error"])
+                self.assertFalse(any(argv[:2] == ["go", "test"] for argv in environment.commands))
+
+    def test_node_replacement_prevents_registry_fallback_and_deletion(self):
+        environment = LegacyArchiveEnvironment("replace-node")
+        code, summary = self.execute(environment)
+        self.assertEqual(1, code, summary)
+        self.assertIn("identity changed", summary["run_error"])
+        self.assertIn("identity changed", summary["cleanup_error"])
+        self.assertFalse(environment.deleted)
+        self.assertFalse(any("images" in argv and "pull" in argv for argv in environment.commands))
 
     def test_curl_pull_failure_does_not_create_a_cluster(self):
         environment = E2EEnvironment("curl-pull")

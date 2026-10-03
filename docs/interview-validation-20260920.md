@@ -68,3 +68,11 @@
 探针使用 Pod 投射的 ServiceAccount token，在容器内通过 stdin 传给 curl；不把令牌嵌入命令参数、Pod spec 或 verbose 日志。保留自签名 TLS 测试边界，成功需同时有 `HTTP_STATUS=200` 与实际 Go metrics 内容。
 
 固定镜像为 `docker.io/curlimages/curl@sha256:9a1ed35addb45476afa911696297f8e115993df459278ed036182dd2cd22b67b`（本次从 `8.14.1` 获取并核对）。[E2E 紧凑证据](verification/interview-e2e-20260920.json)包含三次摘要、最终源码摘要和归档哈希；完整成功回执在本地 `benchmark-runs/interview-20260920/e2e-final/`，32 个文件已逐项核验，9 个关键 E2E 源文件与工作区一致。早期失败原始回执仅保存在忽略目录，不发布其中的临时集群令牌。
+
+## 2026-10-03 GitHub CI 兼容性修复
+
+发布 [PR #15](https://github.com/TH1NKING/predictive-hpa/pull/15) 后，GitHub runner 的 Docker 归档暴露出另一条导入路径：`docker save` 生成的归档经 containerd 导入后具有新的 manifest 摘要，原 registry 的多平台索引引用不可见。首次 E2E 因此在固定摘要的 CRI 查询阶段失败，入口保留了回执并清理专用集群。
+
+E2E 现在显式允许在归档导入成功、但原固定引用仍不可用时，由自建节点按相同 digest 和节点平台从 registry 拉取，再验证 CRI 身份。不会把重新生成的 manifest 强行标为原 digest，也不会在导入本身失败时掩盖错误。默认的指标安全预载入口保持原有行为。
+
+这里的兼容性路径可能需要节点访问 registry；已有缓存不再被解释为所有 Docker 存储格式下都能离线导入。上文的源码摘要和验收数字记录的是 9 月 20 日快照，不替代本次变更后 PR head 的 GitHub 检查。
