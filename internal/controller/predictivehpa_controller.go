@@ -143,12 +143,7 @@ func (r *PredictiveHPAReconciler) reconcileTarget(
 		return ctrl.Result{}, fmt.Errorf("get PredictiveHPA: %w", err)
 	}
 
-	// 2. Validate scaleTargetRef.
-	if phpa.Spec.ScaleTargetRef.Kind != "Deployment" {
-		log.Info("Unsupported scaleTargetRef kind (v1alpha1 supports Deployment only)",
-			"kind", phpa.Spec.ScaleTargetRef.Kind)
-		return ctrl.Result{RequeueAfter: requeueOnConfigError}, nil
-	}
+	// 2. Validate the complete policy before reading metrics or touching Scale.
 	if !phpa.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}

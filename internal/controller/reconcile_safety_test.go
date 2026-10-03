@@ -28,7 +28,10 @@ import (
 	"github.com/th1nking/predictive-hpa/internal/predictor"
 )
 
-const invalidConfigurationReason = "InvalidConfiguration"
+const (
+	invalidConfigurationReason = "InvalidConfiguration"
+	scaleSubresource           = "scale"
+)
 
 // These tests invoke the public reconciliation boundary and inspect only the
 // Kubernetes Scale/status API. The fake API allows deterministic failure and
@@ -659,7 +662,7 @@ func TestReconcileSafetyNoScaleDecisionCannotPublishMetricsForReplacedTarget(t *
 			if err := c.SubResource(name).Get(ctx, obj, body, opts...); err != nil {
 				return err
 			}
-			if name == "scale" && !replaced {
+			if name == scaleSubresource && !replaced {
 				replaced = true
 				var deploy appsv1.Deployment
 				if err := c.Get(ctx, req.NamespacedName, &deploy); err != nil {

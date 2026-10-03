@@ -17,6 +17,8 @@ PredictiveHPA（PHPA）是我为了理解 Kubernetes 的工作原理和控制流
 
 [运行项目](deploy/charts/predictive-hpa/README.md) · [实现与设计](docs/design.md) · [指标安全讲解](docs/metrics-safety-guide.zh-CN.md) · [最新周期实验](docs/benchmarks/cadence-pilot-20260914.md) · [实验导航](docs/benchmarks/README.md)
 
+**面试演示：** 按[中文演示手册](docs/interview-demo.zh-CN.md)提前准备离线包，现场重算并核对 18 轮中的 607 条决策，同时展示非法输入与篡改结果被拒绝。真实集群扩容、指标中断和切主保护使用独立 Kind 的完整验收回执；离线回放与集群功能、服务性能分别解释。
+
 ## 我做了哪些工作
 
 | 部分 | 已实现能力 | 代码入口 |
@@ -144,7 +146,7 @@ Linux / Bash 环境，从仓库根目录执行：
 ```bash
 make test       # 单元测试与 envtest，需要 API Server / etcd 测试二进制
 make lint       # Go 静态检查
-make test-e2e   # 创建/使用专用 Kind 测试集群，验证部署与 metrics
+make test-e2e   # 创建全新 Kind，使用私有 kubeconfig；保留证据后清理
 
 python -m pip install -r hack/analyze/requirements.txt
 python -m unittest discover -s hack/tests -p 'test_*.py'

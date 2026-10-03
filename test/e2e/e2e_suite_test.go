@@ -34,14 +34,13 @@ import (
 var (
 	// managerImage is the manager image to be built and loaded for testing.
 	managerImage = "example.com/predictive-hpa:v0.0.1"
-	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
-	shouldCleanupCertManager = false
 )
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.
-// The default setup requires Kind and CertManager.
+// The default setup requires Kind and uses self-signed metrics TLS.
 //
-// To skip CertManager installation, set: CERT_MANAGER_INSTALL_SKIP=true
+// To install CertManager for certificate-dependent manifests, set:
+// CERT_MANAGER_INSTALL_SKIP=false when invoking the owned runner.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	_, _ = fmt.Fprintf(GinkgoWriter, "Starting predictive-hpa e2e test suite\n")
@@ -49,9 +48,14 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	Expect(utils.ValidateE2EEnvironment()).To(Succeed(), "Use make test-e2e to create an owned cluster")
+	By("verifying the owned cluster before building or deploying")
+	_, err := utils.Run(exec.Command("kubectl", "get", "namespace", "kube-system", "-o", "name"))
+	Expect(err).NotTo(HaveOccurred(), "E2E cluster identity could not be verified")
+
 	By("building the manager image")
 	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage))
-	_, err := utils.Run(cmd)
+	_, err = utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 
 	// TODO(user): If you want to change the e2e test vendor from Kind,
@@ -61,10 +65,6 @@ var _ = BeforeSuite(func() {
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
 
 	setupCertManager()
-})
-
-var _ = AfterSuite(func() {
-	teardownCertManager()
 })
 
 // setupCertManager installs CertManager if needed for webhook tests.
@@ -81,21 +81,6 @@ func setupCertManager() {
 		return
 	}
 
-	// Mark for cleanup before installation to handle interruptions and partial installs.
-	shouldCleanupCertManager = true
-
 	By("installing CertManager")
 	Expect(utils.InstallCertManager()).To(Succeed(), "Failed to install CertManager")
-}
-
-// teardownCertManager uninstalls CertManager if it was installed by setupCertManager.
-// This ensures we only remove what we installed.
-func teardownCertManager() {
-	if !shouldCleanupCertManager {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Skipping CertManager cleanup (not installed by this suite)\n")
-		return
-	}
-
-	By("uninstalling CertManager")
-	utils.UninstallCertManager()
 }

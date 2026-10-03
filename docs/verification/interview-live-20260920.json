@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "kind": "interview-readiness-functional-acceptance",
+  "baseline_commit": "42ddf562ea9919b176d562a01b002bacbfe8c17e",
+  "scope": "Uncommitted production and chart changes, executed from an explicit validation snapshot; not a published release",
+  "runtime": {
+    "cluster_name": "phpa-metrics-safety-interview-0920",
+    "context": "kind-phpa-metrics-safety-interview-0920",
+    "started_at": "2026-09-20T07:21:32.773167+00:00",
+    "run_error": null,
+    "diagnostic_errors": [],
+    "cleanup_error": null,
+    "passed": true,
+    "cluster_deleted": true,
+    "finished_at": "2026-09-20T07:32:47.312707+00:00",
+    "node_container_id": "3a97e7bd5b422b521a0b476a0fd70c917a57e4f17be68211c7203d5fa9e56f0d",
+    "cluster_uid": "4671d0e6-b66c-43bf-a775-52f3f9e561a2"
+  },
+  "acceptance": {
+    "finished_at": "2026-09-20T07:32:45.746506+00:00",
+    "context": "kind-phpa-metrics-safety-interview-0920",
+    "cluster_uid": "4671d0e6-b66c-43bf-a775-52f3f9e561a2",
+    "checks": [
+      {
+        "check": "Idle web stays below 20% while same-prefix canary exceeds 100%",
+        "at": "2026-09-20T07:24:59.671464+00:00",
+        "passed": true
+      },
+      {
+        "check": "Idle target eventually downscales to one after protection",
+        "at": "2026-09-20T07:26:26.003626+00:00",
+        "passed": true
+      },
+      {
+        "check": "Rolling update returns complete fresh metrics",
+        "at": "2026-09-20T07:27:02.998063+00:00",
+        "passed": true
+      },
+      {
+        "check": "Rolling update remains isolated from canary CPU",
+        "at": "2026-09-20T07:27:03.069195+00:00",
+        "passed": true
+      },
+      {
+        "check": "Real target CPU triggers an actual Scale increase",
+        "at": "2026-09-20T07:27:28.687636+00:00",
+        "passed": true
+      },
+      {
+        "check": "Successor leader establishes cold-start protection",
+        "at": "2026-09-20T07:28:45.882708+00:00",
+        "passed": true
+      },
+      {
+        "check": "New leader retained capacity during 30s observation",
+        "at": "2026-09-20T07:29:16.320834+00:00",
+        "passed": true,
+        "replicas": 2
+      },
+      {
+        "check": "Target can shrink after successor protection expires",
+        "at": "2026-09-20T07:30:17.341931+00:00",
+        "passed": true
+      },
+      {
+        "check": "Prometheus outage sets MetricsReady False",
+        "at": "2026-09-20T07:30:48.223494+00:00",
+        "passed": true
+      },
+      {
+        "check": "Outage holds Scale and clears obsolete CPU for 35s",
+        "at": "2026-09-20T07:31:23.970057+00:00",
+        "passed": true
+      },
+      {
+        "check": "Fresh source recovers metrics and scaling",
+        "at": "2026-09-20T07:32:45.493655+00:00",
+        "passed": true
+      }
+    ],
+    "passed": true,
+    "error": null,
+    "cleanup_error": null
+  },
+  "image": {
+    "image": "metrics-safety/predictive-hpa:source-2c52e38bab832865abe9",
+    "docker_image_id": "sha256:757da7491996ad4c17de01e58779e937301f50b1d20887fde7d96a45f1b8bfe4",
+    "dockerfile_sha256": "e3c8edb193f5ef14ebe73cda9036745dbbb8b69028e6f9ac21ea990c40b0414c"
+  },
+  "image_identity": {
+    "docker_image_id": "sha256:757da7491996ad4c17de01e58779e937301f50b1d20887fde7d96a45f1b8bfe4",
+    "runtime_config_digest": "sha256:390793fcbfb852121da0dbc7b0c6b52f55b8505e7ed1bedb21708fee4a27d7ea",
+    "verified_manifest_digests": [
+      "sha256:757da7491996ad4c17de01e58779e937301f50b1d20887fde7d96a45f1b8bfe4"
+    ],
+    "accepted_pod_image_ids": [
+      "sha256:390793fcbfb852121da0dbc7b0c6b52f55b8505e7ed1bedb21708fee4a27d7ea",
+      "sha256:757da7491996ad4c17de01e58779e937301f50b1d20887fde7d96a45f1b8bfe4"
+    ]
+  },
+  "source_sha256": "2c52e38bab832865abe9ba9168283d820b11c0fc70953836f75433f98739f3b1",
+  "source_files": {
+    "Dockerfile": "e3c8edb193f5ef14ebe73cda9036745dbbb8b69028e6f9ac21ea990c40b0414c",
+    "api/v1alpha1/groupversion_info.go": "ffaac0d208417c896cb8a54cac8bef2da1eec4600d5f02f748936d3076c35d00",
+    "api/v1alpha1/predictivehpa_types.go": "95687c42d088c55adeacd411b8ce2d6e1863e7ccb97dedf1d817428fade80849",
+    "api/v1alpha1/zz_generated.deepcopy.go": "337a576df9c3e7f2cb59127bb60bf52f0cccbcd6951fe773acbe01762ebf91f3",
+    "cmd/main.go": "f1c6780066a1cfac679be6cfc144ebcba351c605107351cc63fa1b9d78e3e0ef",
+    "cmd/observe-cpu/main.go": "5aae43bc80175a4947a3981d2c3e0b39280bebe71693d7077f5f54564292436c",
+    "cmd/replay/main.go": "a0c5d5c47058d8c63261bbdf90e63cb9a27c988bb91e0e7c11dbc4b57b352eaa",
+    "deploy/charts/predictive-hpa/.helmignore": "2f8dac773982aac590f385620277c334bd1b1a20f59d4b2a5ca071b1cf60d595",
+    "deploy/charts/predictive-hpa/Chart.yaml": "c281ccd88a3f1b196167e29519adae9fdc985faf55a927a444ec1201ad0696ae",
+    "deploy/charts/predictive-hpa/README.md": "ddc782cbd71b4be3482b74a54c975edcea28c0a4ce8bbc4ef709f892eca53517",
+    "deploy/charts/predictive-hpa/files/crd-predictivehpas.yaml": "ece51522937b1ed0848ed19a600f7267acc5ff8628902b33eb235e8259d8ef74",
+    "deploy/charts/predictive-hpa/templates/NOTES.txt": "a4c38229ab638ccbaef4a8fb94e58cd3d873fe32ea742263f4a904b40b3a83c9",
+    "deploy/charts/predictive-hpa/templates/_helpers.tpl": "3341e09c063e583740b127e7335d2f82b538d3eb9cb2a747f6e39da44f3e680e",
+    "deploy/charts/predictive-hpa/templates/crd.yaml": "28680726a6aee97ec2431a2af9d1b1c52ef13194ca643cb7e97e3a9e83b0ee0b",
+    "deploy/charts/predictive-hpa/templates/deployment.yaml": "33b532db099c861e5f154a029fad2f6708526c7f4d91135c27e927572433b565",
+    "deploy/charts/predictive-hpa/templates/rbac.yaml": "7c336974b751091348ad56cec6496692ce83cf883a9546ff975c7e5e8c5c241a",
+    "deploy/charts/predictive-hpa/templates/service.yaml": "d0da72baab2b2cf50d282a38eb4c14f2ab82b9fd2a0ee1f8de4f3dc7a110a008",
+    "deploy/charts/predictive-hpa/templates/serviceaccount.yaml": "972f1353f0ed2fd88288ddb9d5bf0dc8063c8bbe38a71c162c13d77dcb78e07b",
+    "deploy/charts/predictive-hpa/values.yaml": "460717d072c3b0d9eff82913313044c5f85db473b0325b257a8610985e4de206",
+    "go.mod": "a1409e6e61edd893ffe65ff38263a7d57f0e9173dbd143a8e78174d2d156d499",
+    "go.sum": "fc39673c5c80e1a309c652257355f7fc2a1aee603b6eda3bbf0eead1c5df1df1",
+    "internal/controller/configuration.go": "baa4ece0af2e32b4f2ba96f46e23678a1b943ec19d1399d5216d45706015771d",
+    "internal/controller/metrics_safety.go": "2feda23f23c5a9e37b7b0b4e93934201eca8c8822320abbef4f819ed6c131ab4",
+    "internal/controller/predictivehpa_controller.go": "eaf302c1acb8449e71e76dfd0bc8bd175bd5c9cabf0a73de4bfd415e7eb843de",
+    "internal/controller/replay.go": "b06a31dd9b904f1c86136cfab9a266fe5fe1d0cab5a8df139c31b1db30ab500d",
+    "internal/controller/scale_history.go": "8fd051732774f04c45d9f5a1e6e777234bf4882f93ddc6ef570293c0795767a2",
+    "internal/controller/scaling_decision.go": "a0705fefa5b556d4b366ec7a693f68f9ec74c3ff5861b234fd4a3367caec15a8",
+    "internal/metricsprovider/observation.go": "1edbefe6efa0630bbdeb6877e0ae216942602cd669ca71deb2e3e658a398030a",
+    "internal/metricsprovider/prometheus.go": "18860789b506e7bb38e11599fd6553965dd68b2fa9bfd117503ae36793d901c3",
+    "internal/metricsprovider/roster.go": "f58ad9a71b06d771276126c439cfb283b7b718102e5a8d1700df3b81c0371625",
+    "internal/metricsprovider/samples.go": "07baa823e7ac2bc6aae483665fc6ebe74ce5d105c3cafceb1e660f0e5da7b7fa",
+    "internal/predictor/ewma.go": "14716a86601b9a9f780e3a5ad86421d2a999b31cfc66fd9156425ad8fbc55852"
+  },
+  "evidence_files_verified": 80,
+  "observation_snapshots": 109,
+  "verifier_commands": 273,
+  "archive_sha256": "7c004d7cd59c482b294418bf2e17cf0a596a79fe478d72d1d26f5dce95508af6",
+  "limitations": [
+    "One linux/amd64 cached-image functional run, not a cold-cache installation or performance benchmark",
+    "The 18/607 offline replay is distinct from these 11 live checks",
+    "No GitHub Actions run, push or release is claimed"
+  ]
+}

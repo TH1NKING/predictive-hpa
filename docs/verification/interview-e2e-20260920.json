@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "42ddf562ea9919b176d562a01b002bacbfe8c17e",
+  "runtime": {
+    "cluster_name": "phpa-interview-e2e-0920c",
+    "context": "kind-phpa-interview-e2e-0920c",
+    "started_at": "2026-09-20T08:00:57.929535+00:00",
+    "run_error": null,
+    "diagnostic_errors": [],
+    "cleanup_error": null,
+    "passed": true,
+    "cluster_deleted": true,
+    "finished_at": "2026-09-20T08:01:55.640402+00:00",
+    "node_container_id": "6f58ad4075e58948a96f5312939aaf13e504fcce4df9c47d4dfeab2845b57a2c",
+    "cluster_uid": "3b9142fa-76a1-4204-93bb-39e8e126ee1a"
+  },
+  "specs": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0
+  },
+  "probe_unit_test_passed": true,
+  "curl_image": {
+    "image": "docker.io/curlimages/curl@sha256:9a1ed35addb45476afa911696297f8e115993df459278ed036182dd2cd22b67b",
+    "docker_image_id": "sha256:9a1ed35addb45476afa911696297f8e115993df459278ed036182dd2cd22b67b"
+  },
+  "source_sha256": "f67d81772257f0c95b1db88290261a61389615337fa6f0b1812b123556cb7c94",
+  "source_files": {
+    "hack/run_e2e.py": "f8649422b00ce4f27b11e2f71e08a046cea12991dd96b30dbbb7828c47feab1f",
+    "hack/run_metrics_safety.py": "e5868510ca354d9b765eba6c00d30f0ccd645587f1a8c26fbb6479ab1750b8b6",
+    "test/e2e/e2e_test.go": "d39c9434b06a8af46fcc7a50bdb4c7bd317001363287f2779467d0f6242ede0f",
+    "test/e2e/e2e_suite_test.go": "3b20164f8a04eca3be18fb2a62ac37fe66ecf54583088ee484f69f55f63ade3f",
+    "test/e2e/metrics_probe_test.go": "15df85cc3de46d8a437cf29f3e78e80b7750f6a946af9167bba6d2903667b620",
+    "test/e2e/curl-image.txt": "af413bcf351b98efd7eed5f49763f802100deb5c85f2367e7e5cc15e2bb05a30",
+    "test/utils/utils.go": "a71f40705598f4f433deacdca5f219bd9670816c96d60359e4c08ec71af11bcb",
+    "test/utils/isolation.go": "45d57b1828bfdf794dba28927f2905b1f2dae0567727777979e4b3b563a6316f",
+    "Makefile": "770cb75321f4923d542d8ea3d9112ca5436723f4bc027a8e3c05bb8bcbd0ba03"
+  },
+  "evidence_files_verified": 32,
+  "archive_sha256": "cd6909e87e6a475ff3aeb1b98dd18cd5d5198b4e52384accd586ebd6d28e9340",
+  "earlier_attempts": [
+    {
+      "cluster_name": "phpa-interview-e2e-0920",
+      "context": "kind-phpa-interview-e2e-0920",
+      "started_at": "2026-09-20T07:37:08.516210+00:00",
+      "run_error": "go-e2e failed with exit 1: ",
+      "diagnostic_errors": [
+        "final-manager-logs: final-manager-logs failed with exit 1: error: error from server (NotFound): namespaces \"predictive-hpa-system\" not found in namespace \"predictive-hpa-system\""
+      ],
+      "cleanup_error": null,
+      "passed": false,
+      "cluster_deleted": true,
+      "finished_at": "2026-09-20T07:42:50.137801+00:00",
+      "node_container_id": "8722cd355e20d783ad13a99eb809e17e3a86859038951181c12301da9d5b4df2",
+      "cluster_uid": "7a1ad7d1-9f5f-47a6-888c-8e554d0b6438"
+    },
+    {
+      "cluster_name": "phpa-interview-e2e-0920b",
+      "context": "kind-phpa-interview-e2e-0920b",
+      "started_at": "2026-09-20T07:46:56.448995+00:00",
+      "run_error": "go-e2e failed with exit 1: ",
+      "diagnostic_errors": [],
+      "cleanup_error": null,
+      "passed": false,
+      "cluster_deleted": true,
+      "finished_at": "2026-09-20T07:52:52.339003+00:00",
+      "node_container_id": "d684804f00b6ec5147e5efe17a5cffe72a47e098b8b70bec0b8fb854e6bc54cb",
+      "cluster_uid": "789c2d26-eb08-4b74-912f-e43e71b865dc"
+    }
+  ]
+}

@@ -2,6 +2,10 @@ PredictiveHPA 控制器已安装到 namespace {{ .Release.Namespace }}。
 
 1. 确认控制器运行：
    kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "predictive-hpa.name" . }}
+   kubectl rollout status deployment/{{ include "predictive-hpa.fullname" . }} -n {{ .Release.Namespace }} --timeout=120s
+
+   命令必须使用本次安装选择的 kubeconfig/context。健康探针通过只说明 manager 健康，
+   业务指标是否可用仍需检查 PHPA 的 MetricsReady condition。
 
 {{- if .Values.installCRD }}
 2. 确认 CRD 已注册：
@@ -32,8 +36,15 @@ PredictiveHPA 控制器已安装到 namespace {{ .Release.Namespace }}。
        horizon: 30s
      scaleDownStabilizationWindowSeconds: 60
 
-4. 观察预测值领先于当前值（PREDICTED% 列是核心卖点）：
+4. 检查当前/预测 CPU、当前/期望副本与条件，并结合日志解释决策：
    kubectl get phpa -w
+   kubectl logs deployment/{{ include "predictive-hpa.fullname" . }} -n {{ .Release.Namespace }} --tail=100
+
+   新进程需要至少两个有效观测；缺失或陈旧指标时保持 Scale。
+   PREDICTED% 是预测结果，不保证领先当前 CPU，也不证明扩容或服务性能改善。
+   desiredReplicas 是策略结果；确认实际写入请查看 Scaled Deployment 日志和目标的 spec.replicas。
+
+   可复现的离线回放与独立 Kind 故障验收见仓库 docs/interview-demo.zh-CN.md。
 
 当前 Prometheus 端点：{{ .Values.prometheus.url }}
 如需修改：helm upgrade {{ .Release.Name }} ... --set prometheus.url=<新地址>
